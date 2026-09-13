@@ -475,6 +475,63 @@ you chose and why") rather than an oversight.
 
 ## Automated verification
 
+### Direct ConPTY agent messages (separate from the persistent host)
+
+The desktop can also hold a **non-persistent native PTY**, indexed by canvas node id but
+without `Session.persistKey`. Checking only persisted sessions incorrectly returned `targetGone`
+for such a running OpenCode. `hasLiveSession` now uses the common runtime lookup.
+
+`core/native-windows-pane.ts` implements message delivery for those direct PTYs. It uses a
+headless terminal for observed bracketed-paste mode and capture, and reads native executable
+identity through console membership and an unambiguous shell-child chain. Process birth times
+and a generation id detect replacement/PID reuse. It deliberately does not choose an arbitrary
+deepest descendant, interpret prompt text as an executable, or accept a detached console.
+This Windows ownership evidence is not POSIX foreground-group semantics; ambiguous console
+trees and interpreter-only wrappers refuse. Existing project consent, verified idle hooks,
+delivery locks, post-write verification and receipt tracking remain in force.
+
+The persistent host has a separate, additive messaging extension (`messageOwnerV1`,
+`messagePasteReadyV1`, `messageEnvelopeV1`). `session-host/message-pane.ts` observes the OS console
+under the **host's** session generation and reads the host's existing emulator after its output
+barrier. Before sending, it repeats the identity probe, checks paste mode again, and confirms
+that the same session object is still registered after every await. The resulting write is one
+sanitized multiline bracketed paste plus Enter. Main still owns the project/consent/hook/binary
+and receipt gates. The direct adapter is never used for host-backed sessions.
+
+The extension is independently versioned so the existing terminal protocol v1/v2 is unchanged.
+Old live hosts reject the new command names, and the client returns null/false without falling
+back to `write`, `sendKeys`, or a local tmux. **Installing a new app does not upgrade an already
+running host.** It must retire after its existing sessions have ended, at a user-coordinated time;
+the next host starts from the new bundle. Never terminate a user's live host as an upgrade step.
+There is no hot migration of an existing ConPTY generation to another host.
+
+`scripts/smoke-session-host-messaging.ts` exercises a separate real Windows host over its named
+pipe, using a native fake reader (no model/API call): OS identity, probe latency within the 2 s
+budget, exact multiline framing, stale-generation refusal, and retirement of the isolated fixture.
+This proves the transport extension, not message/reply delivery between actual OpenCode agents.
+
+Installed-device acceptance (2026-09-13, local build `0.3.5-windows-messaging.2`): after each
+resumed OpenCode posted a fresh verified status, the coordinator's native messages reached both
+architect and coder; their `NT2-ARQ-OK` / `NT2-CODER-OK` replies arrived as native message
+envelopes in the coordinator transcript. Board-log traces confirmed delivery in both directions,
+including queued replies delivered after the coordinator became idle. These resumed sessions
+were **direct Windows PTYs** (their shell processes were children of the desktop main process);
+the old persistent host was no longer running. This acceptance therefore proves the installed
+message workflow on that backend, while the persistent extension remains covered by the separate
+real-host fixture above, not by a claim that these OpenCodes ran inside it.
+
+Desktop message dispatch also waits for pending canvas publication before asking main to authorize
+the pair. Without it, a newly opened node can appear in `list` and context links but be absent
+from main's persisted project snapshot, whose scope resolver labels it `cross-project`. A file
+conflict blocks that publication; it is never silently answered as Keep mine. Server control
+already persists its creations; mobile is not a sender of these agent messages.
+
+`scripts/smoke-windows-agent-messaging.ts` tests a real isolated ConPTY with a native reader:
+console identity, one multiline bracketed paste, and refusal after disposal. It makes no LLM
+call. The installed-app message/reply check with actual OpenCode agents is a separate acceptance.
+OpenCode transcript export on Windows now resolves the npm shim through PowerShell; session
+identifiers are validated before entering the command, and export has a time/size bound.
+
 The focused suites exercise behaviour rather than scan implementation source:
 
 - the Windows profile resolver covers detection precedence, standard Git Bash locations, custom

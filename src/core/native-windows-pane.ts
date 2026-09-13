@@ -1,0 +1,94 @@
+import { randomUUID } from 'crypto'
+import { TerminalEmulator } from '../session-host/terminal-emulator'
+import { readWindowsConsoleOwner, sameNativeProcess } from '../session-host/windows-pane-owner'
+import type { PaneOwner } from '../shared/agents/pane-owner-predicate'
+import { sanitizePasteText } from './paste-injection'
+
+export { sameNativeProcess } from '../session-host/windows-pane-owner'
+
+/** Core-owned screen and generation for a direct Windows PTY. This is neither a persisted
+ * agent label nor the "deepest descendant" restart heuristic. The caller still checks
+ * project consent, verified idle status, agent binary and a receipt after delivery. */
+export class NativeWindowsPane {
+  private readonly generation = randomUUID()
+  private readonly screen: TerminalEmulator
+  private tail: Promise<void> = Promise.resolve()
+  private alive = true
+
+  constructor(
+    private readonly proc: { pid: number; write(data: string): void },
+    size: { cols: number; rows: number; scrollback: number },
+    private readonly probe = readWindowsConsoleOwner
+  ) {
+    this.screen = new TerminalEmulator(size)
+  }
+
+  recordOutput(data: string): void {
+    if (!this.alive) return
+    this.tail = this.tail.then(() => this.screen.write(data)).catch(() => { this.alive = false })
+  }
+
+  resize(cols: number, rows: number): void {
+    this.tail = this.tail.then(() => { if (this.alive) this.screen.resize(cols, rows) })
+  }
+
+  async capture(full: boolean): Promise<string> {
+    await this.tail
+    return this.alive ? this.screen.serialize(full ? undefined : 200) : ''
+  }
+
+  async owner(): Promise<PaneOwner | null> {
+    if (!this.alive) return null
+    const owner = await this.probe(this.proc.pid, this.generation)
+    return this.alive ? owner : null
+  }
+
+  async pasteAware(): Promise<boolean> {
+    await this.tail
+    return this.alive && this.screen.bracketedPasteRequested()
+  }
+
+  async sendEnvelope(envelope: string, expected?: PaneOwner): Promise<boolean> {
+    if (!envelope || !expected || !(await this.pasteAware())) return false
+    // Re-check the exact process immediately before typing. A replacement with the same
+    // PID but a different OS birth time, or a shell returned to the console, refuses.
+    if (!sameNativeProcess(expected, await this.owner()) || !(await this.pasteAware())) return false
+    try {
+      const text = sanitizePasteText(envelope)
+      if (!text) return false
+      this.proc.write(`\x1b[200~${text}\x1b[201~`)
+      this.proc.write('\r')
+      return true
+    } catch { return false }
+  }
+
+  /**
+   * `PtyManager.sendText` for a direct Windows PTY — the `paste-buffer -p` contract: framed only
+   * when the app in the pane asked for bracketed paste, then Enter when requested. Unlike
+   * `sendEnvelope` there is no process attestation: this is the user-confirmed `write` verb and the
+   * app's own writers (rename, note push, dictation), which have always typed into whatever owns
+   * the pane. Without it those callers fell through to the session-host backend, which has no
+   * session for a direct PTY, and failed every time.
+   */
+  async sendText(text: string, enter: boolean): Promise<boolean> {
+    if (!this.alive) return false
+    // ESC is stripped on BOTH deliveries, as `sanitizePasteText`'s contract requires.
+    const clean = sanitizePasteText(text)
+    try {
+      if (clean) {
+        const framed = await this.pasteAware()
+        if (!this.alive) return false
+        this.proc.write(framed ? `\x1b[200~${clean}\x1b[201~` : clean)
+      }
+      if (enter) this.proc.write('\r')
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  dispose(): void {
+    this.alive = false
+    void this.tail.finally(() => this.screen.dispose())
+  }
+}

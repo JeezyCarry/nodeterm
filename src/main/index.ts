@@ -1794,7 +1794,8 @@ app.whenReady().then(async () => {
   // src/core/agents/agent-messaging.ts for the whole map.
   const messagingDeps: AgentMessagingDeps = {
     paneOwner: (id) => ptyManager.paneOwner(id),
-    sendEnvelope: (id, envelope) => ptyManager.sendEnvelope(id, envelope),
+    sendEnvelope: (id, envelope, expected) => ptyManager.sendEnvelope(id, envelope, expected),
+    envelopePasteReady: (id) => ptyManager.envelopePasteReady(id),
     hasLiveSession: (id) => ptyManager.hasLiveSession(id),
     projects: () => workspaceStore.persistedCanvases(),
     isRemoteNode: (id) => !!ptyManager.sshRemoteForNode(id),

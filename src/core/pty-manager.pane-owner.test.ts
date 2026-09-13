@@ -55,6 +55,17 @@ vi.mock('node-pty', () => ({
 }))
 
 const NODE = 'node-1'
+const hostMessaging = vi.hoisted(() => ({
+  owner: vi.fn(async () => null as unknown),
+  pasteReady: vi.fn(async () => false),
+  send: vi.fn(async () => false)
+}))
+vi.mock('./session-host-backend', async (original) => ({
+  ...(await original<typeof import('./session-host-backend')>()),
+  sessionHostMessageOwner: hostMessaging.owner,
+  sessionHostMessagePasteReady: hostMessaging.pasteReady,
+  sessionHostMessageEnvelope: hostMessaging.send
+}))
 const TARGET = sessionName(NODE)
 const TTY = '/dev/pts/7'
 const PS_OUT = [
@@ -98,6 +109,56 @@ function healthy(file: string, args: string[]): { stdout: string } {
 }
 
 describe('PtyManager.paneOwner', () => {
+  it('routes a persistent Windows generation exclusively through the host extension', async () => {
+    const mgr = await manager() as unknown as {
+      sessions: Map<string, unknown>
+      byPersistKey: Map<string, string>
+      paneOwner(id: string): Promise<unknown>
+      envelopePasteReady(id: string): Promise<boolean>
+      sendEnvelope(id: string, text: string, expected?: unknown): Promise<boolean>
+    }
+    mgr.sessions.set('host-session', { persistKey: NODE, indexKey: NODE, sessionHost: true })
+    mgr.byPersistKey.set(NODE, 'host-session')
+    const expected = { panePid: 10, tty: 'win32-console:10', paneId: 'host-generation', command: 'opencode', argv: ['opencode'] }
+    hostMessaging.owner.mockResolvedValueOnce(expected)
+    expect(await mgr.paneOwner(NODE)).toEqual(expected)
+    expect(await mgr.envelopePasteReady(NODE)).toBe(false)
+    expect(await mgr.sendEnvelope(NODE, 'message', expected)).toBe(false)
+    expect(hostMessaging.owner).toHaveBeenCalledWith(TARGET)
+    expect(hostMessaging.pasteReady).toHaveBeenCalledWith(TARGET)
+    expect(hostMessaging.send).toHaveBeenCalledWith(TARGET, 'message', expected)
+    expect(calls).toHaveLength(0) // No fallback to the POSIX tmux that is also installed.
+  })
+
+  it('finds a live non-persistent Windows node by its runtime index', async () => {
+    const mgr = await manager({ tmux: null }) as unknown as {
+      sessions: Map<string, unknown>
+      byPersistKey: Map<string, string>
+      hasLiveSession(id: string): boolean
+      paneOwner(id: string): Promise<unknown>
+      sendEnvelope(id: string, text: string, expected?: unknown): Promise<boolean>
+      captureSession(id: string): Promise<string>
+    }
+    const nativeOwner = { panePid: 40, paneId: 'native-generation', tty: 'win32-console:40', command: 'opencode', argv: ['opencode'], pids: [41], processBirths: ['born'] }
+    const sendEnvelope = vi.fn(async () => true)
+    mgr.sessions.set('plain-session', {
+      indexKey: 'plain-node',
+      nativeWindowsPane: {
+        owner: async () => nativeOwner,
+        sendEnvelope,
+        capture: async () => 'native terminal output'
+      }
+    })
+    mgr.byPersistKey.set('plain-node', 'plain-session')
+    expect(mgr.hasLiveSession('plain-node')).toBe(true)
+    expect(await mgr.paneOwner('plain-node')).toEqual(nativeOwner)
+    expect(await mgr.captureSession('plain-node')).toBe('native terminal output')
+    expect(await mgr.sendEnvelope('plain-node', 'message', nativeOwner)).toBe(true)
+    expect(sendEnvelope).toHaveBeenCalledWith('message', nativeOwner)
+    mgr.sessions.delete('plain-session')
+    expect(mgr.hasLiveSession('plain-node')).toBe(false)
+  })
+
   beforeEach(() => {
     calls.length = 0
     ssh.path = '/usr/bin/ssh'
