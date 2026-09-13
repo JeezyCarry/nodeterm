@@ -145,6 +145,13 @@ describe('a parked plain-shell agent survives the departure clear (#126)', () =>
       expect(canDisposeParkedEntry(working, parkedAt + WORKING_STALE_MS + 1)).toBe(true)
     })
 
+    it('protects a park whose pane held an idle agent CLI on a non-tmux pty', () => {
+      const idleAgent: ParkedEntryState = { tmuxBacked: false, parkedAgentState: 'done', parkedAt, agentProcess: true }
+      expect(canDisposeParkedEntry(idleAgent, parkedAt + 10 * WORKING_STALE_MS)).toBe(false)
+      expect(canDisposeParkedEntry({ ...idleAgent, tmuxBacked: true })).toBe(true)
+      expect(canDisposeParkedEntry({ ...idleAgent, agentProcess: false })).toBe(true)
+    })
+
     it('keeps protecting a waiting snapshot past the same window', () => {
       const waiting: ParkedEntryState = { ...working, parkedAgentState: 'waiting' }
       expect(canDisposeParkedEntry(waiting, parkedAt + 10 * WORKING_STALE_MS)).toBe(false)

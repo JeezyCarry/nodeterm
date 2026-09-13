@@ -67,6 +67,9 @@ export interface ParkedEntryState {
   parkedAt?: number
   /** The node's agent state RIGHT NOW, read from that node's own agent-status store. */
   liveAgentState?: AgentState
+  /** An agent CLI was running in the pane AT PARK TIME (`agentProcessInPane`). Snapshotted for
+   *  the same reason as `parkedAgentState`: the parking unmount clears the node's status. */
+  agentProcess?: boolean
 }
 
 /** `canDisposePark` for a park entry: the live read, with the AGED park-time snapshot under it.
@@ -76,6 +79,7 @@ export interface ParkedEntryState {
 export function canDisposeParkedEntry(e: ParkedEntryState, now: number = Date.now()): boolean {
   return canDisposePark({
     tmuxBacked: e.tmuxBacked,
+    agentProcess: e.agentProcess,
     agentState: effectiveAgentState(
       e.liveAgentState,
       parkedStateFloor(e.parkedAgentState, e.parkedAt, now)
