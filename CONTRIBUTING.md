@@ -60,6 +60,9 @@ handler needs something only Electron has (an SSH ControlMaster, a native dialog
 not the persistence key. `NativeWindowsPane` checks console membership, the unambiguous native
 process chain and process birth times, and frames paste only after the terminal requested it.
 Do not replace that read with a stored `agentId` or the restart heuristic's deepest descendant.
+An interpreter such as `node` is named by its script's package `bin` entry, never as `node`, so
+npm-installed CLIs such as Codex are recognized. A session released by park expiry or offscreen
+release is still messageable: existence and routing ask the backend, not the attached client.
 The persistent session-host transport has its own versioned messaging extension: the host checks
 its session generation, OS process identity and emulator before writing. An older live host keeps
 its terminals and refuses the extension; never restart it automatically or fall back to sendKeys.

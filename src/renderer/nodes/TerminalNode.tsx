@@ -478,6 +478,8 @@ interface ParkedTerminal {
   parkedAgentState?: AgentState
   /** An agent CLI was in the pane at park time — see `ParkedEntryState.agentProcess`. */
   agentProcess: boolean
+  /** Live read: has the CLI announced its exit since? The veto over `agentProcess`. */
+  readSessionEnded: () => boolean
   /** When this entry was parked — what ages the snapshot above (`parkedStateFloor`). */
   parkedAt: number
   /** The node's agent state RIGHT NOW, read from the store of the session this node belongs to
@@ -510,6 +512,7 @@ function parkDisposable(key: string): boolean {
     tmuxBacked: p.tmuxBacked,
     parkedAgentState: p.parkedAgentState,
     agentProcess: p.agentProcess,
+    liveSessionEnded: p.readSessionEnded(),
     parkedAt: p.parkedAt,
     liveAgentState: p.readAgentState()
   })
@@ -4359,6 +4362,7 @@ export function TerminalNode({
           // agent status on this very unmount — every lever reads later and would see nothing.
           parkedAgentState: readAgentState(),
           agentProcess: readAgentProcessRef.current(),
+          readSessionEnded: () => agentStatusStore.getState().byId[id]?.sessionEnded === true,
           parkedAt: Date.now(),
           readAgentState,
           cleanups,

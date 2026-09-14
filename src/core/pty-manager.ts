@@ -988,7 +988,10 @@ export class PtyManager {
    * persisted node this process has ever released: the same order as the session map itself, and
    * rewritten rather than appended on every subsequent release of the same node.
    */
-  private released = new Map<string, { sessionId: string; size?: PtySize; remote: boolean }>()
+  private released = new Map<
+    string,
+    { sessionId: string; size?: PtySize; remote: boolean; sessionHost?: boolean }
+  >()
   /**
    * The ONE control-mode client this manager keeps for background WRITES, plus the node whose tmux
    * session it is attached to (see `backgroundWrite` / `sharedClientFor`).
@@ -1112,7 +1115,10 @@ export class PtyManager {
       this.released.set(session.persistKey, {
         sessionId,
         size: session.appliedSize,
-        remote: !!session.sshRemote
+        remote: !!session.sshRemote,
+        // Which backend still holds the session after this client goes. Agent messaging reaches a
+        // released session by NAME, and must ask the backend that owns it (`sessionHostOwns`).
+        sessionHost: !!session.sessionHost
       })
     releasePty(session.proc as ReleasablePty)
     this.forget(sessionId, session)
@@ -2468,6 +2474,25 @@ export class PtyManager {
       if (session.persistKey === persistKey) return session
     }
     return undefined
+  }
+
+  /**
+   * Does the Windows session host own this node's persistent session, whether or not a client of
+   * ours is attached to it right now?
+   *
+   * A live generation answers for itself. A RELEASED one (park expiry, offscreen release) has no
+   * `Session` left, but the host keeps the session running, so the release record answers. A node
+   * this process never attached (an app restart, a project not yet opened) mirrors `sendText`'s
+   * rule: with no local tmux, the session host is this machine's persistence backend.
+   *
+   * Without the released leg, every messaging probe of a released session-host node fell through
+   * to the POSIX tmux branch, which on Windows answers null: the agent was alive and unreachable.
+   */
+  private sessionHostOwns(persistKey: string, live: Session | undefined): boolean {
+    if (live) return !!live.sessionHost
+    const known = this.released.get(persistKey)
+    if (known) return known.sessionHost === true
+    return !this.tmuxPath && this.getSettings().tmuxEnabled && sessionHostSupported()
   }
 
   /** The exact live generation for a node id, including a non-persistent indexed plain shell. */
@@ -4410,7 +4435,7 @@ export class PtyManager {
       }
       // Only the owning host may attest this generation. An older live host rejects the
       // extension; that refusal must never fall through to an unrelated POSIX tmux.
-      if (live?.sessionHost) return sessionHostMessageOwner(target)
+      if (this.sessionHostOwns(persistKey, live)) return sessionHostMessageOwner(target)
       if (!this.tmuxPath) return null
       const first = await runAsync(this.tmuxPath, [
         '-L',
@@ -4469,7 +4494,7 @@ export class PtyManager {
     const live = this.liveSessionForPersistKey(persistKey)
     if (live?.nativeWindowsPane) return live.nativeWindowsPane.sendEnvelope(envelope, expected)
     const target = sessionName(persistKey)
-    if (live?.sessionHost) {
+    if (this.sessionHostOwns(persistKey, live)) {
       return expected ? sessionHostMessageEnvelope(target, envelope, expected) : false
     }
     const sshRemote = this.sessionByPersistKey(persistKey)?.sshRemote
@@ -4505,7 +4530,7 @@ export class PtyManager {
   async envelopePasteReady(persistKey: string): Promise<boolean> {
     const live = this.liveSessionForPersistKey(persistKey)
     if (live?.nativeWindowsPane) return live.nativeWindowsPane.pasteAware()
-    if (live?.sessionHost) return sessionHostMessagePasteReady(sessionName(persistKey))
+    if (this.sessionHostOwns(persistKey, live)) return sessionHostMessagePasteReady(sessionName(persistKey))
     // Existing tmux path frames in paste-buffer -p.
     return !!(live?.sshRemote || this.tmuxPath)
   }

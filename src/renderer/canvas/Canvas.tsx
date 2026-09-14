@@ -13054,9 +13054,15 @@ export function Canvas() {
             // (the cold-restore's own resume, or a hand-launched relaunch) is the only live proof
             // that node was watching for.
             cs.setPaused(e.nodeId, false)
+            // A new CLI is in the pane: whatever exited before it no longer describes this node.
+            cs.setSessionEnded(e.nodeId, false)
           }
           if (e.sessionPhase === 'end') {
             cs.setState(e.nodeId, undefined, e.agentId)
+            // Recorded as its OWN fact, after the state: `state: undefined` alone is what an idle
+            // agent looks like, and the memory levers would keep protecting a pane that now holds
+            // only a shell (see `agentProcessInPane`).
+            cs.setSessionEnded(e.nodeId, true)
             // In-session /loop dies with its session; cron (and scheduled cloud routines)
             // keep running after it — their cards stay until CronDelete / manual dismiss.
             const kind = cs.byId[e.nodeId]?.loop?.kind

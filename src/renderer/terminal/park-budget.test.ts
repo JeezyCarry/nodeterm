@@ -152,6 +152,14 @@ describe('a parked plain-shell agent survives the departure clear (#126)', () =>
       expect(canDisposeParkedEntry({ ...idleAgent, agentProcess: false })).toBe(true)
     })
 
+    it('releases that park once its CLI announces an exit AFTER parking', () => {
+      // The snapshot was taken while the CLI ran; the live read is what can say it has since left.
+      const idleAgent: ParkedEntryState = { tmuxBacked: false, parkedAgentState: 'done', parkedAt, agentProcess: true }
+      expect(canDisposeParkedEntry({ ...idleAgent, liveSessionEnded: true })).toBe(true)
+      // The veto never overrides a live turn: exited-then-relaunched-and-working stays protected.
+      expect(canDisposeParkedEntry({ ...idleAgent, liveSessionEnded: true, liveAgentState: 'working' })).toBe(false)
+    })
+
     it('keeps protecting a waiting snapshot past the same window', () => {
       const waiting: ParkedEntryState = { ...working, parkedAgentState: 'waiting' }
       expect(canDisposeParkedEntry(waiting, parkedAt + 10 * WORKING_STALE_MS)).toBe(false)

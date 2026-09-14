@@ -73,9 +73,22 @@ means — and what you may assume when writing a feature — is three tiers, not
 
 **Direct Windows agent messaging:** `core/native-windows-pane.ts` owns a headless screen for
 non-persistent native PTYs. Lookup uses the runtime node index, and the console identity probe
-uses `GetConsoleProcessList` plus OS executable paths/birth times. A single native process reached
+uses `GetConsoleProcessList` plus OS executable paths/birth times. A single process reached
 through an unambiguous shell chain is required; detached or ambiguous candidates refuse. This
-is not a POSIX foreground-process-group claim. The project/verified-hook/idle/receipt gates still
+is not a POSIX foreground-process-group claim. **An interpreter (`node`, `bun`, `python`, …) is
+named by its script, never by its own executable**: every npm-installed agent CLI on Windows is
+`cmd` → `node <package>\bin\<cli>.js`, and naming that pane `node` made Codex and every npx
+custom agent `not-agent`. The probe keeps only the interpreter's FIRST positional argument
+(`CommandLineToArgvW`, inside PowerShell; the rest of the command line, prompt text included, never
+leaves the probe) and `scriptCommandName` maps it to the key of its package's `bin` map, which is
+the table npm generated the `.cmd` shim from, falling back to the script basename exactly as the
+POSIX predicate does. The interpreter is the leaf, never a hop, so a CLI's own children (Codex's
+native `codex.exe`, MCP servers) cannot make the pane ambiguous.
+**A RELEASED session is still a messaging target.** Park expiry and the offscreen release drop the
+`Session`, but the host keeps it running, so `targetLive` asks `PtyManager.sessionExists` (attached,
+else tmux, else the host, with a failed read answering "exists") and the owner/paste/envelope probes
+route through `sessionHostOwns`, which falls back to the release record. Asking only for an attached
+client answered `targetGone`, terminal and never queued, about a live agent in another project. The project/verified-hook/idle/receipt gates still
 apply, paste mode must be observed, and the exact generation/process is checked before writing.
 `PtyManager.sendText` (the confirmed `write` verb, rename, note push, dictation) also routes a
 direct native PTY through `NativeWindowsPane.sendText` — framed only when paste mode was requested,
@@ -588,7 +601,8 @@ Lifecycle, by intent:
   landed. The predicate is deliberately the narrowest one that closes it — a tmux-backed session is
   never protected (the kill costs a redraw), and neither is a plain terminal. **An IDLE agent CLI on
   a non-persistent pty IS protected** (`agentProcess`, `agentProcessInPane`; not once hibernated,
-  paused or dropped): killing it looked free because cold restore `--resume`s it on revive, but the
+  paused, dropped, or once its CLI announced a SessionEnd, `sessionEnded`, which is its own
+  transient flag because `state: undefined` alone is also what an idle agent looks like): killing it looked free because cold restore `--resume`s it on revive, but the
   resumed CLI fires `SessionStart:resume` and idles with no further hook event, the status mirror
   leaves it unverified, and agent messaging refused it for as long as it stayed idle — measured
   2026-09-13 on Windows native ptys. The mirror now also lets a verified `idle_prompt` right after a

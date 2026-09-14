@@ -487,7 +487,14 @@ identity through console membership and an unambiguous shell-child chain. Proces
 and a generation id detect replacement/PID reuse. It deliberately does not choose an arbitrary
 deepest descendant, interpret prompt text as an executable, or accept a detached console.
 This Windows ownership evidence is not POSIX foreground-group semantics; ambiguous console
-trees and interpreter-only wrappers refuse. Existing project consent, verified idle hooks,
+trees refuse. An interpreter is identified by its script: the probe keeps only the first
+positional argument (`CommandLineToArgvW`, inside PowerShell) and `scriptCommandName` resolves it
+to the command its npm package publishes in `bin`, else to the script basename. Measured on
+Windows 11 (2026-09-14) against a live Codex pane opened from the canvas: the PR-era probe read
+`node` and the installed app refused `send` with `targetNotAgentPane (observed: node)`, while the
+new probe read `codex` (`agent`) from the same console. A fake npm package in a separate console
+confirmed the prompt argument never appears in the probe output. The
+interpreter is the leaf; its children (a native `codex.exe`, MCP servers) do not count. Existing project consent, verified idle hooks,
 delivery locks, post-write verification and receipt tracking remain in force.
 
 The persistent host has a separate, additive messaging extension (`messageOwnerV1`,
@@ -497,6 +504,11 @@ barrier. Before sending, it repeats the identity probe, checks paste mode again,
 that the same session object is still registered after every await. The resulting write is one
 sanitized multiline bracketed paste plus Enter. Main still owns the project/consent/hook/binary
 and receipt gates. The direct adapter is never used for host-backed sessions.
+
+A host-backed session stays addressable after the desktop releases its client (park expiry,
+offscreen release). `targetLive` comes from `PtyManager.sessionExists`, and the three messaging
+probes route by `sessionHostOwns`, which reads the release record when no `Session` is left and
+otherwise applies `sendText`'s rule (no local tmux means the host owns persistence).
 
 The extension is independently versioned so the existing terminal protocol v1/v2 is unchanged.
 Old live hosts reject the new command names, and the client returns null/false without falling

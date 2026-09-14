@@ -71,14 +71,27 @@ export function wouldKillLiveWork(i: LiveWorkInput): boolean {
 
 /**
  * Is an agent CLI believed to be running in the pane? An agent node whose CLI we already exited
- * (`hibernated`, `paused`) or that we observed die (`dropped`) holds only a shell — killing that
- * costs nothing a revive cannot restore, so it stays reclaimable.
+ * (`hibernated`, `paused`), that we observed die (`dropped`) or that announced its own exit
+ * (`sessionEnded`) holds only a shell — killing that costs nothing a revive cannot restore, so it
+ * stays reclaimable.
+ *
+ * An agent whose hooks never report a session end (codex, opencode: see `SESSION_END_CAPABLE`)
+ * keeps reading as running after a deliberate quit. That is the safe direction: memory held, no
+ * work lost.
  */
 export function agentProcessInPane(
   agentId: string | undefined,
-  status: { hibernated?: boolean; paused?: boolean; dropped?: boolean } | undefined
+  status:
+    | { hibernated?: boolean; paused?: boolean; dropped?: boolean; sessionEnded?: boolean }
+    | undefined
 ): boolean {
-  return !!agentId && status?.hibernated !== true && status?.paused !== true && status?.dropped !== true
+  return (
+    !!agentId &&
+    status?.hibernated !== true &&
+    status?.paused !== true &&
+    status?.dropped !== true &&
+    status?.sessionEnded !== true
+  )
 }
 
 /**

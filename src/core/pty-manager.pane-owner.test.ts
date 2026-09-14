@@ -130,6 +130,44 @@ describe('PtyManager.paneOwner', () => {
     expect(calls).toHaveLength(0) // No fallback to the POSIX tmux that is also installed.
   })
 
+  it('reaches a RELEASED session-host generation through its release record, never tmux', async () => {
+    // Park expiry / offscreen release drops the Session, but the host keeps the session running.
+    // Before the release record carried the backend, every probe fell through to the tmux branch
+    // (installed here on purpose) and a live agent read as unreachable.
+    const mgr = await manager() as unknown as {
+      sessions: Map<string, unknown>
+      released: Map<string, unknown>
+      paneOwner(id: string): Promise<unknown>
+      envelopePasteReady(id: string): Promise<boolean>
+      sendEnvelope(id: string, text: string, expected?: unknown): Promise<boolean>
+    }
+    mgr.sessions.clear()
+    mgr.released.set(NODE, { sessionId: 'host-session', remote: false, sessionHost: true })
+    const expected = { panePid: 10, tty: 'win32-console:10', paneId: 'host-generation', command: 'opencode', argv: ['opencode'] }
+    hostMessaging.owner.mockResolvedValueOnce(expected)
+    hostMessaging.pasteReady.mockResolvedValueOnce(true)
+    hostMessaging.send.mockResolvedValueOnce(true)
+    expect(await mgr.paneOwner(NODE)).toEqual(expected)
+    expect(await mgr.envelopePasteReady(NODE)).toBe(true)
+    expect(await mgr.sendEnvelope(NODE, 'message', expected)).toBe(true)
+    expect(hostMessaging.send).toHaveBeenCalledWith(TARGET, 'message', expected)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('keeps a released TMUX generation on the tmux path', async () => {
+    const mgr = await manager() as unknown as {
+      sessions: Map<string, unknown>
+      released: Map<string, unknown>
+      paneOwner(id: string): Promise<unknown>
+    }
+    mgr.sessions.clear()
+    mgr.released.set(NODE, { sessionId: 'sess-1', remote: false, sessionHost: false })
+    hostMessaging.owner.mockClear()
+    await mgr.paneOwner(NODE)
+    expect(hostMessaging.owner).not.toHaveBeenCalled()
+    expect(calls[0]?.file).toBe('/usr/bin/tmux')
+  })
+
   it('finds a live non-persistent Windows node by its runtime index', async () => {
     const mgr = await manager({ tmux: null }) as unknown as {
       sessions: Map<string, unknown>

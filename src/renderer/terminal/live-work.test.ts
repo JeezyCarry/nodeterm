@@ -41,6 +41,9 @@ describe('agentProcessInPane', () => {
     expect(agentProcessInPane('claude', { hibernated: true })).toBe(false)
     expect(agentProcessInPane('claude', { paused: true })).toBe(false)
     expect(agentProcessInPane('claude', { dropped: true })).toBe(false)
+    // A SessionEnd (`/exit`) records only `state: undefined`, which is also what an idle agent
+    // looks like. Without its own flag the pane stayed protected for the rest of the run.
+    expect(agentProcessInPane('claude', { sessionEnded: true })).toBe(false)
   })
 })
 
