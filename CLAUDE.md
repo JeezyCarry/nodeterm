@@ -98,6 +98,11 @@ Do not route the persistent session-host backend through this direct-PTY adapter
 versioned `messageOwnerV1` / `messagePasteReadyV1` / `messageEnvelopeV1` extension runs in the host:
 the OS probe is bound to `HostSession.generation`, the session registry is rechecked after every
 await, and the emulator's paste mode is checked again immediately before the synchronous write.
+**The Enter is a SECOND write, sent only once the pane shows the envelope** — every backend
+(Server Edition tmux, session host, direct PTY) runs the one `core/settled-submit.ts`. Measured on
+the installed build (2026-09-14): with the `\r` in the same write as the paste, Codex rendered the
+whole envelope in its composer and never submitted it, so the delivery reported `stalled`; a
+separate Enter moments later sent it. A pane that never shows the envelope gets no Enter at all.
 An older live host refuses these unknown commands while keeping the v1/v2 terminal contract intact;
 never replace it automatically or fall back to name-only input to enable messaging. Windows OpenCode
 context exports use the npm shim through PowerShell with a validated session identifier, not

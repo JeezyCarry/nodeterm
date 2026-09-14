@@ -63,6 +63,8 @@ Do not replace that read with a stored `agentId` or the restart heuristic's deep
 An interpreter such as `node` is named by its script's package `bin` entry, never as `node`, so
 npm-installed CLIs such as Codex are recognized. A session released by park expiry or offscreen
 release is still messageable: existence and routing ask the backend, not the attached client.
+Never put the submitting Enter in the same write as a message paste: `core/settled-submit.ts`
+pastes, waits for the envelope to render, then submits separately, on every backend.
 The persistent session-host transport has its own versioned messaging extension: the host checks
 its session generation, OS process identity and emulator before writing. An older live host keeps
 its terminals and refuses the extension; never restart it automatically or fall back to sendKeys.

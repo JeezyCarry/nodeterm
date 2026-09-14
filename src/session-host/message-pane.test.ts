@@ -3,10 +3,19 @@ import { hostMessagePane, type MessagePaneSession } from './message-pane'
 import { windowsConsoleOwner } from './windows-pane-owner'
 
 function fixture() {
+  // The fake app draws what it is pasted, so the settle step can see the envelope land.
+  let screen = 'prompt>'
   const session: MessagePaneSession = {
     generation: 'generation-a', exited: false,
-    proc: { pid: 10, write: vi.fn() },
-    messagePasteReady: vi.fn(async () => true)
+    proc: {
+      pid: 10,
+      write: vi.fn((data: string) => {
+        const paste = /^\x1b\[200~([\s\S]*)\x1b\[201~$/.exec(data)
+        if (paste) screen += '\n' + paste[1]
+      })
+    },
+    messagePasteReady: vi.fn(async () => true),
+    serialize: vi.fn(async () => screen)
   }
   const snapshot = {
     console: [10, 11],
@@ -17,7 +26,7 @@ function fixture() {
   }
   let live: MessagePaneSession | undefined = session
   const probe = vi.fn(async (pid: number, generation: string) => windowsConsoleOwner(pid, generation, snapshot))
-  return { session, snapshot, probe, pane: hostMessagePane(() => live, probe), replace: () => {
+  return { session, snapshot, probe, pane: hostMessagePane(() => live, probe, { wait: async () => {} }), replace: () => {
     live = { ...session, generation: 'generation-b' }
   } }
 }
@@ -29,7 +38,11 @@ describe('session-host messaging extension', () => {
     expect(owner?.paneId).toContain('generation-a')
     expect(await pane.send('line one\nline two\x1b[201~', owner!)).toBe(true)
     expect(probe).toHaveBeenCalledTimes(2)
-    expect(session.proc.write).toHaveBeenCalledExactlyOnceWith('\x1b[200~line one\nline two[201~\x1b[201~\r')
+    // Two writes, in order: the paste, then Enter only once the envelope is on screen.
+    expect(vi.mocked(session.proc.write).mock.calls).toEqual([
+      ['\x1b[200~line one\nline two[201~\x1b[201~'],
+      ['\r']
+    ])
   })
 
   it('refuses an expected owner from an older same-name generation', async () => {
@@ -79,6 +92,19 @@ describe('session-host messaging extension', () => {
     })
     expect(await f.pane.send('message', owner!)).toBe(false)
     expect(f.session.proc.write).not.toHaveBeenCalled()
+  })
+
+  it('sends no Enter when the generation is replaced between the paste and the submit', async () => {
+    // A bare Enter into whatever took the session's place would submit a stranger's input.
+    const f = fixture()
+    const owner = await f.pane.owner()
+    const render = vi.mocked(f.session.serialize).getMockImplementation()!
+    vi.mocked(f.session.serialize).mockImplementationOnce(render).mockImplementation(async () => {
+      f.replace()
+      return render()
+    })
+    expect(await f.pane.send('message', owner!)).toBe(true)
+    expect(vi.mocked(f.session.proc.write).mock.calls).toEqual([['[200~message[201~']])
   })
 
   it('never submits an empty envelope or an unobserved identity', async () => {

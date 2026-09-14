@@ -3,6 +3,7 @@ import { TerminalEmulator } from '../session-host/terminal-emulator'
 import { readWindowsConsoleOwner, sameNativeProcess } from '../session-host/windows-pane-owner'
 import type { PaneOwner } from '../shared/agents/pane-owner-predicate'
 import { sanitizePasteText } from './paste-injection'
+import { pasteThenSubmitWhenSettled, type SettleOptions } from './settled-submit'
 
 export { sameNativeProcess } from '../session-host/windows-pane-owner'
 
@@ -18,7 +19,8 @@ export class NativeWindowsPane {
   constructor(
     private readonly proc: { pid: number; write(data: string): void },
     size: { cols: number; rows: number; scrollback: number },
-    private readonly probe = readWindowsConsoleOwner
+    private readonly probe = readWindowsConsoleOwner,
+    private readonly settle: SettleOptions = {}
   ) {
     this.screen = new TerminalEmulator(size)
   }
@@ -53,13 +55,24 @@ export class NativeWindowsPane {
     // Re-check the exact process immediately before typing. A replacement with the same
     // PID but a different OS birth time, or a shell returned to the console, refuses.
     if (!sameNativeProcess(expected, await this.owner()) || !(await this.pasteAware())) return false
-    try {
-      const text = sanitizePasteText(envelope)
-      if (!text) return false
-      this.proc.write(`\x1b[200~${text}\x1b[201~`)
-      this.proc.write('\r')
-      return true
-    } catch { return false }
+    const text = sanitizePasteText(envelope)
+    if (!text) return false
+    // Paste, let the composer install the block, then submit in a second write
+    // (core/settled-submit.ts). Two synchronous writes arrive as one read on the other side.
+    return pasteThenSubmitWhenSettled(text, {
+      capture: async () => (this.alive ? this.capture(false) : null),
+      paste: async () => {
+        if (!this.alive || !(await this.pasteAware())) return false
+        try {
+          this.proc.write(`\x1b[200~${text}\x1b[201~`)
+          return true
+        } catch { return false }
+      },
+      submit: async () => {
+        if (!this.alive) return
+        try { this.proc.write('\r') } catch { /* paste landed; receipt reports stalled */ }
+      }
+    }, this.settle)
   }
 
   /**

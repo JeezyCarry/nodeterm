@@ -501,8 +501,11 @@ The persistent host has a separate, additive messaging extension (`messageOwnerV
 `messagePasteReadyV1`, `messageEnvelopeV1`). `session-host/message-pane.ts` observes the OS console
 under the **host's** session generation and reads the host's existing emulator after its output
 barrier. Before sending, it repeats the identity probe, checks paste mode again, and confirms
-that the same session object is still registered after every await. The resulting write is one
-sanitized multiline bracketed paste plus Enter. Main still owns the project/consent/hook/binary
+that the same session object is still registered after every await. It then writes one sanitized
+multiline bracketed paste, watches its own emulator until the envelope footer renders, and sends
+Enter as a second write, only while the same generation is still registered
+(`core/settled-submit.ts`, shared with the Server Edition). With the Enter inside the paste write,
+Codex 0.154 left the envelope unsent in its composer and the delivery reported `stalled`. Main still owns the project/consent/hook/binary
 and receipt gates. The direct adapter is never used for host-backed sessions.
 
 A host-backed session stays addressable after the desktop releases its client (park expiry,
