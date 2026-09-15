@@ -16,7 +16,9 @@ async function main(): Promise<void> {
   const exe = path.join(dir, 'opencode.exe')
   fs.copyFileSync(nodeExe, exe)
   const quote = (s: string) => "'" + s.replace(/'/g, "''") + "'"
-  const reader = "process.stdin.setRawMode(true);process.stdin.resume();process.stdout.write('\\x1b[?2004hREADY_HOST');let b='';process.stdin.on('data',d=>{b+=d;if(b.endsWith('\\r')){process.stdout.write('HOST_RECEIVED:'+Buffer.from(b).toString('base64')+';');b='';}})"
+  // The reader echoes the pasted text like a composer does: delivery submits in a second write
+  // only once the envelope is visible (core/settled-submit.ts), so a silent reader gets no Enter.
+  const reader = "process.stdin.setRawMode(true);process.stdin.resume();process.stdout.write('\\x1b[?2004hREADY_HOST');let b='';process.stdin.on('data',d=>{const s=d.toString();b+=s;process.stdout.write(s.replace(/\\x1b\\[20[01]~/g,'').replace(/\\r/g,'').replace(/\\n/g,'\\r\\n'));if(b.endsWith('\\r')){process.stdout.write('HOST_RECEIVED:'+Buffer.from(b).toString('base64')+';');b='';}})"
   const client = new SessionHostClient({ userDataDir: dir, repoRoot: process.cwd() })
   const env = Object.fromEntries(Object.entries(process.env).filter(([k, v]) =>
     v !== undefined && !k.startsWith('NODETERM_') && k !== 'ELECTRON_RUN_AS_NODE')) as Record<string, string>

@@ -20,7 +20,9 @@ async function main(): Promise<void> {
   // assertion is actual ConPTY input framing/identity, not a claim of an LLM response.
   const readerExe = path.join(dir, 'opencode.exe')
   fs.copyFileSync(nodeExe, readerExe)
-  const reader = "process.stdin.setRawMode(true); process.stdin.resume(); process.stdout.write('\\x1b[?2004hREADY_NATIVE'); let b=''; process.stdin.on('data',d=>{b+=d.toString(); if(b.endsWith('\\r')) {process.stdout.write('RECEIVED_NATIVE:'+Buffer.from(b).toString('base64')+';'); b='';}});"
+  // The reader echoes the pasted text like a composer does: delivery submits in a second write
+  // only once the envelope is visible (core/settled-submit.ts), so a silent reader gets no Enter.
+  const reader = "process.stdin.setRawMode(true); process.stdin.resume(); process.stdout.write('\\x1b[?2004hREADY_NATIVE'); let b=''; process.stdin.on('data',d=>{const s=d.toString(); b+=s; process.stdout.write(s.replace(/\\x1b\\[20[01]~/g,'').replace(/\\r/g,'').replace(/\\n/g,'\\r\\n')); if(b.endsWith('\\r')) {process.stdout.write('RECEIVED_NATIVE:'+Buffer.from(b).toString('base64')+';'); b='';}});"
   const quote = (text: string) => "'" + text.replace(/'/g, "''") + "'"
   const proc = pty.spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NoExit', '-Command', `& ${quote(readerExe)} -e ${quote(reader)}`], {
     cwd: dir, env: process.env as Record<string, string>, cols: 120, rows: 30, name: 'xterm-256color'
