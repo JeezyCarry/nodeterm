@@ -544,6 +544,17 @@ already persists its creations; mobile is not a sender of these agent messages.
 `scripts/smoke-windows-agent-messaging.ts` tests a real isolated ConPTY with a native reader:
 console identity, one multiline bracketed paste, and refusal after disposal. It makes no LLM
 call. The installed-app message/reply check with actual OpenCode agents is a separate acceptance.
+
+`scripts/sim-agent-messaging-windows.ts` runs the coordinator ↔ architect ↔ coder scenario end to
+end against an isolated real host, with the real mirror, decider, `deliverFromControl`, queue and
+receipt watch; only the agent CLIs (paste-aware fake composers) and the hook transport are
+simulated. Measured 2026-09-15: three rounds of send/reply pass, including busy targets queued
+and flushed on idle, and a verified `SessionStart` + `idle_prompt` committing a verified idle
+without a turn. Two findings it pins: after an app restart an idle agent whose CLI emits no hook
+stays `targetStatusStale` on every retry (whether real Claude emits one there is not measured);
+and against a reader that drains input every 150 ms, the `sendKeys` plan (paste, then an
+immediate Enter write) had its Enter swallowed into the paste while the settled envelope
+submitted.
 OpenCode transcript export on Windows now resolves the npm shim through PowerShell; session
 identifiers are validated before entering the command, and export has a time/size bound.
 
