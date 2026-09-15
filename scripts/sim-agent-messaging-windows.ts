@@ -14,6 +14,14 @@
 // swallowed (so the model is not vacuous), and a "slow" reader that drains input every 150 ms
 // compares the sendKeys plan (paste, then an immediate Enter write) with the settled envelope.
 //
+// Last phase, RELEASED session: a fourth node is spawned through a real `PtyManager` and messaged
+// through the deps `src/main/index.ts` wires (`hasLiveSession` = `sessionExists`, the probes through
+// `sessionHostOwns`). Every phase above talks to `SessionHostClient` directly, which cannot see a
+// release at all. The node is released the way park expiry and the offscreen release do it (the last
+// client's `kill`), then messaged idle and busy. Three controls keep that from passing vacuously:
+// the pre-fix `hasLiveSession` must answer `targetGone`; with a tmux path set, only the release
+// record may route the probes to the host; and a session killed in the host must be `targetGone`.
+//
 // Build + run (node-pty is Electron-built, so run under Electron's Node):
 //   npx esbuild scripts/sim-agent-messaging-windows.ts --bundle --platform=node --format=cjs
 //     --external:node-pty --tsconfig=tsconfig.node.json --outfile=out/sim-agent-messaging.cjs
@@ -26,6 +34,8 @@ import path from 'path'
 import assert from 'assert/strict'
 import { initPlatform } from '../src/core/platform'
 import { SessionHostClient } from '../src/core/session-host-client'
+import { PtyManager } from '../src/core/pty-manager'
+import { DEFAULT_SETTINGS } from '../src/shared/types'
 import { writeNodeTokenFile } from '../src/core/agents/node-token-files'
 import {
   initAgentStatusMirror,
@@ -52,6 +62,9 @@ const NODES = {
   coder: { id: 'sim-coder', title: 'Coder' }
 } as const
 type Role = keyof typeof NODES
+/** The node spawned and released through `PtyManager` (last phase). Not in `NODES`, because phase 0
+ *  attaches every `NODES` entry straight through `SessionHostClient`. */
+const REL = { id: 'sim-released', title: 'Released' } as const
 const sessionName = (id: string): string => `nt-${id}`
 
 // The fake agent CLI. argv: <hookFile>. Speaks only through its pane and the hook file.
@@ -118,7 +131,7 @@ process.stdin.on('data', (chunk) => {
 `
 
 interface SimEvent {
-  role: Role
+  role: string
   payload: Record<string, unknown>
 }
 
@@ -165,7 +178,10 @@ async function main(): Promise<void> {
 
   // ── The simulated hook transport ──────────────────────────────────────────────────────────────
   const queue = { current: null as ReturnType<typeof createDeliveryQueue> | null }
-  const hookFiles = new Map<Role, { file: string; offset: number }>()
+  // The released node's deliveries go through their own queue (built on the PtyManager deps), so
+  // its done edge must nudge that queue and not the direct-client one.
+  const relQueue = { current: null as ReturnType<typeof createDeliveryQueue> | null }
+  const hookFiles = new Map<string, { file: string; offset: number; nodeId: string }>()
   const events: SimEvent[] = []
   const pump = (): void => {
     for (const [role, h] of hookFiles) {
@@ -183,12 +199,12 @@ async function main(): Promise<void> {
           if (payload.sim !== 'read') note(`${role}: sim ${String(payload.sim)}`)
           continue
         }
-        const normalized = normalizeClaude({ nodeId: NODES[role].id, agentId: 'claude', payload })
+        const normalized = normalizeClaude({ nodeId: h.nodeId, agentId: 'claude', payload })
         if (!normalized) continue
         const labelled = { ...normalized, verified: true, clientRevision: MIN_TOKEN_AWARE_REVISION }
         const broadcast = recordAgentEvent(labelled)
-        onMessagingAgentEvent(broadcast, queue.current)
-        note(`${role}: hook ${String(payload.hook_event_name)} → mirror ${String(mirrorEntry(NODES[role].id)?.state)}`)
+        onMessagingAgentEvent(broadcast, h.nodeId === REL.id ? relQueue.current : queue.current)
+        note(`${role}: hook ${String(payload.hook_event_name)} → mirror ${String(mirrorEntry(h.nodeId)?.state)}`)
       }
     }
   }
@@ -203,7 +219,10 @@ async function main(): Promise<void> {
     envelopePasteReady: (id) => client.messagePasteReady(sessionName(id)),
     hasLiveSession: (id) => client.hasSession(sessionName(id)),
     projects: () => [
-      { id: PROJECT, nodes: Object.values(NODES).map((n) => ({ id: n.id, title: n.title, agentId: 'claude' })) }
+      {
+        id: PROJECT,
+        nodes: [...Object.values(NODES), REL].map((n) => ({ id: n.id, title: n.title, agentId: 'claude' }))
+      }
     ],
     isRemoteNode: () => false,
     messagingEnabled: () => true,
@@ -223,7 +242,7 @@ async function main(): Promise<void> {
       await new Promise((r) => setTimeout(r, 40))
     }
   }
-  const received = (role: Role, marker: string): boolean =>
+  const received = (role: string, marker: string): boolean =>
     events.some((e) => e.role === role && e.payload.sim === 'received' && String(e.payload.text).includes(marker))
   const stateOf = (role: Role): string | undefined => mirrorEntry(NODES[role].id)?.state
 
@@ -250,13 +269,14 @@ async function main(): Promise<void> {
   }
 
   const subs = new Map<Role, { onData: (d: string) => void; onExit: () => void }>()
+  let ptyManager: PtyManager | undefined
   try {
     // ── Phase 0: three verified sessions that prove themselves idle without a turn (#760) ───────
     for (const role of Object.keys(NODES) as Role[]) {
       const id = NODES[role].id
       assert.ok(writeNodeTokenFile(id, `token-${id}`))
       const hookFile = path.join(dir, `hooks-${role}.jsonl`)
-      hookFiles.set(role, { file: hookFile, offset: 0 })
+      hookFiles.set(role, { file: hookFile, offset: 0, nodeId: id })
       const sub = { onData: noop, onExit: noop }
       subs.set(role, sub)
       await client.attach(
@@ -392,15 +412,132 @@ async function main(): Promise<void> {
     })
     assert.ok(c3.submitted, 'the settled envelope must submit even against a slow reader')
     fs.rmSync(slowFlag, { force: true })
+
+    // ── Phase L: a RELEASED session, through PtyManager (park expiry / offscreen release) ──────
+    note('── released session: spawned and released through PtyManager ──')
+    // `PtyManager` reaches the host through the process-wide client in session-host-backend.ts,
+    // which reads `platform().userDataDir` (the private root above) and finds the host bundle under
+    // `process.cwd()`. So this is the same isolated host every phase above used.
+    ptyManager = new PtyManager()
+    ptyManager.init(() => ({ ...DEFAULT_SETTINGS, tmuxEnabled: true }))
+    const pty = ptyManager
+    // Test-only reach into two private fields, both named in the controls below. Neither is exposed
+    // because no production caller has a reason to set a tmux path or drop a release record.
+    const internals = pty as unknown as { released: Map<string, unknown>; tmuxPath: string | null }
+    const relName = sessionName(REL.id)
+    assert.ok(writeNodeTokenFile(REL.id, `token-${REL.id}`))
+    const relHook = path.join(dir, 'hooks-rel.jsonl')
+    hookFiles.set('rel', { file: relHook, offset: 0, nodeId: REL.id })
+    const relSessionId = pty.createDetached(
+      {
+        cols: 140,
+        rows: 40,
+        cwd: dir,
+        persistKey: REL.id,
+        shell: 'powershell.exe',
+        shellArgs: ['-NoLogo', '-NoProfile', '-NoExit', '-Command', `& ${quote(agentExe)} ${quote(composerJs)} ${quote(relHook)}`]
+      },
+      { onData: noop, onExit: noop }
+    )
+    await waitFor('released-node verified idle after session start', () => {
+      const e = mirrorEntry(REL.id)
+      return e?.state === 'done' && e.stateVerified === true && !e.idleInferred
+    }, 30_000)
+    const relState = (): string | undefined => mirrorEntry(REL.id)?.state
+
+    // The seams `src/main/index.ts` wires for the desktop shell, over the real PtyManager.
+    const ptyDeps: AgentMessagingDeps = {
+      ...deps,
+      paneOwner: (id) => pty.paneOwner(id),
+      sendEnvelope: (id, envelope, expected) => pty.sendEnvelope(id, envelope, expected),
+      envelopePasteReady: (id) => pty.envelopePasteReady(id),
+      hasLiveSession: (id) => pty.sessionExists(id),
+      queue: undefined
+    }
+    relQueue.current = createDeliveryQueue(ptyDeps)
+    ptyDeps.queue = relQueue.current
+    const coordHook = hookFiles.get('coord')!.file
+    const sendRel = async (body: string, over: Partial<AgentMessagingDeps> = ptyDeps): Promise<AgentMessageOutcome> => {
+      clockOffset += 11_000 // past the pair limiter's window, as in the rounds
+      // Each message leaves from a fresh coordinator turn, as an orchestrator's would: the sender's
+      // fan-out budget (FANOUT_PER_TURN) resets only on a new turn, and the phases above spent it.
+      // The coordinator's subscription went with the restart phase, so the turn arrives through its
+      // simulated hook transport rather than its keyboard.
+      fs.appendFileSync(coordHook,
+        JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'next hand-off' }) + '\n' +
+        JSON.stringify({ hook_event_name: 'Stop', last_assistant_message: 'ok' }) + '\n')
+      const before = events.length
+      await waitFor('coordinator fresh turn', () =>
+        events.slice(before).some((e) => e.role === 'coord' && e.payload.hook_event_name === 'Stop'))
+      const d = over === ptyDeps ? ptyDeps : { ...ptyDeps, ...over }
+      return (await deliverFromControl({ verb: 'send', sourceNodeId: NODES.coord.id, targetNodeId: REL.id, body }, d)).outcome
+    }
+
+    // L1 — attached: the PtyManager wiring works before anything is released, so a later failure is
+    // about the release and not about this harness.
+    expectOutcome('released phase: coord→node while still attached', await sendRel('L-ATTACHED [[work:400]]\nattached'), ['delivered'])
+    await waitFor('attached node received', () => received('rel', 'L-ATTACHED'))
+    await waitFor('node idle after attached turn', () => relState() === 'done', 30_000)
+
+    // L2 — release it the way park expiry and the offscreen release do: the last client leaves.
+    pty.kill(null, relSessionId)
+    assert.equal(pty.hasLiveSession(REL.id), false, 'no attached client is left after the release')
+    assert.ok(internals.released.has(REL.id), 'the release left its record behind')
+    assert.equal(await client.hasSession(relName), true, 'the host keeps the released session running')
+    note('PASS released: no client attached, release record kept, host still runs the session')
+
+    // A-C1 — the pre-fix wiring asked only for an attached client: a live agent reads as gone.
+    expectOutcome('control: released node, pre-fix hasLiveSession (attached only)',
+      await sendRel('L-PREFIX\nshould not arrive', { hasLiveSession: (id) => pty.hasLiveSession(id) }), ['targetGone'])
+
+    // L3 — idle and released: delivered by name through the host.
+    expectOutcome('released phase: coord→released idle node', await sendRel('L-RELEASED [[work:5000]]\nare you there?'), ['delivered'])
+    await waitFor('released node received', () => received('rel', 'L-RELEASED'))
+    await waitFor('released node working', () => relState() === 'working')
+
+    // L4 — busy and released: queued, and flushed on its done edge (re-validated at flush time).
+    expectOutcome('released phase: coord→released busy node', await sendRel('L-BUSY [[work:400]]\nafter your turn'), ['queued'])
+    await waitFor('queued message reached the released node after its turn', () => received('rel', 'L-BUSY'), 30_000)
+    await waitFor('released node idle again', () => relState() === 'done', 30_000)
+    // The flushed delivery records its send (`noteSent`) only after its receipt watch returns, which
+    // can outlast the turn it caused. Let it land before the next send moves the sim clock, or that
+    // send is measured against a pair window stamped with the moved clock.
+    await new Promise((r) => setTimeout(r, 3000))
+    assert.equal(received('rel', 'L-PREFIX'), false, 'the pre-fix control must not have delivered anything')
+
+    // A-C2 — with a tmux on PATH (MSYS2/Cygwin), "no record" no longer means "session host": only
+    // the release record may route the probes there. The path does not exist, so any probe that
+    // falls through to tmux fails instead of reaching a real server.
+    internals.tmuxPath = path.join(dir, 'no-such-tmux', 'tmux.exe')
+    expectOutcome('control: tmux on PATH, release record present', await sendRel('L-RECORD [[work:400]]\nrouted by the record'), ['delivered'])
+    await waitFor('record-routed message received', () => received('rel', 'L-RECORD'))
+    await waitFor('released node idle after record turn', () => relState() === 'done', 30_000)
+    const record = internals.released.get(REL.id)
+    internals.released.delete(REL.id)
+    const noRecord = await sendRel('L-NORECORD\nshould not arrive')
+    const noRecordOk = noRecord.kind !== 'delivered' && noRecord.kind !== 'queued'
+    results.push({ step: 'control: tmux on PATH, release record removed', outcome: noRecord.kind, ok: noRecordOk })
+    note(`${noRecordOk ? 'PASS' : 'FAIL'} control: tmux on PATH, release record removed: ${noRecord.kind}`)
+    await new Promise((r) => setTimeout(r, 2000))
+    assert.ok(noRecordOk && !received('rel', 'L-NORECORD'), `without the record the probes must not reach the host (got ${noRecord.kind})`)
+    internals.released.set(REL.id, record)
+    internals.tmuxPath = null
+
+    // A-C3 — actually gone: the host no longer has the session, so `targetGone` is the true answer.
+    await client.killSession(relName)
+    assert.equal(await client.hasSession(relName), false, 'the killed session is gone')
+    expectOutcome('control: released node whose session was killed in the host', await sendRel('L-GONE\nnobody home'), ['targetGone'])
   } finally {
     clearInterval(pumpTimer)
-    for (const role of Object.keys(NODES) as Role[]) {
+    for (const id of [...Object.values(NODES).map((n) => n.id), REL.id]) {
       try {
-        await client.killSession(sessionName(NODES[role].id))
+        await client.killSession(sessionName(id))
       } catch {
         /* already gone */
       }
     }
+    // Detaches PtyManager's own host clients only; the sessions were killed above.
+    await ptyManager?.killAll()
     // The scenario root is removed below, so the log gets its own private root to outlive it.
     // Never a fixed name in the shared temp dir: another account could pre-create it.
     const logFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'nodeterm-sim-messaging-log-')), 'run.log')
