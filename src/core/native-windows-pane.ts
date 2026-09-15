@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { TerminalEmulator } from '../session-host/terminal-emulator'
 import { readWindowsConsoleOwner, sameNativeProcess } from '../session-host/windows-pane-owner'
+import { sendKeysWrites } from '../session-host/send-keys-delivery'
 import type { PaneOwner } from '../shared/agents/pane-owner-predicate'
 import { sanitizePasteText } from './paste-injection'
 import { pasteThenSubmitWhenSettled, type SettleOptions } from './settled-submit'
@@ -85,15 +86,12 @@ export class NativeWindowsPane {
    */
   async sendText(text: string, enter: boolean): Promise<boolean> {
     if (!this.alive) return false
-    // ESC is stripped on BOTH deliveries, as `sanitizePasteText`'s contract requires.
-    const clean = sanitizePasteText(text)
+    // The write plan is the session host's `sendKeysWrites` — one rule for both Windows backends,
+    // so the direct PTY cannot drift from the host on where the Enter goes or what gets stripped.
+    const bracketed = sanitizePasteText(text) ? await this.pasteAware() : false
+    if (!this.alive) return false
     try {
-      if (clean) {
-        const framed = await this.pasteAware()
-        if (!this.alive) return false
-        this.proc.write(framed ? `\x1b[200~${clean}\x1b[201~` : clean)
-      }
-      if (enter) this.proc.write('\r')
+      for (const chunk of sendKeysWrites(text, enter, bracketed)) this.proc.write(chunk)
       return true
     } catch {
       return false

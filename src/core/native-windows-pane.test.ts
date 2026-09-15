@@ -82,6 +82,11 @@ describe('native Windows sendText (the write verb and the app’s own writers)',
     expect(await pane.sendText('ls\x1b', false)).toBe(true)
     expect(write.mock.calls).toEqual([['ls']])
   })
+  it('keeps an unframed Enter inside the single write, exactly like the session host', async () => {
+    const { pane, write } = fixture()
+    expect(await pane.sendText('ls', true)).toBe(true)
+    expect(write.mock.calls).toEqual([['ls\r']])
+  })
   it('sends a bare Enter for an empty payload, and nothing at all when neither is asked', async () => {
     const { pane, write } = fixture()
     expect(await pane.sendText('', true)).toBe(true)
