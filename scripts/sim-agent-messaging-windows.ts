@@ -401,7 +401,11 @@ async function main(): Promise<void> {
         /* already gone */
       }
     }
-    fs.writeFileSync(path.join(os.tmpdir(), 'nodeterm-sim-messaging-last.log'), log.join('\n'))
+    // The scenario root is removed below, so the log gets its own private root to outlive it.
+    // Never a fixed name in the shared temp dir: another account could pre-create it.
+    const logFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'nodeterm-sim-messaging-log-')), 'run.log')
+    fs.writeFileSync(logFile, log.join('\n'))
+    console.log(`log: ${logFile}`)
     try {
       await waitFor('private host retirement', () => !fs.existsSync(path.join(dir, 'session-host.json')), 40_000)
       fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })

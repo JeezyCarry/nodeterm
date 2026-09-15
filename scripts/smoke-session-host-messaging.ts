@@ -12,9 +12,7 @@ async function main(): Promise<void> {
   assert.equal(process.platform, 'win32')
   const nodeExe = process.env.NODETERM_SMOKE_NODE_EXE
   assert.ok(nodeExe && fs.existsSync(nodeExe))
-  const tempRoot = path.join(os.tmpdir(), 'opencode')
-  assert.ok(fs.existsSync(tempRoot), 'the approved temporary directory must exist')
-  const dir = fs.mkdtempSync(path.join(tempRoot, 'nodeterm-host-message-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nodeterm-host-message-'))
   const exe = path.join(dir, 'opencode.exe')
   fs.copyFileSync(nodeExe, exe)
   const quote = (s: string) => "'" + s.replace(/'/g, "''") + "'"
