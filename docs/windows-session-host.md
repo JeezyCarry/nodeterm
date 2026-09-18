@@ -555,8 +555,8 @@ stays `targetStatusStale` on every retry (whether real Claude emits one there is
 and against a reader that drains input every 150 ms, the `sendKeys` plan (paste, then an
 immediate Enter write) had its Enter swallowed into the paste while the settled envelope
 submitted.
-OpenCode transcript export on Windows now resolves the npm shim through PowerShell; session
-identifiers are validated before entering the command, and export has a time/size bound.
+OpenCode transcript export on Windows is not part of this change: it runs the resolved npm shim
+through `directExecutableInvocation` (`opencodeExportAt`, #655).
 
 The focused suites exercise behaviour rather than scan implementation source:
 

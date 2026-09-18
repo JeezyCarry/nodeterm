@@ -105,8 +105,8 @@ whole envelope in its composer and never submitted it, so the delivery reported 
 separate Enter moments later sent it. A pane that never shows the envelope gets no Enter at all.
 An older live host refuses these unknown commands while keeping the v1/v2 terminal contract intact;
 never replace it automatically or fall back to name-only input to enable messaging. Windows OpenCode
-context exports use the npm shim through PowerShell with a validated session identifier, not
-`execFile('opencode')` (which cannot execute the npm shim on Windows).
+context exports go through `directExecutableInvocation` like every other app-owned subprocess (see
+Platform support), never a bare `execFile('opencode')`, which cannot execute the npm shim.
 
 ```bash
 npm install        # deps + rebuilds node-pty against Electron's ABI (postinstall hook)
