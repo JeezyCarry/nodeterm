@@ -8410,6 +8410,47 @@ button.group-node__setup:disabled {
   opacity: 0.35;
   cursor: default;
 }
+.webview-zoom {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid var(--border, #333);
+  border-radius: 5px;
+}
+.webview-zoom__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.webview-zoom__button:hover:not(:disabled) {
+  background: rgba(var(--tint-rgb), 0.1);
+  color: var(--text);
+}
+.webview-zoom__button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.webview-zoom__button svg {
+  width: 13px;
+  height: 13px;
+}
+.webview-zoom__reset {
+  width: auto;
+  min-width: 34px;
+  padding: 0 3px;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
 .browser-node__address {
   flex: 1;
   min-width: 0;
