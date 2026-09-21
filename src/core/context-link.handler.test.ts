@@ -163,11 +163,28 @@ describe('handleContextLinkRequest — remote (SSH) reads', () => {
     }
     start(remoteDeps({ runRemoteCommand }))
     await setLinks({
-      'node-A': [{ id: 'node-R', title: 'Remote', agentId: 'opencode', sessionId: "x'; rm -rf ~ #" }]
+      'node-A': [{ id: 'node-R', title: 'Remote', agentId: 'opencode', sessionId: 'ses_6f2a9c1d' }]
     })
     await handleContextLinkRequest({ verb: 'transcript', nodeId: 'node-A', args: {} })
-    expect(sent[0]).toBe(`opencode export 'x'\\''; rm -rf ~ #'`)
+    expect(sent).toEqual([`opencode export 'ses_6f2a9c1d'`])
   })
+
+  // The id is refused before the remote branch too: quoting keeps shell syntax out, but only the
+  // id check keeps a leading `-` from being read by opencode as an option on the host.
+  it.each(["x'; rm -rf ~ #", '--help'])(
+    'sends nothing to a remote opencode export for an unsafe session id (%s)',
+    async (sessionId) => {
+      const sent: string[] = []
+      const runRemoteCommand = async (_nodeId: string, command: string): Promise<string> => {
+        sent.push(command)
+        return '{"messages":[]}'
+      }
+      start(remoteDeps({ runRemoteCommand }))
+      await setLinks({ 'node-A': [{ id: 'node-R', title: 'Remote', agentId: 'opencode', sessionId }] })
+      await handleContextLinkRequest({ verb: 'transcript', nodeId: 'node-A', args: {} })
+      expect(sent).toEqual([])
+    }
+  )
 
   it('falls back to local behavior when the shell injected no remote deps (Server Edition)', async () => {
     const p = join(dir, 'srv.jsonl')
