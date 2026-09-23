@@ -1177,9 +1177,9 @@ export class HeadlessNodeFactory {
         }
 
         const id = nextId('term')
-        // Match the desktop's `armAfter`: if every dependency is already done, launch now rather
-        // than persisting a wait that has no future edge left to wake it.
-        const pendingLaunch = command && mustWait
+        // Persist before attempting delivery, including launches whose gates are already open.
+        // A failed attach/send must leave the command available to the user's Run now action.
+        const pendingLaunch = command
           ? {
               after,
               command,
@@ -1208,7 +1208,7 @@ export class HeadlessNodeFactory {
           ...(pendingLaunch ? { pendingLaunch } : {})
         }
         created.push(node)
-        if (command && !pendingLaunch) commands.set(id, command)
+        if (command && !mustWait) commands.set(id, command)
         addEdge(ropes, source.node.id, id, 'ctrl')
 
         if (verb === 'open-agent') {
@@ -1244,20 +1244,34 @@ export class HeadlessNodeFactory {
           }
           if (verb === 'open-agent' && result.fresh) this.awaitingFirstWorking.add(node.id)
           const command = commands.get(node.id)
-          if (command && !(await this.deps.ptyManager.sendText(node.id, command))) failed.push(node.id)
+          if (command) {
+            if (await this.deps.ptyManager.sendText(node.id, command)) node.pendingLaunch = undefined
+            else failed.push(node.id)
+          }
         } catch {
           failed.push(node.id)
         }
       }
 
+      // Creation and delivery are separate transactions. A refused/throwing send retains the
+      // exact command for the user's Run now action; boot still cannot adopt persisted nodes.
+      await this.deps.workspaceStore.save(workspace)
+      this.publish(target, created)
       const ids = created.map((node) => node.id)
+      const queuedIds = created
+        .filter((node) => node.pendingLaunch && !failed.includes(node.id))
+        .map((node) => node.id)
+      const deliveredIds = created
+        .filter((node) => commands.has(node.id) && !node.pendingLaunch && !failed.includes(node.id))
+        .map((node) => node.id)
+      const launchResult = { queued: queuedIds.length > 0, queuedIds, deliveredIds, failed }
       if (failed.length) {
         return {
           ok: false,
           error:
             `launch-failed: node(s) ${failed.join(', ')} were persisted but their PTY or initial ` +
-            'command could not be started; do not repeat the open request',
-          result: { ids, id: ids[0], after, failed }
+            'command could not be delivered; launch retained for Run now in the node; do not repeat the open request',
+          result: { ids, id: ids[0], after, ...launchResult }
         }
       }
       return {
@@ -1265,8 +1279,9 @@ export class HeadlessNodeFactory {
         message:
           `opened ${count} ${verb === 'open-agent' ? `${agentId} session` : 'terminal'}(s): ` +
           ids.join(', ') +
-          (after.length ? `; waiting for ${after.join(', ')} before running` : ''),
-        result: { ids, id: ids[0], after }
+          (queuedIds.length ? `; queued: ${queuedIds.join(', ')}` : '') +
+          (deliveredIds.length ? '; launch delivered; agent startup is not confirmed' : ''),
+        result: { ids, id: ids[0], after, ...launchResult }
       }
     })
   }
@@ -1398,7 +1413,7 @@ export class HeadlessNodeFactory {
           const live = this.attached.has(node.id) ||
             await this.deps.ptyManager.sessionExists(node.id).catch(() => false)
           if (!live) continue
-          if (!(await this.deps.ptyManager.sendText(node.id, pending.command))) {
+          if (!(await this.deps.ptyManager.sendText(node.id, pending.command).catch(() => false))) {
             this.scheduleRetry(node.id)
             continue
           }

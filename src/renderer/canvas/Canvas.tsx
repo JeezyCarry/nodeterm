@@ -266,6 +266,7 @@ import {
   offScreenRefusal,
   sourceIsControlCapable,
   storedNodeListing,
+  controlListingText,
   answerBrowserResolve,
   type BrowserResolveProject
 } from '../lib/controlRouting'
@@ -462,7 +463,7 @@ import { buildBackgroundLinkMaps, buildContextLinkNote, buildLinkMap, buildNoteP
 import {
   launchesToFire,
   launchRetryDelay,
-  unmetDeps,
+  queueControlLaunch,
   LAUNCH_STALL_MS,
   type ArmedNode
 } from '../lib/pendingLaunch'
@@ -1890,7 +1891,8 @@ export function Canvas() {
       nodes as unknown as ArmedNode[],
       useAgentStatus.getState().byId,
       live,
-      setupDoneForGroup
+      setupDoneForGroup,
+      useLaunchDelivery.getState().byId
     ).filter((f) => !launchInFlight.current.has(f.id))
     // Anything we were reporting on that is no longer an armed node — delivered, run by hand with
     // ▶, or deleted — stops being reported. Timers go with it: a stall warning for a node that has
@@ -1939,7 +1941,7 @@ export function Canvas() {
       launchInFlight.current.add(f.id)
       const attempt = (launchAttempts.current.get(f.id) ?? 0) + 1
       launchAttempts.current.set(f.id, attempt)
-      void api.pty.sendText(f.id, f.command).then((ok) => {
+      void api.pty.sendText(f.id, f.command).catch(() => false).then((ok) => {
         if (ok) {
           setNodes((ns) =>
             ns.map((n) => (n.id === f.id ? { ...n, data: { ...n.data, pendingLaunch: undefined } } : n))
@@ -10075,14 +10077,16 @@ export function Canvas() {
           // The skill text names the workaround (open a reader agent inside the target project).
           if (tgActive) {
             // The human is looking at the target (the caller is a background orchestrator):
-            // live-canvas insertion, normal initialCommand — the session starts immediately.
-            setNodes((ns) => [...ns, ...tgMade])
+            // live insertion still precedes PTY readiness: keep the launch queued.
+            const tgQueuedIds = tgMade.filter((n) => !!n.data.initialCommand).map((n) => n.id)
+            setNodes((ns) => [...ns, ...tgMade.map((node) => queueControlLaunch(node))])
             markDirty()
             reply({
               ok: true,
-              message: `opened ${tgCount} ${tgWhat} session(s) in "${target.name}" (${tgIds.join(', ')})`,
-              // The target is on screen, so these started normally — nothing is queued.
-              result: { ids: tgIds, id: tgIds[0], projectId: target.id, queued: false, queuedIds: [] }
+              message: `opened ${tgCount} ${tgWhat} session(s) in "${target.name}" (${tgIds.join(', ')})` +
+                (tgQueuedIds.length ? ' — queued; awaiting launch delivery' : ''),
+              // Being on screen is not proof of launch delivery.
+              result: { ids: tgIds, id: tgIds[0], projectId: target.id, queued: tgQueuedIds.length > 0, queuedIds: tgQueuedIds }
             })
             return
           }
@@ -10229,11 +10233,11 @@ export function Canvas() {
             return
           }
           if (!needsLiveCanvas(verb)) {
-            const rows = storedNodeListing(projects.find((p) => p.id === route.projectId)?.nodes ?? [])
+            const rows = storedNodeListing(projects.find((p) => p.id === route.projectId)?.nodes ?? [], useAgentStatus.getState().byId, useLaunchDelivery.getState().byId)
             reply({
               ok: true,
               result: rows,
-              message: rows.map((n) => `${n.id} [${n.kind}] ${n.title}`).join('\n')
+              message: controlListingText(rows)
             })
             return
           }
@@ -10792,16 +10796,12 @@ export function Canvas() {
       // Hold a freshly-built node's launch instead of running it on open. The factories already
       // composed the exact command (agent CLI + permission-mode flag + prompt, or --cmd), so it
       // is MOVED rather than rebuilt — a second construction site is how the two drift apart.
-      // `extraLive` names nodes being created in this same tick — `verify` arms its judge on
-      // reviewers that are not on the canvas yet, and without this they would look DELETED,
-      // which counts as satisfied, and the judge would fire before a single review existed.
       // `intoGroup` adds the SECOND reason to hold a launch: the node is being opened into a
       // worktree frame whose project setup script is still preparing the checkout (and said
       // `waitForSetup`). Same mechanism, same escape hatch on the node — see `awaitSetupGroup`.
       const armAfter = (
         node: CanvasNode,
         after: string[],
-        extraLive?: Iterable<string>,
         intoGroup?: string | null
       ): CanvasNode => {
         const command = node.data.initialCommand as string | undefined
@@ -10815,27 +10815,9 @@ export function Canvas() {
             setupWaitGroupsRef.current.has(intoGroup)) &&
           !setupDoneForGroup(intoGroup)
         const awaitSetupGroup = holdsForSetup ? intoGroup ?? undefined : undefined
-        if (!after.length && !awaitSetupGroup) return node
-        // If the wait is ALREADY over, don't arm at all — leave the command as the node's
-        // `initialCommand` so its own mount path delivers it through `writeWhenShellReady`
-        // (which waits for the shell prompt and echo-verifies). Arming would instead hand
-        // delivery to the canvas effect, which would race the node's PTY into existence and
-        // could fire into a session that does not exist yet.
-        const live = new Set([...nodesRef.current.map((nd) => nd.id), ...(extraLive ?? [])])
-        const unmet = unmetDeps(
-          { id: node.id, data: { pendingLaunch: { after, command } } },
-          useAgentStatus.getState().byId,
-          live
-        )
-        if (!unmet.length && !awaitSetupGroup) return node
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            initialCommand: undefined,
-            pendingLaunch: { after, command, ...(awaitSetupGroup ? { awaitSetupGroup } : {}) }
-          }
-        }
+        // Always retain the command until the PTY-ready delivery loop acknowledges it.
+        // Node creation (even on screen) is not command delivery.
+        return queueControlLaunch(node, after, awaitSetupGroup)
       }
       // Open `count` nodes INTO a group frame: grow the frame FIRST (extent:'parent' would
       // clamp children landing outside it), then drop each node into the next grid slot
@@ -10882,23 +10864,11 @@ export function Canvas() {
             // separately would be seven round trips to learn the one thing that changes what it
             // does next.
             const st = useAgentStatus.getState().byId
-            const list = nodesRef.current.map((n) => ({
-              id: n.id,
-              kind: n.type,
-              title: n.data.title as string,
-              ...(st[n.id]?.lastTurnError ? { lastTurnErrored: true } : {})
-            }))
-            reply({
-              ok: true,
-              result: list,
-              message: list
-                .map(
-                  (n) =>
-                    `${n.id} [${n.kind}] ${n.title}` +
-                    (n.lastTurnErrored ? ' — LAST TURN ERRORED' : '')
-                )
-                .join('\n')
-            })
+            const list = storedNodeListing(nodesRef.current.map((n) => ({
+              id: n.id, kind: n.type, title: n.data.title as string,
+              pendingLaunch: n.data.pendingLaunch, agentId: n.data.agentId as string | undefined
+            })), st, useLaunchDelivery.getState().byId)
+            reply({ ok: true, result: list, message: controlListingText(list) })
             return
           }
           case 'open-terminal': {
@@ -10932,12 +10902,7 @@ export function Canvas() {
               })
               return
             }
-            // Which of the nodes we are about to open are actually ARMED — i.e. QUEUED rather
-            // than running. `armAfter` decides that per node (deps already satisfied leave the
-            // command as an ordinary `initialCommand`), so the answer is recorded as it builds
-            // them rather than inferred from the flags; `setNodes` has not landed by reply time,
-            // so the canvas cannot be asked either. Reported so a caller can tell "started" from
-            // "will start later" instead of assuming the first — see #569 item 1.
+            // Every command is held until delivery, including a visible node with no deps.
             const queuedIds: string[] = []
             const make = (i: number): CanvasNode => {
               const node = armAfter(
@@ -10949,7 +10914,6 @@ export function Canvas() {
                   sshFor(termCwd)
                 ),
                 after ?? [],
-                undefined,
                 intoGroupId
               )
               if (node.data.pendingLaunch) queuedIds.push(node.id)
@@ -10963,6 +10927,7 @@ export function Canvas() {
               ok: true,
               message:
                 `opened ${count} terminal(s): ${ids.join(', ')}` +
+                (queuedIds.length ? '\nqueued; awaiting launch delivery' : '') +
                 (after?.length ? `\nwaiting for ${after.join(', ')} before running` : ''),
               result: {
                 ids,
@@ -11094,7 +11059,6 @@ export function Canvas() {
                   promptFile ?? promptLaunch.promptFile
                 ),
                 after ?? [],
-                undefined,
                 intoGroupId
               )
               if (node.data.pendingLaunch) queuedIds.push(node.id)
@@ -11126,6 +11090,7 @@ export function Canvas() {
               ok: true,
               message:
                 `opened ${count} ${agentId} session(s): ${ids.join(', ')}` +
+                (queuedIds.length ? '\nqueued; awaiting launch delivery' : '') +
                 (bridged.length ? `\ncontext-linked to you: ${bridged.join(', ')}` : '') +
                 (after?.length
                   ? `\nwaiting for ${after.join(', ')} before running` +
@@ -11517,8 +11482,7 @@ export function Canvas() {
                     )
                     return { ...j, data: { ...j.data, title: 'Verify: verdict', titleAuto: false } }
                   })(),
-                  reviewerIds,
-                  reviewerIds // the reviewers exist only in this tick — see armAfter
+                  reviewerIds
                 )
               : null
             const panelIds = [...reviewerIds, ...(judge ? [judge.id] : [])]

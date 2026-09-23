@@ -2571,9 +2571,10 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   live **`lastTurnError`** is NOT (issue #521, below). (2) Only `hasHooks` agents may be
   waited on — a plain terminal never reports done, so `resolveAfter` **refuses** it rather than
   letting `launchesToFire` (which cannot tell "never will" from "not yet") hang the node forever.
-  (3) If the deps are **already satisfied at creation**, the node is NOT armed: the command stays
-  `initialCommand` so the node's own mount path delivers it through `writeWhenShellReady` —
-  arming would hand delivery to the canvas effect, which races the node's PTY into existence.
+  (3) **Control opens always retain the command in `pendingLaunch` until delivery lands**
+  (#827/#811). Even a visible node with no deps has not mounted its PTY when the open reply is
+  sent. `queueControlLaunch` moves the command out of `initialCommand`; the PTY-ready gate below
+  makes this safe. The open reply says `queued`, and project serialization retains the brief.
   (4) Delivery is **exactly-once via `launchInFlight`** (an id stays in the set forever once
   `sendText` resolved true — clearing `pendingLaunch` is a state update that can lag a re-render),
   and a **refused** `sendText` retries (`launchRetryDelay`'s backoff) instead of vanishing.
@@ -2627,6 +2628,11 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   `--project` cold-open branch — an orchestrator was previously told "opened" either way and
   routed work to a session that did not exist. Agent-facing copy is generated in
   `canvas-control-core.ts` and pinned in its test, per the sync rule above.
+  `queued:false` is NOT proof of a running CLI: Server's `deliveredIds` acknowledges terminal
+  delivery only. Its initial commands are persisted before attach/send and retained on failure;
+  only acknowledged sends clear them. Boot ownership remains fail-closed. Desktop `list` (live
+  and stored projects) names QUEUED / LAUNCH FAILED / DROPPED / AGENT STATUS UNCONFIRMED rather
+  than treating absence of a hook as success. Server v1 still explicitly refuses `list`.
   **(8) An armed node must not cold-start its own agent** (found while fixing (7)). The mount-time
   cold-restore relaunch (`fresh && agentId && canResume(...)`) carries a second, independent
   refusal beside the `paused` one (`shouldColdResume`): `!data.pendingLaunch`. A first open is

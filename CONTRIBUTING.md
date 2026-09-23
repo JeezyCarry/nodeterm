@@ -654,6 +654,9 @@ the link; recheck resolution before publishing. SSH uses plain readlink and cd -
 and refuses dangling/cyclic links and newline paths. A conflicting/stale lock skips installation
 with a diagnostic naming the lock and safe manual recovery; do not steal it from another process. These locks
 coordinate nodeterm, not external editors, so do not claim a filesystem-wide compare-and-swap.
+**Creating an agent node is not proof it started.** Control opens retain their launch command
+until delivery is acknowledged, and report `queued` while it is held. A successful terminal send
+proves delivery only; never describe it as a healthy/running agent without agent evidence.
 
 ## Testing
 

@@ -92,19 +92,3 @@ describe('armed-launch delivery (source pins)', () => {
     expect(body).toMatch(/delivery\.clear\(id\)[\s\S]{0,120}?clearStallTimer\(id\)/)
   })
 })
-
-describe('the open verbs report whether anything started (source pins)', () => {
-  it('open-terminal and open-agent both answer with `queued` + `queuedIds`', () => {
-    // Two separate reply sites, so both are pinned: an orchestrator that can only tell "opened"
-    // from "opened but not started" for ONE of the verbs has learned nothing.
-    expect(src.match(/queued: queuedIds\.length > 0/g)?.length).toBe(2)
-    expect(src.match(/if \(node\.data\.pendingLaunch\) queuedIds\.push\(node\.id\)/g)?.length).toBe(2)
-  })
-
-  it('the cross-project cold open reports queued:true, and the in-view branch reports false', () => {
-    // The whole `--project` branch is armed by `armForColdOpen`, and the active-target branch
-    // beside it is not — the two literals are what keep that difference in the reply.
-    expect(src).toContain('queued: true,')
-    expect(src).toContain('queued: false, queuedIds: []')
-  })
-})

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   launchesToFire,
+  queueControlLaunch,
+  controlLaunchState,
   launchRetryDelay,
   launchTooltip,
   unmetDeps,
@@ -237,4 +239,57 @@ describe('launchTooltip — the QUEUED badge never goes silent (#569 item 1)', (
     const t = launchTooltip({ kind: 'failed', attempts: 5, at: 1 }, 'Builder', cmd)
     expect(t).not.toContain('Waiting for Builder')
   })
+})
+
+
+describe('control opens retain an unacknowledged launch (#827/#811)', () => {
+  it.each(['claude', 'codex'])('queues %s even on a visible canvas with no dependencies', (agent) => {
+    const original = { id: 'new', data: { initialCommand: `${agent} brief`, pendingLaunch: undefined } }
+    const node = queueControlLaunch(original)
+    expect(node.data.initialCommand).toBeUndefined()
+    expect(node.data.pendingLaunch).toEqual({ after: [], command: `${agent} brief` })
+    expect(controlLaunchState(!!node.data.pendingLaunch, undefined)).toBe('queued')
+    // Simulate a project save/view: only durable data survives; the command must still fire.
+    const restored = JSON.parse(JSON.stringify(node))
+    expect(launchesToFire([restored], {}, new Set(['new']))).toEqual([{ id: 'new', command: `${agent} brief` }])
+    expect(original.data.initialCommand).toBe(`${agent} brief`)
+  })
+
+  it('preserves dependency and setup gates until delivery, including already-done dependencies', () => {
+    const node = queueControlLaunch({ id: 'new', data: { initialCommand: 'claude brief' } }, ['upstream'], 'setup')
+    const live = new Set(['new', 'upstream'])
+    expect(launchesToFire([node], {}, live, () => true)).toEqual([])
+    expect(launchesToFire([node], { upstream: { state: 'done' } }, live, () => false)).toEqual([])
+    expect(launchesToFire([node], { upstream: { state: 'done' } }, live, () => true)).toEqual([{ id: 'new', command: 'claude brief' }])
+  })
+
+  it('does not invent a launch for a plain shell or overwrite an existing hold', () => {
+    const node = armed('held', ['upstream'])
+    expect(queueControlLaunch(node)).toBe(node)
+    const shell = { data: {} }
+    expect(queueControlLaunch(shell)).toBe(shell)
+  })
+
+  it('does not infer running from delivery, idle, or absence of errors', () => {
+    expect(controlLaunchState(false, undefined)).toBeUndefined()
+    expect(controlLaunchState(false, undefined, { state: 'done' })).toBeUndefined()
+    expect(controlLaunchState(false, undefined, { state: 'working' })).toBe('working')
+    expect(controlLaunchState(false, undefined, { state: 'working', dropped: true })).toBe('dropped')
+    expect(controlLaunchState(true, { kind: 'failed', attempts: 5, at: 1 })).toBe('failed')
+    expect(controlLaunchState(true, { kind: 'stalled', since: 1 })).toBe('stalled')
+  })
+})
+
+
+it('a dependency-free launch tooltip names delivery rather than an empty dependency', () => {
+  expect(launchTooltip(undefined, '', 'codex')).toBe('Queued; waiting for launch delivery.\nRuns:\ncodex')
+})
+
+
+it('an exhausted delivery stays held on rerender; a stalled terminal may still become ready', () => {
+  const node = armed('new', [])
+  const live = new Set(['new'])
+  expect(launchesToFire([node], {}, live, undefined, { new: { kind: 'failed', attempts: 5, at: 1 } })).toEqual([])
+  expect(node.data.pendingLaunch?.command).toBe('echo new')
+  expect(launchesToFire([node], {}, live, undefined, { new: { kind: 'stalled', since: 1 } })).toEqual([{ id: 'new', command: 'echo new' }])
 })

@@ -199,7 +199,8 @@ describe('HeadlessNodeFactory', () => {
       })
     ])
     expect(pty.sends).toEqual([{ nodeId: id, text: 'printf hello' }])
-    expect(published.map((node) => node.id)).toEqual([id])
+    // The persisted hold is published first, then its acknowledged delivery.
+    expect(published.map((node) => node.id)).toEqual([id, id])
 
     expect(fs.existsSync(path.join(dataDir, 'workspace.json'))).toBe(true)
     const projectFile = path.join(projectDir, '.nodeterm', 'project.json')
@@ -1014,6 +1015,43 @@ describe('HeadlessNodeFactory', () => {
     })
   })
 
+  it.each(['claude', 'codex'])('reports delivered, not running, for %s', async (agent) => {
+    const reply = await factory.openAgent('term-source', { agent, prompt: 'work' }, true)
+    const id = (reply.result as { id: string }).id
+    expect(reply).toMatchObject({ ok: true, result: { queued: false, queuedIds: [], deliveredIds: [id], failed: [] } })
+    expect(reply.message).toContain('agent startup is not confirmed')
+    const workspace = await store.load({ sideline: false })
+    expect(workspace.projects[0].nodes.find((node) => node.id === id)?.pendingLaunch).toBeUndefined()
+  })
+
+  it.each(['refused', 'throws', 'no-pty'])('retains the exact initial command after %s', async (failure) => {
+    if (failure === 'no-pty') vi.spyOn(pty, 'createHeadless').mockRejectedValueOnce(new Error('unavailable'))
+    else if (failure === 'throws') vi.spyOn(pty, 'sendText').mockRejectedValueOnce(new Error('disconnected'))
+    else vi.spyOn(pty, 'sendText').mockResolvedValueOnce(false)
+    const reply = await factory.openAgent('term-source', { agent: 'claude', prompt: 'keep this brief' }, true)
+    const id = (reply.result as { id: string }).id
+    expect(reply).toMatchObject({ ok: false, result: { deliveredIds: [], failed: [id] } })
+    expect(reply.error).toContain('do not repeat the open request')
+    const workspace = await store.load({ sideline: false })
+    expect(workspace.projects[0].nodes.find((node) => node.id === id)?.pendingLaunch).toMatchObject({
+      after: [], command: "claude 'keep this brief'", executor: 'server'
+    })
+  })
+
+  it('reports a partial batch and recovers only the retained launch', async () => {
+    vi.spyOn(pty, 'sendText').mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    const reply = await factory.openAgent('term-source', { agent: 'codex', prompt: 'work', count: '2' }, true)
+    const [delivered, failed] = (reply.result as { ids: string[] }).ids
+    expect(reply).toMatchObject({ ok: false, result: { deliveredIds: [delivered], failed: [failed], queuedIds: [] } })
+    const workspace = await store.load({ sideline: false })
+    expect(workspace.projects[0].nodes.find((node) => node.id === failed)?.pendingLaunch?.command)
+      .toContain("codex 'work'")
+    pty.sends.length = 0
+    await factory.refreshArmed()
+    await factory.refreshArmed()
+    expect(pty.sends.map((send) => send.nodeId)).toEqual([failed])
+  })
+
   it('persists --after without launching, then flushes exactly once on the idle state', async () => {
     states['term-upstream'] = 'working'
     const reply = await factory.openAgent(
@@ -1024,6 +1062,8 @@ describe('HeadlessNodeFactory', () => {
     expect(reply.ok).toBe(true)
     const id = (reply.result as { id: string }).id
     expect(pty.sends).toEqual([])
+    expect(reply.result).toMatchObject({ queued: true, queuedIds: [id], deliveredIds: [] })
+    expect(reply.message).toContain('queued:')
 
     let workspace = await store.load({ sideline: false })
     expect(workspace.projects[0].nodes.find((node) => node.id === id)?.pendingLaunch).toEqual({

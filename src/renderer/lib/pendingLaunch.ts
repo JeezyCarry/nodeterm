@@ -23,6 +23,37 @@ export interface LaunchToFire {
   command: string
 }
 
+/** Control opens reply before the PTY exists. Keep their command durable until delivery lands,
+ * even with no dependencies (or dependencies that are already done). */
+export function queueControlLaunch<T extends { data: { initialCommand?: string; pendingLaunch?: PendingLaunch } }>(
+  node: T,
+  after: string[] = [],
+  awaitSetupGroup?: string
+): T & { data: { pendingLaunch?: PendingLaunch } } {
+  const command = node.data.initialCommand
+  if (!command) return node
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      initialCommand: undefined,
+      pendingLaunch: { after, command, ...(awaitSetupGroup ? { awaitSetupGroup } : {}) }
+    }
+  }
+}
+
+/** A list row states only observed facts; absence of a launch error is not proof of a live CLI. */
+export function controlLaunchState(
+  pending: boolean,
+  delivery: LaunchDelivery | undefined,
+  status?: { dropped?: boolean; state?: AgentState }
+): 'queued' | 'stalled' | 'failed' | 'dropped' | 'working' | undefined {
+  if (pending) return delivery?.kind ?? 'queued'
+  if (status?.dropped) return 'dropped'
+  if (status?.state === 'working') return 'working'
+  return undefined
+}
+
 /**
  * Is one dependency satisfied?
  *
@@ -87,12 +118,14 @@ export function launchesToFire(
   nodes: readonly ArmedNode[],
   status: StatusById,
   live: ReadonlySet<string>,
-  setupDone?: (groupId: string) => boolean
+  setupDone?: (groupId: string) => boolean,
+  deliveries?: Record<string, LaunchDelivery | undefined>
 ): LaunchToFire[] {
   const out: LaunchToFire[] = []
   for (const n of nodes) {
     const p = n.data.pendingLaunch
     if (!p || !p.command || p.executor === 'server') continue
+    if (deliveries?.[n.id]?.kind === 'failed') continue
     if (p.awaitSetupGroup && !(setupDone?.(p.awaitSetupGroup) ?? true)) continue
     if (p.after.every((d) => depSatisfied(d, status, live))) out.push({ id: n.id, command: p.command })
   }
@@ -193,5 +226,7 @@ export function launchTooltip(
       'fires as soon as it does.\n' +
       `Press \u25b6 to try it now.\n${runs}`
     )
-  return `Waiting for ${waitingOn} to finish, then runs:\n${command}`
+  return waitingOn
+    ? `Waiting for ${waitingOn} to finish, then runs:\n${command}`
+    : `Queued; waiting for launch delivery.\n${runs}`
 }
