@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'crypto'
 // Connection-time remote hook setup for SSH projects: opens the reverse unix-socket tunnel
 // (local loopback hook server → remote socket), writes the owner-only remote endpoint file,
 // and installs the managed hook into the remote agent configs (claude + gemini JSON settings,
@@ -165,7 +166,11 @@ export class RemoteHooks {
         return null
       }
       const remoteDir = `${home}/.nodeterm`
-      const sock = `${remoteDir}/hook-${projectId}.sock`
+      // A stable public hash of the installation identity namespaces discovery. If identity
+      // initialization failed, the run bearer still isolates this degraded run.
+      // Fresh bind names mean setup cannot unlink a local server or another desktop's tunnel.
+      const owner = createHash('sha256').update(hookServer.nodeAuthSecretOrNull() ?? hook.token).digest('hex').slice(0, 16)
+      let sock = ''
       // PER-PROJECT endpoint file. The sock is already per-project, but the endpoint file used to
       // be a single shared `hook-endpoint.env`: every connect — a real project AND every transient
       // folder-picker browse (projectId `ssh-browse-*`, same connect() path) — overwrote it with
@@ -173,7 +178,7 @@ export class RemoteHooks {
       // pointing at a dead socket, so every real project's hook POSTs (`curl --unix-socket`) failed
       // silently → no status badge / context meter / subagent cards / session-name sync on ANY SSH
       // node. A per-project file means each session sources ITS OWN project's live sock.
-      const endpoint = `${remoteDir}/hook-endpoint-${projectId}.env`
+      const endpoint = `${remoteDir}/hook-endpoint-${projectId}-${owner}.env`
       // 1. reverse unix-socket forward, VERIFIED end-to-end before anything advertises it.
       // A reused live-orphan master (app relaunch; ControlMaster children outlive the app) can
       // carry a stale forward from the previous run — same path, DEAD port. sshd even serves
@@ -188,20 +193,20 @@ export class RemoteHooks {
           // Our own spec may already be registered (a reconnect this run) — clear it first.
           await this.r.run(hookForwardCancelArgs(conn, controlPath, sock, hook.port)).catch(() => {})
         }
-        await this.r.run(
-          childArgs(conn, controlPath, `mkdir -p ${posixQuote(remoteDir)} && rm -f ${posixQuote(sock)}`)
-        )
+        sock = `${remoteDir}/hook-${randomUUID().replace(/-/g, '').slice(0, 20)}.sock`
+        await this.r.run(childArgs(conn, controlPath, `mkdir -p ${posixQuote(remoteDir)}`))
         const fwd = await this.r.run(hookForwardArgs(conn, controlPath, sock, hook.port))
         if (fwd.code !== 0) continue
         verified = await this.verifyTunnel(conn, controlPath, sock, hook.token)
       }
       if (!verified) {
+        await this.r.run(hookForwardCancelArgs(conn, controlPath, sock, hook.port)).catch(() => {})
         console.warn(
           `[remote-hooks] reverse hook tunnel failed verification for ${projectId} — remote agents run without status hooks`
         )
         return null
       }
-      this.specs.set(projectId, { sock, port: hook.port })
+      const previous = this.specs.get(projectId)
       // 2. Remote endpoint file — written only after the tunnel proved live, so sessions are
       // never pointed at a socket that answers nothing. The file carries the hook bearer. A
       // direct `cat > endpoint` both exposed partial bytes and preserved an old permissive mode;
@@ -215,7 +220,14 @@ export class RemoteHooks {
         childArgs(conn, controlPath, endpointWrite.command),
         remoteEndpointFileContents(sock, hook.token, hook.version, `${remoteDir}/node-tokens`)
       )
-      if (endpointResult.code !== 0) return null
+      if (endpointResult.code !== 0) {
+        await this.r.run(hookForwardCancelArgs(conn, controlPath, sock, hook.port)).catch(() => {})
+        return null
+      }
+      this.specs.set(projectId, { sock, port: hook.port })
+      if (previous) {
+        await this.r.run(hookForwardCancelArgs(conn, controlPath, previous.sock, previous.port)).catch(() => {})
+      }
       // 3-6. Per-agent hook installs — CONCURRENT, because they are independent of each other.
       //
       // Each one writes its own script under `<remoteDir>/agent-hooks/` and merges its own agent's

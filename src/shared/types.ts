@@ -2007,6 +2007,8 @@ export type SshProjectStatus = 'connecting' | 'connected' | 'disconnected' | 're
  * Absent = not probed / nothing new ⇒ the renderer keeps omitting the `auto` flag (fail-open).
  */
 export interface SshProjectStatusEvent {
+  /** Hook-only health update; it does not imply an SSH reconnect or terminal restart. */
+  hookTunnelVerified?: boolean
   projectId: string
   status: SshProjectStatus
   error?: string

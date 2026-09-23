@@ -55,7 +55,7 @@ describe('buildManagedScript', () => {
     expect((s.match(/\n *curl -sS/g) ?? []).length).toBe(4)
     // The two answered POSTs are wrapped in a `{ … ; rm … } &` group that self-deletes the payload
     // temp file, so `nt_hook_headers |` there is preceded by `{ ` — match either form.
-    expect((s.match(/\n *(\{ )?nt_hook_headers \|/g) ?? []).length).toBe(4)
+    expect((s.match(/\n *(\{ |nt_code=\$\()?nt_hook_headers \|/g) ?? []).length).toBe(4)
     expect((s.match(/--config -/g) ?? []).length).toBe(4)
   })
 
@@ -1042,7 +1042,7 @@ describe('managed script presents the per-node token', () => {
   // different secret): if it survived the fallback — because the dir was not cleared, or because
   // the read happened once at the top — the server would see a foreign kid and label the event
   // `legacy`, i.e. verified:false. Only a genuine re-read produces verified:true.
-  it.skipIf(!shAvailable)('re-reads the token from the endpoint it FELL BACK to', async () => {
+  it.skipIf(!shAvailable).each(['dead', 'wrong-owner'])('re-reads the token after a %s endpoint', async (primary) => {
     const home = newHome('home-failover')
     const primaryTokens = tokenDirWith('tokens-primary', {
       [NODE]: nodeAuthToken(FOREIGN_SECRET, NODE)
@@ -1051,7 +1051,7 @@ describe('managed script presents the per-node token', () => {
     const dead = join(home, '.nodeterm', 'hook-endpoint-dead.env')
     writeFileSync(
       dead,
-      `NODETERM_HOOK_SOCK=${join(home, '.nodeterm', 'nothing-listens-here.sock')}\nNODETERM_HOOK_TOKEN=dead\nNODETERM_HOOK_VERSION=2\nNODETERM_NODE_TOKEN_DIR=${primaryTokens}\n`,
+      `NODETERM_HOOK_SOCK=${primary === 'dead' ? join(home, '.nodeterm', 'nothing-listens-here.sock') : hookServer.getSockPath()}\nNODETERM_HOOK_TOKEN=dead\nNODETERM_HOOK_VERSION=2\nNODETERM_NODE_TOKEN_DIR=${primaryTokens}\n`,
       'utf8'
     )
     const live = join(home, '.nodeterm', 'hook-endpoint-live.env')

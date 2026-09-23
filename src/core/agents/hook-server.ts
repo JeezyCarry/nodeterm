@@ -1,9 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
 import { randomUUID, timingSafeEqual } from 'crypto'
-import { writeFileSync, mkdirSync, chmodSync, unlinkSync } from 'fs'
+import { readFileSync, mkdirSync, chmodSync, unlinkSync } from 'fs'
+import { assertHookEndpointAvailable, clearStaleHookSocket, HookSocketOwnedError } from './hook-socket-owner'
 import { homedir } from 'os'
 import path from 'path'
 import { platform } from '../platform'
+import { writeFileAtomic } from '../fs-atomic'
 import { hookSockPath } from './hook-sock-path'
 import { canControlCanvas, type AgentId } from '../../shared/agents/config'
 import { normalizeFor, type NormalizedAgentEvent } from '../../shared/agents/normalize'
@@ -266,8 +268,9 @@ export function verifiedRefusalFor(verb: string): string {
   return MESSAGING_CONTROL_REFUSAL
 }
 
-class HookServer {
+export class HookServer {
   private server: Server | null = null
+  private starting: Promise<void> | null = null
   /**
    * The unix-domain twin of the loopback TCP listener (issue #367). Same HTTP handler, same
    * bearer + per-node token auth — the whole identity machinery is transport-agnostic (nothing
@@ -350,6 +353,7 @@ class HookServer {
     | null = null
   private codexIdentityListener: ((e: CodexIdentityEvent) => void) | null = null
   private endpointPath = ''
+  private publishedEndpoint = ''
   private nodeAuthSecret: Buffer | null = null
   /**
    * `settings.hookIdentityStrict`, read LIVE (a getter, not a snapshot) so flipping it in Settings
@@ -547,7 +551,18 @@ class HookServer {
   }
 
   async start(): Promise<void> {
+    if (this.starting) return this.starting
     if (this.server) return
+    this.starting = this.startOwnedEndpoint()
+    try {
+      await this.starting
+    } finally {
+      this.starting = null
+    }
+  }
+
+  private async startOwnedEndpoint(): Promise<void> {
+    await assertHookEndpointAvailable(this.endpointFilePath())
     this.token = randomUUID()
     // ONE handler, shared verbatim by the TCP and the unix-socket listeners: every gate (bearer,
     // per-node verdict, verified-only verbs) runs identically on both transports.
@@ -560,8 +575,16 @@ class HookServer {
           return
         }
         if (!this.tokenMatches(req.headers['x-nodeterm-hook-token'])) {
-          res.writeHead(403)
-          res.end()
+          if (!req.headers['x-nodeterm-hook-token']) {
+            res.writeHead(403)
+            res.end()
+            return
+          }
+          res.writeHead(421, { 'Content-Type': 'text/plain; charset=utf-8' })
+          res.end(
+            'hook-endpoint-wrong-owner: This endpoint does not own the presented bearer. ' +
+            'Retry after endpoint discovery; this is not an unsupported capability.\n'
+          )
           return
         }
         req.setTimeout(SLOWLORIS_MS, () => req.destroy())
@@ -798,8 +821,8 @@ class HookServer {
         // before the bind, so leaving it set makes every later start() a silent early-return with
         // port 0 — while a previous run's endpoint file keeps advertising a dead port to every
         // tmux session on the machine. Reset to the clean never-started state so start() can be
-        // retried without restarting the app, and drop the stale advertisement (the file reflects
-        // listener liveness; a client that still holds the path fails over — see the sh shims).
+        // retried without restarting the app. Only an advertisement this run actually published
+        // may be removed; a file found on disk can belong to a different live instance.
         this.server?.close()
         this.server = null
         this.port = 0
@@ -818,13 +841,21 @@ class HookServer {
       this.server!.listen(0, '127.0.0.1', onOk)
     })
     // Second leg, then ONE endpoint write that advertises whatever actually came up. A failed
-    // socket bind must not cost the TCP endpoint file (or the boot).
-    await this.startUnixListener(handler)
-    this.writeEndpointFile()
+    // unavailable transport can fall back to TCP, but a different owner must refuse the boot.
+    try {
+      await this.startUnixListener(handler)
+    } catch (e) {
+      this.server?.close()
+      this.server = null
+      this.port = 0
+      this.token = ''
+      throw e // Never publish over the listener whose ownership check refused this boot.
+    }
+    await this.writeEndpointFile()
   }
 
-  /** Bind the unix-socket twin (see `unixServer`). Never throws — a socket that cannot bind is
-   *  simply not advertised, and everything keeps running on loopback TCP. */
+  /** Bind the Unix twin. Transport unavailability can degrade to TCP; ownership conflicts throw
+   *  so a second instance cannot replace the first instance's endpoint advertisement. */
   private async startUnixListener(
     handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>
   ): Promise<void> {
@@ -839,15 +870,8 @@ class HookServer {
       // mode is what actually keeps other local users off the socket (the file chmod below only
       // lands after listen, and the socket is world-connectable for that instant otherwise).
       chmodSync(dir, 0o700)
-      // A stale socket file BLOCKS bind with EADDRINUSE even when nothing is listening — the
-      // StreamLocalBindUnlink lesson from the SSH reverse tunnels. Unlink-then-bind is safe here:
-      // the path is ours alone (0700 dir, digest-keyed fallback), so anything at it is our own
-      // leftover from a crash.
-      try {
-        unlinkSync(p)
-      } catch {
-        /* nothing stale to clear */
-      }
+      // A filesystem path is not proof of ownership: another live instance may hold it.
+      await clearStaleHookSocket(p)
       const srv = createServer(handler)
       await new Promise<void>((resolve, reject) => {
         const onErr = (e: Error): void => {
@@ -867,6 +891,7 @@ class HookServer {
       this.unixServer = srv
       this.sockPath = p
     } catch (e) {
+      if (e instanceof HookSocketOwnedError || (e as NodeJS.ErrnoException).code === 'EADDRINUSE') throw e
       console.warn('[agent-hooks] unix hook socket unavailable, staying TCP-only', e)
       this.unixServer = null
       this.sockPath = ''
@@ -1098,12 +1123,11 @@ class HookServer {
 
   // The managed script sources this file at invocation to get the LIVE port/token.
   // tmux sessions outlive the app, so env-baked coords go stale after a restart.
-  private writeEndpointFile(): void {
+  private async writeEndpointFile(): Promise<void> {
     try {
       const p = this.endpointFilePath()
       mkdirSync(path.dirname(p), { recursive: true })
-      writeFileSync(
-        p,
+      const contents =
         // Every value is `posixQuote`d: the managed script SOURCES this file (`. "$file"`) under
         // /bin/sh, so an unquoted space or shell metachar in a path or token would break the source
         // (issue #351: macOS userDataDir lives under "Application Support" — the space made sh try
@@ -1122,11 +1146,15 @@ class HookServer {
           // `[ -n "$NODETERM_HOOK_SOCK" ]` — so advertising it moves local hook traffic off the
           // TCP port; the PORT line stays above for sessions holding a pre-socket script. Quoted
           // like every other value (#351/#358): macOS data dirs carry a space.
-          (this.sockPath ? `NODETERM_HOOK_SOCK=${posixQuote(this.sockPath)}\n` : ''),
+          (this.sockPath ? `NODETERM_HOOK_SOCK=${posixQuote(this.sockPath)}\n` : '')
+      await writeFileAtomic(
+        p,
+        contents,
         // 0o600: this file holds the bearer token — owner read/write only so another local user
         // can't read it and forge hook events.
-        { encoding: 'utf8', mode: 0o600 }
+        { mode: 0o600 }
       )
+      this.publishedEndpoint = contents
     } catch (e) {
       console.warn('[agent-hooks] could not write endpoint file', e)
     }
@@ -1141,7 +1169,10 @@ class HookServer {
    */
   private removeEndpointFile(): void {
     try {
+      // A failed/unstarted instance must not erase another run's advertisement.
+      if (!this.publishedEndpoint || readFileSync(this.endpointFilePath(), 'utf8') !== this.publishedEndpoint) return
       unlinkSync(this.endpointFilePath())
+      this.publishedEndpoint = ''
     } catch {
       /* nothing to remove — or no booted platform to name the path (tests); both are fine */
     }
@@ -1197,7 +1228,7 @@ class HookServer {
     this.unixServer?.close()
     this.unixServer = null
     // Unlink so the NEXT bind is clean even if close() lost the race with process exit; the
-    // startup unlink above is still the backstop for a crash that skipped this entirely.
+    // startup probe can reclaim a confirmed stale socket after a crash.
     if (this.sockPath) {
       try {
         unlinkSync(this.sockPath)

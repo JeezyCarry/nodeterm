@@ -364,6 +364,13 @@ on the host too: we shipped the hook bearer that way and any other account on th
 it and open a terminal running an arbitrary command. Pass secrets by 0600 file or by **stdin**
 (`curl --config -`), and never add an argv fallback. See `docs/node-identity.md`.
 
+**A hook socket path is not ownership proof.** Never unlink a live listener to bind a hook
+socket, or overwrite an advertisement whose socket/TCP listener still answers. Local stale cleanup requires `ECONNREFUSED` and an unchanged socket inode; regular files,
+symlinks and uncertain probes are preserved. SSH setup allocates a fresh socket and publishes an
+installation-qualified endpoint only after bearer verification. A wrong bearer answers 421 before
+any handler runs; only that explicit wrong-owner response (or transport failure) permits endpoint
+failover. A node-identity 403 stays final. Test with disposable sockets, never a running user's tunnel.
+
 **Both raw listeners change together** — `src/main/index.ts` and `src/server/agent-status.ts`. A new
 field on a hook event that reaches only the desktop leaves the Server Edition quietly without the
 feature, and the boundary tests can only tell you an import is wrong, never that a field is missing.
