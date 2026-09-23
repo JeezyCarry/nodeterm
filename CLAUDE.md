@@ -3902,6 +3902,12 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   moves (`.canvas-moving`); chrome keeps both. MEASURED on the live dev build (CDP computed style):
   Chromium keeps `url("#nt-refract") blur(…) saturate(…)` on the tab bar, dock, sessions sidebar,
   minimap, zoom controls and terminal nodes.
+- **Needs-you on glass is an INNER light** (the user's pick, "variant B"): the outer red `::after`
+  halo is hidden and a `::before` on the React Flow wrapper paints an inset rim light in
+  `--state-attention` (orange) that breathes 0.35 → 1 over 2.4 s — `pointer-events: none`, above the
+  glass body (z 5), and fading out ~36px inside the rim so terminal text stays readable. It reads
+  `--nt-anim-state` (the covered-canvas pause), holds static-lit when the window is idle and static
+  at 0.7 under Reduce Motion. The default look keeps its outer glow.
 - **Accessibility outranks the slider** (HIG liquid-glass.md, like iOS). `lib/useGlassA11y.ts`
   reads `prefers-reduced-transparency` and `prefers-contrast: more` (one subscription, Electron and
   browser alike) and `glassSurfaceAlpha` applies them to every tint alpha: **Reduce Transparency**

@@ -202,3 +202,27 @@ describe('Liquid Glass accessibility fallbacks', () => {
     expect(all).toMatch(/\.minimap \.mm-unread \{\s*animation: none/)
   })
 })
+
+describe('needs-you under Liquid Glass is an inner light', () => {
+  const rule = (sel: string): string => {
+    const i = CSS.indexOf(`${sel} {`)
+    expect(i, sel).toBeGreaterThanOrEqual(0)
+    return CSS.slice(i, CSS.indexOf('}', i))
+  }
+  const before = ":root[data-nt-glass='on'] .react-flow__node:has(.term-node.attention)::before"
+
+  it('an inset rim light in --state-attention that never takes the pointer', () => {
+    const r = rule(before)
+    expect(r).toContain('pointer-events: none')
+    expect(r).toMatch(/inset 0 0 0 1px color-mix\(in srgb, var\(--state-attention\)/)
+    expect(r).toContain('animation-play-state: var(--nt-anim-state)')
+    expect(rule(":root[data-nt-glass='on'] .react-flow__node:has(.term-node.attention)::after")).toContain('display: none')
+  })
+
+  it('holds still when the window is idle and under Reduce Motion', () => {
+    expect(rule(`:root[data-nt-glass='on'][data-nt-window='idle'] .react-flow__node:has(.term-node.attention)::before`)).toContain('animation: none')
+    const reduced = CSS.slice(CSS.lastIndexOf('@media (prefers-reduced-motion: reduce) {'))
+    expect(reduced).toContain(before)
+    expect(reduced).toContain('animation: none')
+  })
+})

@@ -13786,3 +13786,56 @@ body.focus-mode .dock:hover {
     animation: none;
   }
 }
+
+/* ---- Needs-you under Liquid Glass: an inner light, not an outer pulse -------------------------
+   The picked variant ("inner light"): the node's own rim glows orange from inside and breathes,
+   instead of a red halo pulsing outside it. On glass an outer halo is lost against the wallpaper;
+   light held inside the pane reads as the pane itself asking. It is an inset edge light only —
+   `pointer-events: none`, and the wash fades out within ~36px of the rim, so terminal text stays
+   readable under it. Same --state-attention as the minimap stroke and the header badge. The default
+   look keeps its outer glow. Gates: idle = static-lit, covered canvas = paused (it reads
+   --nt-anim-state), Reduce Motion = static. */
+:root[data-nt-glass='on'] .term-node.attention {
+  border-color: color-mix(in srgb, var(--state-attention) 55%, transparent);
+  border-top-color: color-mix(in srgb, var(--state-attention) 55%, transparent) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, calc(0.35 * var(--shadow-k)));
+}
+:root[data-nt-glass='on'] .react-flow__node:has(.term-node.attention)::after {
+  display: none;
+}
+:root[data-nt-glass='on'] .react-flow__node:has(.term-node.attention)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--state-attention) 60%, transparent),
+    inset 0 0 36px 2px color-mix(in srgb, var(--state-attention) 38%, transparent);
+  opacity: 0.35;
+  animation: nt-attention-breathe 2.4s ease-in-out infinite;
+  animation-play-state: var(--nt-anim-state);
+  will-change: opacity;
+}
+@keyframes nt-attention-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+:root[data-nt-glass='on'][data-nt-window='idle'] .react-flow__node:has(.term-node.attention)::before {
+  animation: none;
+  opacity: 0.8;
+  will-change: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-nt-glass='on'] .react-flow__node:has(.term-node.attention)::before {
+    animation: none;
+    opacity: 0.7;
+    will-change: auto;
+  }
+}
