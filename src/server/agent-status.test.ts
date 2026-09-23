@@ -22,7 +22,7 @@ function fakeHooks() {
         agentId: string,
         nodeId: string,
         payload: Record<string, unknown>,
-        meta: { verified: boolean }
+        meta: { verified: boolean; contextWindow?: number | null }
       ) => void)
     | undefined
   return {
@@ -41,8 +41,9 @@ function fakeHooks() {
       agentId: string,
       nodeId: string,
       payload: Record<string, unknown>,
-      verified = false
-    ) => raw?.(agentId, nodeId, payload, { verified })
+      verified = false,
+      contextWindow?: number | null
+    ) => raw?.(agentId, nodeId, payload, { verified, contextWindow })
   }
 }
 
@@ -446,4 +447,19 @@ describe('wireAgentStatus — the grok raw-listener branch', () => {
     })
     expect(grokSessionDirFor('gs-5')).toBeUndefined()
   })
+})
+
+
+it('passes observed session capacity through the Server Edition transcript jail', () => {
+  const fh = fakeHooks()
+  const ctx = recTail()
+  wireAgentStatus(platform, { hooks: fh.hooks as never, contextTail: ctx.tail as never })
+  const transcriptPath = path.join(os.homedir(), '.claude', 'projects', 'capacity.jsonl')
+  fh.fireRaw('claude', 'capacity-node', { session_id: 'capacity', transcript_path: transcriptPath }, true, 32000)
+  expect(ctx.calls).toContainEqual({ m: 'track', args: ['capacity', transcriptPath, 32000] })
+  fh.fireRaw('claude', 'capacity-node', { session_id: 'capacity', transcript_path: transcriptPath }, true, null)
+  expect(ctx.calls).toContainEqual({ m: 'track', args: ['capacity', transcriptPath, null] })
+  const before = ctx.calls.length
+  fh.fireRaw('claude', 'capacity-node', { session_id: 'capacity', transcript_path: '/outside-jail/secret' }, true, 64000)
+  expect(ctx.calls).toHaveLength(before)
 })

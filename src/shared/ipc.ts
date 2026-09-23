@@ -64,6 +64,7 @@ export const IPC = {
   claudeAccountsRemove: 'claude-accounts:remove',
   claudeAccountsLink: 'claude-accounts:link',
   claudeAccountsSetSkillSharing: 'claude-accounts:set-skill-sharing',
+  claudeAccountsCopySession: 'claude-accounts:copy-session',
   // Machine-scoped managed Codex accounts (S6). Add/device-login/removal, plus the three-phase,
   // owner-authorized account switch (resume the SAME conversation id, never fork) and the
   // source-side leg of moving an idle conversation to an SSH account. See main/codex-accounts.ts.

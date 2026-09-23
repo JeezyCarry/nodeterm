@@ -142,7 +142,8 @@
     "nsis": {
       "artifactName": "${productName}-Setup-${version}.${ext}",
       "oneClick": true,
-      "perMachine": false
+      "perMachine": false,
+      "include": "build/installer.nsh"
     },
     "publish": {
       "provider": "generic",

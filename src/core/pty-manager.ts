@@ -97,6 +97,7 @@ import {
   resolveCodexSessionScope
 } from './codex-accounts-core'
 import { NODE_ID_MAX, isSafeNodeId } from './remote-safety'
+import { remoteAccountScopeEnvArgs } from './remote-account-env'
 import { presenceHub } from './presence/hub'
 import {
   codexLauncherDir,
@@ -1781,10 +1782,7 @@ export class PtyManager {
     )
   }
 
-  /** Feeds the renderer's "tmux not found" banner. Without tmux the app silently degrades to a
-   *  plain shell (no cross-restart continuity, no mobile attach) — users never discover that on
-   *  their own, so the banner surfaces it with a one-click install command when a known package
-   *  manager is present (run in a terminal node, gh-sign-in style). */
+  /** Discover the backend for NEW local terminals without starting a session host. */
   tmuxStatus(): TmuxStatus {
     // Re-probe when unavailable: the banner polls this while its install command runs, and a
     // successful probe here is what makes new sessions tmux-backed without a restart.
@@ -1792,12 +1790,19 @@ export class PtyManager {
     const available = !!this.tmuxPath
     const hint = available
       ? null
-      : tmuxInstall(process.platform, (cmd) => findCommand(cmd, process.env, fs.existsSync))
+      : tmuxInstall(this.runtimePlatform, (cmd) => findCommand(cmd, process.env, fs.existsSync))
     return {
       available,
       installCommand: hint?.command ?? null,
       installLabel: hint?.label ?? null,
-      platform: process.platform
+      platform: this.runtimePlatform,
+      persistence: {
+        enabled: this.getSettings().tmuxEnabled,
+        backend:
+          this.runtimePlatform !== 'win32' && available
+            ? 'tmux'
+            : sessionHostSupported() ? 'session-host' : null
+      }
     }
   }
 
@@ -3062,10 +3067,14 @@ export class PtyManager {
       // ABSOLUTE — tmux copies `-e` values verbatim (no `$HOME`/`~` expansion) — so we build it from
       // the connection's resolved remote $HOME. Fail-open: an unknown remoteHome (home resolution
       // failed on connect) skips the account env and the session runs under the remote `~/.claude`.
-      const remoteAccountEnv =
-        options.accountId && options.sshRemote.remoteHome
-          ? accountTmuxEnvArgs(remoteAccountConfigDirAbs(options.sshRemote.remoteHome, options.accountId))
-          : []
+      // Routed by PROVIDER (`remoteAccountScopeEnvArgs`): a managed Codex account gets its
+      // CODEX_HOME + NODETERM_CODEX_ACCOUNT_ID, a Claude one its CLAUDE_CONFIG_DIR.
+      const remoteAccountEnv = remoteAccountScopeEnvArgs({
+        agentId: options.agentId,
+        accountId: options.accountId,
+        remoteHome: options.sshRemote.remoteHome,
+        isCodexAccount: (id) => this.isCodexAccount(id)
+      })
       // Custom-agent env for a REMOTE node: expand ${env:VAR} against the LOCAL process env (the
       // key stays local; only the resolved VALUE travels over SSH). PATH is skipped — the local
       // machine can't see the remote box's PATH, so a locally-resolved PATH would break CLI
