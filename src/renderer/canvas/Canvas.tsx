@@ -1034,8 +1034,10 @@ export function Canvas() {
   // For the local session it IS window.nodeTerminal, so every call resolves identically.
   const session = useSession()
   const { api } = session
-  // Desktop wallpaper (Settings → Appearance): painted on the React Flow root, which is
-  // viewport-sized and never transformed, so it stays fixed while the canvas pans and zooms.
+  // Desktop wallpaper (Settings → Appearance): painted on `.canvas-root`, which spans the whole
+  // window (tab bar row included, so Liquid Glass's tab bar is glass over the picture) and is never
+  // transformed, so it stays fixed while the canvas pans and zooms. React Flow's own root goes
+  // transparent over it (`.react-flow.has-wallpaper`).
   const wallpaperBg = useWallpaperBackground()
   // Memoised: Canvas re-renders on every drag frame, and a fresh style object would make React
   // re-diff (and a multi-MB data: URL re-compare) the root's style each time.
@@ -1043,6 +1045,9 @@ export function Canvas() {
     () =>
       wallpaperBg
         ? {
+            // A separate small longhand: folding the colour into the image's value is what hit
+            // Chromium's ~2 MB var() limit (see state/wallpaper.ts).
+            backgroundColor: 'var(--canvas-bg)',
             backgroundImage: wallpaperBg,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
@@ -14507,7 +14512,7 @@ export function Canvas() {
   const paletteChip = chipFor('app.commandPalette')
 
   return (
-    <div className="canvas-root">
+    <div className="canvas-root" style={wallpaperStyle}>
       <TabBar
         onSwitch={switchProject}
         onReconnect={reconnectRelay}
@@ -14840,7 +14845,6 @@ export function Canvas() {
         <SessionProvider session={sessionForProject(activeProjectId || '')} key={sessionForProject(activeProjectId || '').id}>
         <ReactFlow
           className={wallpaperBg ? 'has-wallpaper' : undefined}
-          style={wallpaperStyle}
           nodes={allNodes}
           edges={displayEdges}
           nodeTypes={nodeTypes}

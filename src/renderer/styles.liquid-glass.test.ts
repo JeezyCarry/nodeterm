@@ -55,4 +55,11 @@ describe('Liquid Glass stylesheet', () => {
       expect(blurred.some((r) => r.selector.includes(nested))).toBe(false)
     }
   })
+
+  it('draws minimap nodes in neutral ink, not node colour, and keeps status strokes', () => {
+    const fill = gated('.react-flow__minimap-node').find((r) => r.selector.endsWith('.react-flow__minimap-node'))
+    expect(fill?.body).toMatch(/fill:\s*rgba\(var\(--tint-rgb\),[^)]*\)\s*!important/)
+    const stroke = gated('.react-flow__minimap-node:not(.mm-working)')[0]
+    expect(stroke?.selector).toContain(':not(.mm-attention):not(.mm-unread)')
+  })
 })

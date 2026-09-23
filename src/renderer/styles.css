@@ -3221,6 +3221,9 @@ body,
 }
 /* A desktop wallpaper (Settings → Appearance) is set inline on this element by Canvas. The dot grid
    stays — it is what snapping aligns to — but faded, so the picture reads as the background. */
+.react-flow.has-wallpaper {
+  background: transparent;
+}
 .react-flow.has-wallpaper .react-flow__background {
   opacity: 0.3;
 }
@@ -13570,4 +13573,25 @@ body.focus-mode .dock:hover {
 :root[data-nt-glass='on'] .term-node.unread {
   border-color: var(--accent);
   border-top-color: var(--accent) !important;
+}
+
+/* Minimap: node rectangles are painted in the node's own colour (an inline style, hence
+   !important), which is exactly the accent Liquid Glass removes. They become translucent ink —
+   the theme's own `--tint-rgb`, so brown on the light theme and white on the dark one — with the
+   selected node brighter. Status strokes (working/attention/unread, the `mm-*` classes) keep their
+   colours: they are state, not decoration. The mask dims outside the viewport with the same
+   chrome fill the map sits on. */
+:root[data-nt-glass='on'] {
+  --minimap-mask: var(--glass-chrome-bg);
+}
+:root[data-nt-glass='on'] .minimap .react-flow__minimap-node {
+  fill: rgba(var(--tint-rgb), 0.3) !important;
+}
+:root[data-nt-glass='on'] .minimap .react-flow__minimap-node.selected {
+  fill: rgba(var(--tint-rgb), 0.6) !important;
+}
+:root[data-nt-glass='on']
+  .minimap
+  .react-flow__minimap-node:not(.mm-working):not(.mm-attention):not(.mm-unread) {
+  stroke: rgba(var(--tint-rgb), 0.45) !important;
 }
