@@ -76,6 +76,7 @@ import type { TranscriptPresence } from '../shared/types'
 import { boardLogRemotePath } from '../core/board-log'
 import { PtyManager } from '../core/pty-manager'
 import { WorkspaceStore } from '../core/workspace-store'
+import type { CardLabelEdit } from '../core/project-kanban-write'
 import { WorkspaceWatcher } from '../core/workspace-watcher'
 import { SettingsStore } from '../core/settings-store'
 import { registerAgentEnvIpc } from '../core/agent-env-ipc'
@@ -1868,7 +1869,7 @@ app.whenReady().then(async () => {
   // hook POST dies against a dead port with zero symptoms beyond "statuses stay idle". The
   // listeners (setListener/setRawListener/setControlHandler) attach later, which the server
   // tolerates — early hook POSTs are simply dropped, never mis-routed.
-  await hookServer.start()
+  const hookStartupWarning = await hookServer.startForApp()
   // ---- Node identity (src/core/agents/node-auth-secret.ts) ------------------------------------
   // One secret does two jobs: it arms the hook server's per-node capability (closing the "shared
   // bearer can name any sibling node" hole) and it signs the codex thread → node records the hook
@@ -1945,6 +1946,10 @@ app.whenReady().then(async () => {
     return undefined
   })
   const win = createWindow()
+  if (hookStartupWarning) {
+    console.error('[agent-hooks]', hookStartupWarning)
+    void dialog.showMessageBox(win, { type: 'warning', title: 'Agent hooks unavailable', message: hookStartupWarning })
+  }
   // NT_MULTI instances are throwaway dev sandboxes. The dock badge is the one marker that is
   // always visible on macOS (the window title is hidden by titleBarStyle: 'hiddenInset', and the
   // dev dock icon/name are Electron's own), so a test instance can never be mistaken for the
@@ -3900,7 +3905,11 @@ app.whenReady().then(async () => {
     kanban: {
       ensureBoard: (projectId: string) => workspaceStore.ensureRemoteBoard(projectId),
       setCardColumn: (projectId: string, nodeId: string, columnId: string | null) =>
-        workspaceStore.setRemoteCardColumn(projectId, nodeId, columnId)
+        workspaceStore.setRemoteCardColumn(projectId, nodeId, columnId),
+      // The phone's long-press label sheet. Same store read-modify-write + renderer announce as the
+      // card move, so a label added on the phone lands on the canvas node and the kanban card live.
+      editCardLabels: (projectId: string, nodeId: string, edit: CardLabelEdit) =>
+        workspaceStore.editRemoteCardLabels(projectId, nodeId, edit)
     },
     // "End session" from the phone (`pty.destroy`): the SAME two steps the desktop × performs —
     // kill the tmux session on every socket it could live on (the sweep may have seen it on either

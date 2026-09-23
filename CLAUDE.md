@@ -1158,6 +1158,13 @@ session.
   class the same way and no per-element opt-out can reach it); hoisting it to the whole NODE would
   additionally take wheel-zoom-to-cursor away over every node, which is exactly where a
   `wheelZoom` user aims.
+- **FitAddon reads the host's computed size, not its content rect.** The absolute, inset
+  canvas host uses `box-sizing: content-box` so its padding is excluded from that size
+  (#671). Its outer hit/plate rect still fills the body. The board modal instead keeps
+  padding on a separate wrapper. Do not put border-box padding back on a fit host:
+  it over-reports rows and clips the last line. `scripts/terminal-fit-layout.test.ts`
+  measures real xterm layout through resize sweeps at DPR 1, 1.25, 1.5 and 2 in Chrome
+  (`CHROME_BIN` overrides the executable); this does not verify GPU row-seam rendering.
 - A `ResizeObserver` drives `FitAddon.fit()` + `transport.resize`. Canvas zoom is a CSS
   transform, so it does *not* change `clientWidth` — cols/rows stay stable across zoom.
   `scale-fix.ts` patches xterm's mouse coords so text selection stays aligned when zoomed.
@@ -2057,14 +2064,39 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     "control endpoint unreachable" — in the field, a reviewer launch silently dropped. Now shared,
     one definition. Two server-side halves in `hook-server.ts`: a FAILED `listen()` un-wedges the
     singleton (it used to leave `this.server` set, making every retry a silent no-op at port 0)
-    and both `stop()` and the failed-start path delete `hook-endpoint.env` — publication reflects
-    listener liveness; a crash skips that, which is exactly what the client walk exists for. An
-    HTTP answer of any code is authoritative: only a dead transport (curl 000/'') fails over, so a
-    403/400 is never re-sent to another instance. The walk is skipped under
-    `CODEX_SANDBOX_NETWORK_DISABLED` (#367 — the sandbox denies every connect, the hint is the
-    right diagnosis) and the final error now distinguishes "no endpoint anywhere" from "an
+    and `stop()` deletes only the endpoint contents this run published — a failed start cannot
+    erase another owner's advertisement. A crash skips cleanup, which is why clients still walk
+    the candidates.
+    HTTP 421 means the bearer belongs to a different endpoint and is rejected BEFORE dispatch;
+    it joins dead transport (curl 000/'') in the bounded discovery walk. A node-identity 403/400
+    remains final and is never re-sent to another instance. The walk is skipped under
+    `CODEX_SANDBOX_NETWORK_DISABLED` for transport failures (#367); an explicit 421 proves
+    transport worked and still permits discovery. The final error distinguishes "no endpoint
+    anywhere" from "an
     advertised endpoint that is not listening" (`STALE_ENDPOINT_HINT`). Desktop quit calls
     `hookServer.stop()` on the second before-quit pass, after the flush window.
+
+  - **Hook endpoint ownership (#826):** startup first probes every transport in an existing
+    endpoint advertisement and preserves a live or uncertain owner. The local Unix listener probes its socket before
+    cleanup. Only `ECONNREFUSED` plus the same device/inode permits removal; a live listener,
+    non-socket, symlink or uncertain probe disables hooks without replacing its endpoint.
+    Both shells use `startForApp`: Desktop creates its window and then shows an actionable warning;
+    Server Edition logs the same warning and continues boot. An authenticated owner must answer
+    `/verify` with 204 for the advertised bearer AND reject a random bearer (403/421); unrelated
+    HTTP responses are uncertain listeners, not authenticated nodeterm. Probes have a hard deadline.
+    Endpoint writes are atomic and stop removes only the run's own advertised contents. SSH setup
+    never removes a socket before binding: every forward gets a fresh random path, while discovery
+    is stable per project + installation identity hash. Only a verified replacement is advertised;
+    then this run cancels its previous forward. A legacy project endpoint is migrated only when its
+    bearer matches the current run, the previous installation-qualified advertisement, or a stale
+    conventional local advertisement retained at boot. Publication rechecks the snapshot digest,
+    refuses symlinks, uses a migration lock and a private temp, and never places credentials in argv.
+    Without ownership proof (including a first upgrade after the old local advertisement was deleted),
+    it preserves the file and logs instructions to restart affected agent sessions; discovery still
+    works but may incur the old dead-tunnel delay until then. No real-host upgrade is claimed by unit tests. A reused tunnel that loses bearer verification
+    emits hook-only health updates: the desktop shows a warning and clears it after repair, without
+    reconnecting terminals. These changes share the core listener in Desktop and Server Edition;
+    the mobile wire protocol and node-identity rules are unchanged.
 
   Enforcement is dated (`NODE_IDENTITY_STRICT_AFTER`, 2026-10-13, read through `isStrictInstant` so a
   clock years ahead cannot enter strict mode early) with a `settings.hookIdentityStrict` escape hatch
@@ -2566,6 +2598,8 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   would inject a prompt into every session an agent just spawned — the exact intrusion that push
   was reverted for. Links are pull-based, so nothing is lost. The refusal matrix is the pure
   `planBridges` (`renderer/lib/noteLink.ts`, unit-tested); Canvas only wraps it in setState.
+  A missing endpoint is only absent from the calling project: report that scope and the
+  unsupported cross-project boundary, without probing other projects or exposing their metadata.
   Callers that create and link nodes **in the same tick** must pass their own `lookup` — `setNodes`
   is async, so resolving fresh nodes off `nodesRef` would skip every one as "no such node".
   **Dependency edges (`--after`, 2026-07):** `open-terminal`/`open-claude`/`open-agent` accept
@@ -2767,13 +2801,25 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   retired — its embedded-JS parser now lives as tested TS in `core/context-link-render.ts`:
   parsers for **all four** formats — claude JSONL / codex rollout / gemini event-sourced chat /
   opencode export — plus `renderContextLink` over injected fetchers). `src/core/context-link.ts`
+  coalesces renderer updates before workspace-map construction with a non-resetting task.
+  Intermediate ACL publications retain previously resolved paths keyed by node, agent, session,
+  account, cwd, remote/local placement and hook path. Ingest prunes changed/removed identities,
+  so changing back during queued discovery cannot revive an invalidated path. Reinitialization
+  clears the cache, and only current-revision discovery may refill it. The service
   holds the link docs in memory (per-node files under `<userData>/context-links/` remain as a
   debug aid), carries per-entry `agentId`/`sessionId`/`accountId`, and answers the route;
   **authorization** = the doc is selected by the REQUESTER's node id, so a token-holding caller
   can only read nodes in its own (directional) link map. Codex/gemini paths resolve via the
   handoff locators (`locateCodex`/`locateGemini` by sessionId); claude keeps the hook-fed path +
-  `locateClaude(sessionId, accountId)` fallback (cwd-newest is claude-only); Canvas rewrites link
-  files when a linked node's sessionId appears (`linkSessionSig`). **SSH projects:** the shim +
+  `locateClaude(sessionId, accountId)` fallback (cwd-newest is claude-only).
+  `useContextLinkSync` publishes semantic map changes from live edges and subscribes to
+  background project/status changes. Geometry/status render churn cannot postpone publication;
+  relay-bound projects never enter the local core's map. A render-captured project epoch prevents
+  outgoing live nodes replacing the incoming project's persisted map during a tab switch. Core
+  replaces the read authorization map synchronously, then enriches/writes debug documents through
+  a recoverable serialized queue; revision checks prevent obsolete enrichment restoring a removed
+  link. Transcript paths can be temporarily unavailable while the current snapshot is enriched.
+  **SSH projects:** the shim +
   skill are installed on the remote host at connect (`RemoteHooks.installContextLink`, gated on
   the VERIFIED reverse hook tunnel; POSTs ride `--unix-socket` through it); a remote node's
   transcript is read over the ControlMaster (`initContextLink(ptyManager, deps)` — `src/main`
@@ -3109,6 +3155,8 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   every canvas edit. ⟳ refreshes only what is on screen, and `usage.remote({hostKey})` reads only
   that host (cache eviction still runs against the FULL target list, so switching between two SSH
   projects doesn't throw each host's cache away).
+
+- **Grok billing failures** retain per-view HTTP status or a safe timeout/network/invalid-response category in `ProviderUsage.diagnostics`. The default view still runs after a credits failure; recovered limits keep their diagnostic. Only two successful empty views imply no quota. Never include raw exceptions, URLs or response bodies, or refresh/write credentials. Desktop and Server share the core reader and popover; provider-only errors must keep the pill visible.
 
 - **Usage failure readouts** — an empty Claude snapshot with `status: error` says "Could not
   read usage." in both the single-account and multi-account popovers, including beside healthy
@@ -3832,7 +3880,14 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   **ONE exception, and it is not a walk-back of that rule (issue #743): a MAXIMIZED node**
   (`isMaximized` — `data.premaxRect`, the flag `maximizeNodeToRect` writes and
   `restoreMaximizedNode` clears) is framed against the same rectangle `maximizeTargetRect` placed
-  it in, by passing `measurePinnedInsets(box)` to `viewportForRect`. The trade-off above rests on
+  it in, through `viewportForNodeFocus`, which passes `measureMaximizeInsets(box)` to
+  `viewportForRect` only for maximized nodes. `nodeFocus.policy.test.ts` exercises this shared
+  Canvas decision for ordinary, maximized and restored nodes in both zoom modes.
+  Maximize also measures `.controls-cluster` and `.dock` (#711): their screen rectangles reserve
+  top/bottom space with an 8px gap, consuming the existing 24px margin first. Chrome outside the
+  horizontally usable area contributes nothing. Menus and hover peeks never reserve a band. Both
+  focus zoom branches use these same vertical insets; refitting observes the persistent chrome
+  as well as pinned panels and compares all four insets. Zone snap retains its side-only policy. The trade-off above rests on
   ONE number — how much of the node ends up behind the panel — and for a maximized node that
   number is set by the PANEL rather than the node, **by construction**: maximize sized it to be
   *exactly* the free area, so centring it in the wider pane buries half the inset less the margin.
@@ -3842,10 +3897,9 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   free area reproduces maximize's own origin (`marginPx + insets.left`) exactly — which is what
   makes this a fix rather than a second opinion about placement. It applies to BOTH zoom branches
   (the rectangle question is the same one; splitting it would be two rectangles again, which is
-  the bug), and with no pinned panel `insets` is zero and the whole thing is a mathematical no-op.
+  the bug). With no pinned panels or overlapping persistent controls, `insets` is zero.
   A pane narrower than the panels over it falls back to the whole pane rather than solving against
-  a negative width. `measurePinnedInsets` reads the DOM, so it is asked only for a node that can
-  use the answer.
+  a negative width. `measureMaximizeInsets` reads the DOM only when framing a maximized node.
   `settings.focusZoomToNode` (Behavior, default ON) is the escape hatch for the rescale: off, the
   camera keeps the zoom `getZoom()` reports and only pans, and that zoom is passed through
   **unclamped** — it is one the canvas is already displaying, and re-clamping it to the framing
@@ -4222,7 +4276,14 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   changes via fs.watch; desktop SSH projects poll 5s while subscribed; inline projects show a
   hint. Relay tabs BRIDGE boardLog to the host (pre-dispatch `sharedProjectId` scope guard in the
   relay dispatch — an out-of-scope projectId is refused before any registry/path resolution; a
-  connection drop replays its outstanding onChanged unsubscribes). Deliberate v1 gaps: column-level
+  connection drop replays its outstanding onChanged unsubscribes). **The relay-guest scope jail is
+  keyed on channel CLASS, not a per-feature list** (`main/remote/relay-project-scope.ts`): every
+  method whose name starts with `githubIssues:` / `board-log:` / `projects.` is project-scoped, and
+  one the table cannot read a projectId out of is REFUSED on a scoped session. The switch it
+  replaced had a `default: not project-scoped` arm, so a new verb in one of those namespaces reached
+  another project's data with no refusal anywhere. A new channel in a scoped class therefore needs a
+  table row to become reachable — and `relay-project-scope.test.ts` fails if a live IPC channel in a
+  scoped class has none, so the fail-closed default cannot silently swallow a shipped verb. Deliberate v1 gaps: column-level
   events are stored but no card feed shows them; canvas-born nodes get no card-created; no
   card-deleted type.
   Per-column "+ New session" menus create agents/terminal/sticky nodes assigned to the column
@@ -4231,11 +4292,24 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   as a SIBLING of the node root — the roots are overflow:hidden — hidden for Ungrouped/dangling,
   click opens the board). Server Edition works as-is (pure renderer + workspace.save). Scope: no
   agent-driven card movement yet, no board undo.
-  **Mobile (nodeterm-ios) reaches the board through two relay verbs**, both landing in
-  `WorkspaceStore.ensureRemoteBoard` / `setRemoteCardColumn` (host-service `handleKanban`; wired in
-  `main/index.ts`'s `hostBridge.kanban`; pure transforms in `core/project-kanban-write.ts`):
-  `projects.ensureBoard` seeds the default columns on a project that has none, `projects.setCardColumn`
-  moves one card. Three things make them necessary rather than convenient. (1) The desktop board is a
+  **Mobile (nodeterm-ios) reaches the board through three relay verbs**, all landing in
+  `WorkspaceStore.ensureRemoteBoard` / `setRemoteCardColumn` / `editRemoteCardLabels` (host-service
+  `handleKanban`; wired in `main/index.ts`'s `hostBridge.kanban`; pure transforms in
+  `core/project-kanban-write.ts`): `projects.ensureBoard` seeds the default columns on a project that
+  has none, `projects.setCardColumn` moves one card, and `projects.editCardLabels` adds / removes /
+  creates **board labels** on one card (the phone's long-press label sheet, 2026-09). There is ONE
+  label model — the per-project palette in `kanban.labels` plus per-card ids in `kanban.meta[].labels`
+  — and the label verb writes it through the SAME transforms the canvas node's "+ Label" row and the
+  kanban card use: the card-meta + label half of `lib/kanban.ts` moved to `@shared/kanban-labels`
+  (re-exported, renderer call sites unchanged) so core can apply it; a test pins that a phone edit
+  produces the board `toggleCardLabel` produces. Params are validated at the write site
+  (`parseCardLabelEdit`: bounded control-free ids, 1–60-char control-free names, colour from the closed
+  palette, no id both added and removed) because they land in a git-shared, hand-editable file; a
+  created name matching an existing label case-insensitively REUSES it (the picker offers no Create
+  on an exact match); the first label on a board-less project seeds the default board, as the
+  desktop's first "+ Label" does; a stale `add` answers `edited:false` with the CURRENT palette so the
+  phone can redraw. Deleting/renaming palette entries is deliberately desktop-only (it touches every
+  card). The iOS direct-SSH path has a Swift twin of the transform for projects on the host it dials. Three things make them necessary rather than convenient. (1) The desktop board is a
   LAZY default — `kanban` is not written until the user's first board edit — so most project files
   carry NO board and the phone, which knows a project only by its file, could not offer one
   (measured: 1 of 13 project files on the author's machine had a `kanban` block). The default columns
@@ -4666,6 +4740,14 @@ component is absent, which otherwise fails only after the full install with `MSB
 `/opt:lldltojobs` with `LNK1117`. These are gyp overrides, not a reason to reject a Node version
 allowed by `package.json`. `.github/workflows/win-package-smoke.yml` is a
 **workflow_dispatch-only** packaging smoke on windows-latest — build only, never publishes.
+Windows installer safety (#829): `build/installer.nsh` overrides NSIS's process-killing check.
+A running app or session host blocks install/uninstall, and a failed process query blocks too.
+Never restore automatic host termination: quitting the app preserves those live sessions.
+Update preparation must keep saved canvas nodes: exit programs normally, quit, then have the user
+verify and stop any remaining host. Never recommend **End session** (it deletes nodes). Cold agent
+resume depends on supported, saved conversation history; it does not preserve running tasks.
+See `docs/windows-session-host.md` for the user-controlled preparation/recovery steps and limits.
+
 **Follow-ups, in order:** code signing, then Windows auto-update wiring (electron-updater NSIS leg
 + `latest.yml` on the nodeterm.dev feed — blocked on signing: an unsigned auto-update is a
 downgrade in trust), and the fork's PE-identity polish (electron-builder leaves `OriginalFilename`

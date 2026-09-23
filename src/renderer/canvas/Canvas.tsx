@@ -1,7 +1,9 @@
+import { LINK_ENDPOINT_NOT_FOUND } from '@shared/canvas-link'
 import { createControlOpenBatch } from '../lib/controlOpenBatch'
 import { commitOwnedLaunchAttempt, registerLaunchCommit } from '../terminal/launch-attempt'
 import { launchCommand } from '../terminal/launch-command'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useContextLinkSync } from './useContextLinkSync'
 import { useShallow } from 'zustand/react/shallow'
 import { playSfx, primeSfx } from '@renderer/lib/sfx'
 import { fanoutStillWorking } from '@renderer/lib/completionAlert'
@@ -302,14 +304,14 @@ import {
 } from '../lib/projectOpen'
 import {
   absolutePosition,
-  isMaximized,
   isMeasured,
   nodeFitRect,
-  viewportForRect,
+  viewportForNodeFocus,
   type FocusableNode
 } from '../lib/nodeFocus'
 import { NODE_MAXIMIZE_MARGIN_PX, maximizeTargetRect } from '../lib/nodeMaximize'
-import { NO_INSETS, measurePinnedInsets, type ScreenInsets } from '../lib/pinnedInsets'
+import { measurePinnedInsets, type ScreenInsets } from '../lib/pinnedInsets'
+import { measureMaximizeInsets, MAXIMIZE_CHROME_SELECTOR } from '../lib/maximizeInsets'
 import { ZONE_GUTTER_PX, ZONES, zoneTargetRect, type ZoneId } from '../lib/nodeZones'
 import {
   recordBreadcrumb,
@@ -462,7 +464,7 @@ import {
   reconnectRelayTab,
   type RelayTab,
 } from '../session/relay-tab'
-import { buildBackgroundLinkMaps, buildContextLinkNote, buildLinkMap, buildNotePushMessage, classifyLink, hiddenLinkIds, linkIdsCoveredByRopes, pairKey, planBridges, type LinkEndpoint } from '../lib/noteLink'
+import { buildContextLinkNote, buildNotePushMessage, classifyLink, hiddenLinkIds, linkIdsCoveredByRopes, pairKey, planBridges, type LinkEndpoint } from '../lib/noteLink'
 import {
   launchesToFire,
   queueControlLaunch,
@@ -1305,6 +1307,7 @@ export function Canvas() {
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false)
   // Live SSH ControlMaster status per project id (drives the thin connection banner).
   const [sshStatus, setSshStatus] = useState<Record<string, SshProjectStatus>>({})
+  const [lostHookTunnels, setLostHookTunnels] = useState<Record<string, boolean>>({})
   // The cause that came with an `error` status. Kept beside the status because the banner used to
   // render a bare "SSH connection error", throwing away the one line ssh gave us (permission
   // denied, host unreachable, host key mismatch) that tells the user what to actually fix.
@@ -3665,63 +3668,14 @@ export function Canvas() {
     })
   }, [nodes])
 
-  // Rewrite link files when a linked node's session starts/changes: main resolves
-  // codex/gemini transcripts by sessionId, so a session that appears after the edge was
-  // drawn must trigger a rewrite. agentId is part of the signature for the same reason: a
-  // plain terminal's identity arrives from hooks after the fact, and the map entry gains
-  // its agentId/sessionId only once it's known. Primitive signature, not the byId map (see
-  // loopSig).
-  const linkSessionSig = useAgentStatus((s) => {
-    let sig = ''
-    for (const e of linkEdges) {
-      const a = s.byId[e.source]
-      const b = s.byId[e.target]
-      sig += `${a?.agentId ?? ''}:${a?.sessionId ?? ''}|${b?.agentId ?? ''}:${b?.sessionId ?? ''}|`
-    }
-    return sig
-  })
+  useContextLinkSync({ projectId: nodesProjectIdRef.current, nodes, edges: linkEdges })
 
-  // Prune links whose endpoints were deleted, then push the link map to main (debounced) so
-  // it can rewrite the per-node link files the context CLI reads.
+  // Pruning is separate from publication: node geometry changes must not postpone link writes.
   useEffect(() => {
     const ids = new Set(nodes.map((n) => n.id))
     const valid = linkEdges.filter((e) => ids.has(e.source) && ids.has(e.target))
-    if (valid.length !== linkEdges.length) {
-      setLinkEdges(valid)
-      return // re-runs with the pruned set
-    }
-    const infoOf = (id: string) => {
-      const n = nodes.find((nn) => nn.id === id)
-      const sticky = n?.type === 'sticky'
-      const agentId = sticky ? undefined : agentIdOf(id)
-      return {
-        id,
-        title: (n?.data.title as string) || id,
-        cwd: (n?.data.cwd as string) || '',
-        note: sticky ? ((n?.data.text as string) ?? '') : undefined,
-        sticky,
-        agentId,
-        sessionId: agentId ? useAgentStatus.getState().byId[id]?.sessionId : undefined,
-        accountId: sticky ? undefined : ((n?.data.accountId as string) || undefined)
-      }
-    }
-    // Merge in the link maps of every OTHER project (from their serialized nodes + bridges):
-    // main clears all link files before writing the pushed map, so pushing only the active
-    // project's map would sever the links of background projects whose agents keep running.
-    const { projects, activeProjectId } = useProjects.getState()
-    const map = {
-      ...buildBackgroundLinkMaps(
-        projects,
-        activeProjectId,
-        (id) => useAgentStatus.getState().byId[id]?.sessionId,
-        (id) => useAgentStatus.getState().byId[id]?.agentId
-      ),
-      ...buildLinkMap(valid, infoOf)
-    }
-    const t = setTimeout(() => void window.nodeTerminal.contextLink.setLinks(map), 150)
-    return () => clearTimeout(t)
-    // linkSessionSig is read only as an effect trigger — infoOf re-reads sessionIds via getState().
-  }, [linkEdges, nodes, setLinkEdges, agentIdOf, linkSessionSig])
+    if (valid.length !== linkEdges.length) setLinkEdges(valid)
+  }, [linkEdges, nodes, setLinkEdges])
 
   // Reflect Claude nodes with unread output as a macOS Dock badge count (across all projects).
   // Subscribes to the derived count (a primitive), not the byId map, for the same reason as
@@ -7527,11 +7481,7 @@ export function Canvas() {
       // `focusZoomToNode` off: keep the zoom the user settled on and only pan — the node still
       // lands in the middle, only the rescale is dropped.
       const keepZoom = useSettings.getState().settings.focusZoomToNode ? undefined : getZoom()
-      // A MAXIMIZED node is framed against the rectangle its own placement used (issue #743);
-      // everything else is centred in the whole pane, as it always was. `measurePinnedInsets`
-      // reads the DOM, so it is asked only for the node that can use the answer.
-      const insets = isMaximized(node) ? measurePinnedInsets(box) : NO_INSETS
-      const viewport = viewportForRect(rect, box.width, box.height, keepZoom, insets)
+      const viewport = viewportForNodeFocus(node, rect, box, keepZoom)
       if (viewport) void setViewport(viewport, { duration: 300 })
     },
     [setViewport, getInternalNode, getZoom]
@@ -8012,7 +7962,7 @@ export function Canvas() {
           wrap.width,
           wrap.height,
           NODE_MAXIMIZE_MARGIN_PX,
-          measurePinnedInsets(wrap)
+          measureMaximizeInsets(wrap)
         )
       : null
     if (!rect) return false
@@ -8022,7 +7972,7 @@ export function Canvas() {
   }, [placementTargetNode, setNodes, markDirty, getViewport])
 
   /**
-   * Keep a maximized node fitted to the area the pinned side panels leave over.
+   * Keep a maximized node fitted to the area the pinned panels and persistent controls leave over.
    *
    * Maximize is a MODE, not a one-shot placement — a zone snap is the one-shot kind and stays
    * where it was put. While maximize is on the node claims the whole usable canvas, so pinning a
@@ -8038,10 +7988,16 @@ export function Canvas() {
   const fitMaximizedToUsableArea = useCallback(() => {
     const wrap = flowWrapRef.current?.getBoundingClientRect()
     if (!wrap) return
-    const insets = measurePinnedInsets(wrap)
+    const insets = measureMaximizeInsets(wrap)
     const prev = lastInsetsRef.current
     lastInsetsRef.current = insets
-    if (prev && prev.left === insets.left && prev.right === insets.right) return
+    if (
+      prev &&
+      prev.left === insets.left &&
+      prev.right === insets.right &&
+      prev.top === insets.top &&
+      prev.bottom === insets.bottom
+    ) return
     if (!nodesRef.current.some((n) => n.data.premaxRect)) return
     const rect = maximizeTargetRect(
       getViewport(),
@@ -8065,9 +8021,7 @@ export function Canvas() {
 
   useEffect(() => {
     fitMaximizedToUsableArea()
-    const panels = Array.from(
-      document.querySelectorAll('.sessions-sidebar--pinned, .drawer--pinned')
-    )
+    const panels = Array.from(document.querySelectorAll(MAXIMIZE_CHROME_SELECTOR))
     // A ResizeObserver covers width changes (`uiScale`, the drawer's wide variant) but NOT the
     // drawer's entry animation, which is opacity + transform — a transform never fires it, so the
     // panel is measured ~10px off its settled position. `animationend` closes exactly that gap.
@@ -11481,7 +11435,7 @@ export function Canvas() {
               return
             }
             if (!ctlLinkEndpointOf(from)) {
-              reply({ ok: false, error: `link: --from names no existing node (${from})` })
+              reply({ ok: false, error: `link: --from ${from}: ${LINK_ENDPOINT_NOT_FOUND}` })
               return
             }
             const { linked, skipped } = bridgeTo(from, targets)
@@ -13589,6 +13543,10 @@ export function Canvas() {
   // Track SSH project connection status for the thin connection banner (keyed by project id).
   useEffect(() => {
     return window.nodeTerminal.sshProject.onStatus((e) => {
+      if (e.hookTunnelVerified !== undefined) {
+        setLostHookTunnels((prev) => ({ ...prev, [e.projectId]: !e.hookTunnelVerified }))
+        return // A health probe must never trigger terminal reconnection.
+      }
       setSshStatus((prev) => ({ ...prev, [e.projectId]: e.status }))
       // Keep the cause for the banner. Cleared on any non-error status so a stale reason can
       // never be shown next to a healthy connection.
@@ -14558,15 +14516,17 @@ export function Canvas() {
         )}
         {activeSshServer &&
           sshStatus[activeProjectId] &&
-          sshStatus[activeProjectId] !== 'connected' &&
+          (sshStatus[activeProjectId] !== 'connected' || lostHookTunnels[activeProjectId]) &&
           (() => {
             const st = sshStatus[activeProjectId]
+            const hooksLost = st === 'connected' && lostHookTunnels[activeProjectId]
             const isError = st === 'error' || st === 'disconnected'
             // The reason ssh gave, already trimmed to one line by lastSshErrorLine in main. Shown
             // inline: a bare "SSH connection error" leaves the user with nothing to act on.
             const cause = sshError[activeProjectId]
-            const text =
-              st === 'connecting'
+            const text = hooksLost
+              ? `${activeSshServer.label}: Agent status and canvas control lost their verified connection. Retrying automatically…`
+              : st === 'connecting'
                 ? `Connecting to ${activeSshServer.label}…`
                 : st === 'reconnecting'
                   ? `Reconnecting to ${activeSshServer.label}…`
@@ -14590,7 +14550,7 @@ export function Canvas() {
                   borderRadius: 8
                 }}
               >
-                {isError ? (
+                {isError || hooksLost ? (
                   <span
                     style={{
                       width: 8,

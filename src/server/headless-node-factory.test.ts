@@ -517,7 +517,7 @@ describe('HeadlessNodeFactory', () => {
       factory.link('term-source', { to: 'term-upstream,term-other-project' }, true)
     ).resolves.toMatchObject({
       ok: false,
-      error: expect.stringContaining('link-project-refused')
+      error: "link-project-refused: term-other-project is not exclusively in the caller's project; cross-project linking is not supported"
     })
     expect((await store.load({ sideline: false })).projects[0].bridges).toEqual([])
     expect(publishedProjects).toEqual([])
