@@ -833,24 +833,30 @@ export function createAccountLoginNode(
  *
  * A plain terminal (not an agent node), like the Claude one: no session-name tracking, and the
  * agent-less shape is what keeps the node out of the Codex AGENT paths while still being scoped.
- * Local only — `codexAccounts.add()` mints on THIS machine, so there is no ssh binding to pass.
  * `cwd` carries the same weight as it does on the Claude sibling above (issue #553): a login node
  * with none starts in `$HOME`, and a CLI whose trust check is keyed on the cwd then asks about the
- * whole home directory. Being local-only, the caller must pass a LOCAL directory — the active
- * project's cwd, which an SSH project does not have.
+ * whole home directory. For a LOCAL account the caller passes the active project's local cwd.
+ *
+ * `ssh` makes it a REMOTE login, for an account whose home was created on that host
+ * (`codexAccounts.add({ projectId })`): the node runs in the host's tmux, where the remote spawn
+ * scopes it to the account's `CODEX_HOME`, and `createTerminalNode` roots it at `ssh.remoteCwd`.
+ * The command is `codex login --device-auth` there: the default flow opens a browser and waits for
+ * a callback on the HOST's localhost, which the user's browser cannot reach. The device flow prints
+ * a URL + code to finish anywhere. Trailing param, so every local call stays byte-identical.
  */
 export function createCodexAccountLoginNode(
   accountId: string,
   index: number,
   center?: { x: number; y: number },
-  cwd?: string
+  cwd?: string,
+  ssh?: Project['ssh']
 ): CanvasNode {
-  const node = createTerminalNode(index, cwd, center)
+  const node = createTerminalNode(index, cwd, center, undefined, ssh)
   node.data = {
     ...node.data,
     title: 'Codex login',
     accountId,
-    initialCommand: 'codex login'
+    initialCommand: ssh ? 'codex login --device-auth' : 'codex login'
   }
   return node
 }
@@ -1960,7 +1966,7 @@ export function nodeStatesToFlow(states: CanvasNodeState[]): CanvasNode[] {
 }
 
 /** Serializes live React Flow nodes back into persisted node states. */
-export function flowToNodeStates(nodes: CanvasNode[]): CanvasNodeState[] {
+export function flowToNodeStates(nodes: CanvasNode[], retainInitialCommand = true): CanvasNodeState[] {
   const sizeFor = (kind: NodeKind) =>
     kind === 'sticky'
       ? STICKY_SIZE
@@ -2027,7 +2033,11 @@ export function flowToNodeStates(nodes: CanvasNode[]): CanvasNodeState[] {
         agentModel: n.data.agentModel,
         accountId: n.data.accountId,
         agentSessionId: n.data.agentSessionId,
-        pendingLaunch: n.data.pendingLaunch,
+        // Owning-core UI intent is durable. Relay snapshots opt out: their new UI command
+        // uses a transient one-shot writer, never a whole-workspace persistence claim.
+        pendingLaunch: n.data.pendingLaunch ?? (retainInitialCommand && n.data.initialCommand
+          ? { after: [], command: n.data.initialCommand, attempted: false }
+          : undefined),
         ssh: n.data.ssh,
         sshRemoteTmux: n.data.sshRemoteTmux,
         sshFs: n.data.sshFs,
