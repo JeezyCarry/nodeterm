@@ -38,6 +38,8 @@ export const EXPIRE_MS = 6 * 60 * 60_000
 export const WRITE_DEBOUNCE_MS = 300
 
 export interface MirrorEntry {
+  /** Tickets introduced concurrently with a picker, retained until reply or explicit reset. */
+  concurrentApprovalIds?: string[]
   /** Live question identity, independent of the short-lived display stash. */
   pendingQuestion?: { sessionId: string; toolUseId: string }
   /** working/waiting/blocked/done; undefined = idle/unknown (e.g. after a session reset). */
@@ -479,6 +481,19 @@ function reduceEffectiveEntry(
   }
   // Unrelated tool hooks (including untagged child hooks) are not answers. Keep both
   // the state and its original evidence/identity until a correlated result or explicit reset.
+  const resetApprovals = (ev.kind === 'session' && ev.sessionPhase === 'start') ||
+    (ev.sessionId === prev?.sessionId && (ev.kind === 'session' || ev.newTurn || ev.interrupted))
+  if (resetApprovals) delete next.concurrentApprovalIds
+  else {
+    if (ev.pendingId && ev.state === 'blocked' && ev.askKind === 'approval' &&
+        (prev?.pendingQuestion || prev?.concurrentApprovalIds?.length)) {
+      next.concurrentApprovalIds = [...new Set([...(prev?.concurrentApprovalIds ?? []), ev.pendingId])]
+    }
+    if (ev.pendingId && ev.state === 'working' && next.concurrentApprovalIds) {
+      next.concurrentApprovalIds = next.concurrentApprovalIds.filter(id => id !== ev.pendingId)
+      if (!next.concurrentApprovalIds.length) delete next.concurrentApprovalIds
+    }
+  }
   const ask = prev?.pendingQuestion
   if (ask) {
     const sameSession = ev.sessionId === ask.sessionId
@@ -487,6 +502,11 @@ function reduceEffectiveEntry(
     const answered = sameSession && ev.answeredQuestionId === ask.toolUseId
     if (!reset && !answered) return next
     delete next.pendingQuestion
+  }
+  if (next.concurrentApprovalIds?.length) {
+    // The picker answer and unrelated parent tool activity cannot answer child permissions.
+    commitState('blocked', !!ev.verified)
+    return next
   }
   if (ev.questionId && ev.sessionId) {
     next.pendingQuestion = { sessionId: ev.sessionId, toolUseId: ev.questionId }
@@ -1419,6 +1439,28 @@ export function recordAgentEvent(rawEvent: NormalizedAgentEvent): NormalizedAgen
   const prevState = prev?.state
   const next = reduceEffectiveEntry(prev, ev, now)
   state.set(nodeId, next)
+  const questionAnswered = !!prev?.pendingQuestion && !next.pendingQuestion &&
+    ev.sessionId === prev.pendingQuestion.sessionId && ev.answeredQuestionId === prev.pendingQuestion.toolUseId
+  if (questionAnswered || (ev.pendingId && ev.state === 'working')) {
+    for (const card of inboxEvents) {
+      if (card.nodeId !== nodeId) continue
+      if ((questionAnswered && card.kind === 'question') ||
+          (ev.pendingId && card.kind === 'approval' && card.pendingId === ev.pendingId)) card.resolved = true
+    }
+  }
+  if (next.concurrentApprovalIds?.length && !next.pendingQuestion) {
+    if (ev.pendingId && ev.state === 'blocked' && ev.askKind === 'approval') {
+      produceInboxFromState(nodeId, ev, prevState, 'blocked', now, true)
+    }
+    const pendingId = next.concurrentApprovalIds[next.concurrentApprovalIds.length - 1]
+    const card = inboxEvents.find(e => e.nodeId === nodeId && e.pendingId === pendingId && !e.resolved)
+    if (questionAnswered || (ev.pendingId && ev.state === 'working')) {
+      fireNodeStateChange({ nodeId, agentId: ev.agentId, sessionId: next.sessionId, ts: now,
+        event: 'update', state: 'needsYou', kind: 'approval', pendingId, message: card?.title ?? 'Needs approval' })
+    }
+    scheduleWrite()
+    return { ...ev, kind: 'state', state: 'blocked', sessionId: next.sessionId, askKind: 'approval', pendingId }
+  }
   // reduceEntry held an unanswered `request_user_input` through its turn-end `done` — rewrite
   // the broadcast to what the reducer decided, so every consumer (canvas store, notch, phone)
   // agrees the node is still waiting rather than each re-deriving it from the raw done.
@@ -1432,14 +1474,7 @@ export function recordAgentEvent(rawEvent: NormalizedAgentEvent): NormalizedAgen
       scheduleWrite()
       return { ...ev, state: next.state, sessionId: next.sessionId }
     }
-    if (ev.pendingId && ev.state === 'working') {
-      for (const card of inboxEvents) {
-        if (card.nodeId === nodeId && card.kind === 'approval' && card.pendingId === ev.pendingId) {
-          card.resolved = true
-        }
-      }
-      scheduleWrite()
-    }
+    scheduleWrite()
     // Broadcast the same held state to Desktop, Server, canvas/board and the phone.
     return { ...ev, kind: 'state', state: next.state, sessionId: next.sessionId,
       verified: ev.verified, newTurn: undefined, interrupted: undefined,

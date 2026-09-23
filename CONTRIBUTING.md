@@ -789,3 +789,6 @@ recording before the child transcript-association guard in both shells.
 A held parent question can overlap child permissions: retain its question card and waiting
 state while publishing each approval ticket separately. Approval replies resolve only their
 own ticket; the picker stays pending until its correlated answer or explicit reset.
+When the parent answers first, retain concurrent approval tickets and blocked attention until
+their own replies; ordinary tool activity cannot settle them. Explicit turn/session resets
+still cancel both kinds of pending attention.

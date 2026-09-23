@@ -121,6 +121,37 @@ describe('subagent attention forwarding (W2)', () => {
     expect(_inboxSnapshot().events.every(e => e.resolved)).toBe(true)
   })
 
+  it.each(['allow', 'deny'])('keeps approval tickets actionable when the parent answers first (%s)', decision => {
+    ask()
+    const approval = { agent_id: 'child', session_id: 'child-session', tool_name: 'Bash',
+      tool_input: { command: 'echo child' }, nodeterm_pending_id: 'ticket-1' }
+    hook('PermissionRequest', approval)
+    hook('PermissionRequest', { ...approval, nodeterm_pending_id: 'ticket-2' })
+    expect(recordQuestionResult('node', 'parent', 'ask-1')).toMatchObject({
+      state: 'blocked', askKind: 'approval', pendingId: 'ticket-2' })
+    expect(_snapshot().node.pendingQuestion).toBeUndefined()
+    expect(_inboxSnapshot().events.find(e => e.kind === 'question')?.resolved).toBe(true)
+    expect(_inboxSnapshot().events.filter(e => e.kind === 'approval' && !e.resolved)).toHaveLength(2)
+    expect(hook('PreToolUse', { tool_name: 'Read' })).toMatchObject({ state: 'blocked', pendingId: 'ticket-2' })
+    expect(hook('PermissionRequest', { ...approval, nodeterm_answered: decision })).toMatchObject({
+      state: 'blocked', askKind: 'approval', pendingId: 'ticket-2' })
+    expect(_inboxSnapshot().events.find(e => e.pendingId === 'ticket-1')?.resolved).toBe(true)
+    expect(_inboxSnapshot().events.find(e => e.pendingId === 'ticket-2')?.resolved).not.toBe(true)
+    expect(hook('PermissionRequest', { ...approval, nodeterm_pending_id: 'ticket-2', nodeterm_answered: decision }))
+      .toMatchObject({ state: 'working' })
+    expect(_inboxSnapshot().events.every(e => e.resolved)).toBe(true)
+    expect(_snapshot().node.concurrentApprovalIds).toBeUndefined()
+  })
+
+  it.each(['UserPromptSubmit', 'SessionEnd', 'SessionStart', 'Stop'])('resets overlapping approvals on explicit %s', event => {
+    ask()
+    hook('PermissionRequest', { agent_id: 'child', tool_name: 'Bash', nodeterm_pending_id: 'ticket' })
+    recordQuestionResult('node', 'parent', 'ask-1')
+    hook(event, { is_interrupt: true, ...(event === 'SessionStart' ? { session_id: 'new' } : {}) })
+    expect(_snapshot().node.concurrentApprovalIds).toBeUndefined()
+    expect(_inboxSnapshot().events.filter(e => e.kind !== 'done').every(e => e.resolved)).toBe(true)
+  })
+
   it('does not turn the held picker own permission into an approval', () => {
     ask()
     expect(hook('PermissionRequest', { tool_name: 'AskUserQuestion', nodeterm_pending_id: 'picker' }))
