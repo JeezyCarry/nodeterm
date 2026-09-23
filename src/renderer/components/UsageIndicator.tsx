@@ -1,5 +1,6 @@
 import { usageDiagnosticText } from '../lib/usageDiagnostic'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { UsageOrganization } from './UsageOrganization'
 import { IconReload } from './icons'
 import type { ClaudeUsage, ProviderUsage, RemoteAccountUsage, UsageLimit } from '@shared/types'
 import { AGENT_CONFIG } from '@shared/agents/config'
@@ -188,7 +189,8 @@ function AccountUsageBlock({
         <DefaultAccountMark isDefault={isDefault} onUse={onUse} />
         {move}
       </div>
-      {(email ?? u?.email) && <div className="usage-account__email">{email ?? u?.email}</div>}
+      {(u?.email ?? email) && <div className="usage-account__email">{u?.email ?? email}</div>}
+      <UsageOrganization organization={u?.organization} />
       {u?.limits.map((l) => (
         <LimitRow key={limitKey(l)} limit={l} mode={mode} />
       ))}
@@ -649,10 +651,11 @@ export function UsageIndicator({
                       {claudeError ? 'Could not read usage.' : 'No usage data.'}
                     </div>
                   )}
-                  {claudeUsage?.email && (
+                  {(claudeUsage?.email || claudeUsage?.organization) && (
                     <div className="usage-account">
                       <div className="usage-account__label">Claude Account</div>
                       <div className="usage-account__email">{claudeUsage.email}</div>
+                      <UsageOrganization organization={claudeUsage.organization} />
                     </div>
                   )}
                 </>

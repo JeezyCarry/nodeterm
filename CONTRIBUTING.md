@@ -56,6 +56,11 @@ handler needs something only Electron has (an SSH ControlMaster, a native dialog
 **injected dep** whose absence is a documented degrade — see `registerTranscriptIpc` /
 `registerContextEnsureIpc` — rather than a reason to keep the whole handler in `src/main`.
 
+Claude usage identity is scoped to the same config directory as its credentials. Read organization
+metadata even when credentials already include an email, and degrade to the email-only row when
+metadata cannot be read. Managed usage must never fall back to an unscoped system Keychain token:
+that would label one account's limits with another account's organization.
+
 Context-link maps authorize reads. Publish changes to edges, linked metadata, and background
 projects independently of canvas geometry updates; a debounce reset by every node render can
 starve publication indefinitely. Only merge projects owned by the same core, and use the rendered

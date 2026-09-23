@@ -2563,6 +2563,14 @@ export interface SessionMemoryApi {
   host(q?: SessionMemoryQuery): Promise<MemInfo | null>
 }
 
+/** Best-effort active organization from this account's Claude identity file. */
+export interface ClaudeUsageOrganization {
+  name: string
+  uuid?: string
+  type?: string
+  rateLimitTier?: string
+}
+
 /** Claude Code subscription usage snapshot for the bottom-left indicator. */
 export interface ClaudeUsage {
   /**
@@ -2574,6 +2582,8 @@ export interface ClaudeUsage {
   weekly: ClaudeUsageWindow | null
   /** Signed-in account email, read-only and best-effort (null if unknown). */
   email: string | null
+  /** Active organization, absent when its metadata is unavailable. */
+  organization?: ClaudeUsageOrganization
   /** Unix ms when this snapshot was produced. */
   updatedAt: number
   /**
