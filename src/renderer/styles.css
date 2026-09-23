@@ -1457,6 +1457,34 @@ body,
   box-shadow: 0 8px 28px rgba(0, 0, 0, calc(0.4 * var(--shadow-k)));
 }
 
+/* Glass terminal nodes (Settings → Appearance → Glass terminals). The node fill is the terminal
+   theme's background at an alpha computed per theme (`--term-glass-bg`, set inline by
+   TerminalNode from lib/glassContrast.ts) so the theme foreground keeps 4.5:1 over ANY backdrop —
+   the blur makes the wallpaper legible as colour, the alpha is what keeps text readable. xterm
+   paints no background in this mode (terminal-config.ts `glassTheme`), so the body must not
+   either. Declared BEFORE .selected/.unread so their border and glow still win. The top border
+   keeps the node's colour; the specular highlight rides the header (the header's own fill would
+   cover an inset shadow on the node). */
+.term-node.term-node--glass {
+  background: var(--term-glass-bg);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
+  border-color: rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, calc(0.35 * var(--shadow-k))),
+    0 1px 3px rgba(0, 0, 0, calc(0.25 * var(--shadow-k)));
+}
+.term-node--glass .term-node__header {
+  background: var(--term-glass-header-bg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+}
+.term-node--glass .term-node__body {
+  background: transparent;
+}
+
 .term-node.selected {
   border-color: var(--accent);
 }

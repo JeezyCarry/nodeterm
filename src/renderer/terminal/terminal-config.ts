@@ -325,6 +325,31 @@ export interface XtermVisualOptions {
   letterSpacing: number
   scrollback: number
   theme: ITheme
+  allowTransparency?: boolean
+}
+
+/**
+ * Glass terminals (Settings → Appearance): the node paints the theme background as a translucent
+ * tint behind the terminal (see `lib/glassContrast.ts`), so xterm itself must paint NO background —
+ * the theme's background with its alpha zeroed, plus `allowTransparency` so the WebGL glyph atlas
+ * is rasterized without a baked-in background (addon-webgl's `_getBackgroundColor`).
+ *
+ * The RGB is kept and only the alpha zeroed, so anything xterm derives from the background
+ * (minimum-contrast adjustment, the cursor accent) still sees the tint's colour, not black.
+ *
+ * Memoized per theme object: `applyLiveOptions` compares themes by IDENTITY, so a fresh object per
+ * call would re-apply the theme — a full palette rebuild on every terminal — on every settings edit.
+ */
+const glassThemes = new WeakMap<ITheme, ITheme>()
+export function glassTheme(theme: ITheme): ITheme {
+  let t = glassThemes.get(theme)
+  if (!t) {
+    const bg = theme.background
+    const rgb = bg && /^#[0-9a-f]{6}$/i.test(bg) ? bg : '#000000'
+    t = Object.freeze({ ...theme, background: `${rgb}00` })
+    glassThemes.set(theme, t)
+  }
+  return t
 }
 
 /**
@@ -335,8 +360,11 @@ export interface XtermVisualOptions {
  * else — the point is that there is no per-site options literal left to drift.
  */
 export function xtermOptionsFromSettings(
-  s: XtermVisualSettings
+  s: XtermVisualSettings,
+  /** Glass terminal node (canvas only — the card modal and the settings preview never pass it). */
+  glass = false
 ): XtermVisualOptions & { allowProposedApi: true; macOptionClickForcesSelection: true } {
+  const theme = resolveTerminalTheme(s.terminalTheme).theme
   return {
     fontFamily: s.fontFamily,
     fontSize: s.fontSize,
@@ -354,7 +382,9 @@ export function xtermOptionsFromSettings(
     // tmux's own history (see pty-manager's tmuxConf). This buffer backs the plain-shell
     // fallback (tmux unavailable) and the cold-snapshot replay. Capped: per node, many nodes.
     scrollback: xtermScrollback(s.tmuxScrollback),
-    theme: resolveTerminalTheme(s.terminalTheme).theme,
+    theme: glass ? glassTheme(theme) : theme,
+    // Only present when on, so a non-glass terminal's options are exactly what they were.
+    ...(glass ? { allowTransparency: true } : {}),
     allowProposedApi: true,
     // Inside an app that requested mouse tracking (vim, htop) a plain drag goes to the app;
     // Option/Alt forces a selection instead (Shift does the same via xterm's own bypass).
@@ -395,9 +425,10 @@ export interface LiveOptionEffects {
  */
 export function applyLiveOptions(
   term: LiveOptionTarget,
-  s: XtermVisualSettings
+  s: XtermVisualSettings,
+  glass = false
 ): LiveOptionEffects {
-  const next = xtermOptionsFromSettings(s)
+  const next = xtermOptionsFromSettings(s, glass)
   const o = term.options
   // Deliberately NOT including the font WEIGHTS. xterm derives its cell size from
   // `CharSizeService`, which re-measures only on `fontFamily`/`fontSize` — a weight change never
@@ -430,6 +461,10 @@ export function applyLiveOptions(
     o.cursorInactiveStyle = next.cursorInactiveStyle
   }
   if (o.scrollback !== next.scrollback) o.scrollback = next.scrollback
+  // Before the theme, in the same synchronous pass: the WebGL renderer rebuilds its atlas on every
+  // option change, and the two must land together or one frame paints a transparent background
+  // over glyphs rasterized onto an opaque one.
+  if ((o.allowTransparency ?? false) !== glass) o.allowTransparency = glass
   if (themeChanged) o.theme = next.theme
 
   return { metricsChanged, themeChanged }

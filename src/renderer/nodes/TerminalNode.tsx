@@ -178,6 +178,8 @@ import { useCopyFeedback } from '../terminal/useCopyFeedback'
 import { ContextMeter } from '../components/ContextMeter'
 import { isZoomModifierHeld } from '../lib/zoomModifier'
 import { isHidden } from '../lib/ui-visibility'
+import { glassTint } from '../lib/glassContrast'
+import { resolveTerminalTheme } from '../terminal/themes'
 import { readsClaudeTranscript } from '../lib/transcriptGates'
 import { liveProjectJumpTarget } from '../lib/projectJump'
 import { pushSessionRename } from '../lib/sessionRename'
@@ -1241,6 +1243,17 @@ export function TerminalNode({
   // Scoped to the OWNING project so its `terminal.theme` / `terminal.fontFamily` layer over the
   // global settings for this node, and for no other project's nodes.
   const visual = useXtermVisualSettings(owningProjectId())
+  // Glass terminals (Settings → Appearance): xterm paints no background and the node supplies a
+  // translucent tint of THIS node's effective theme — project override included — at the alpha
+  // that keeps its foreground at 4.5:1 over any backdrop (lib/glassContrast.ts).
+  const glass = useSettings((s) => s.settings.glassTerminals) === true
+  const glassVars = useMemo(() => {
+    if (!glass) return null
+    const tint = glassTint(resolveTerminalTheme(visual.terminalTheme).theme)
+    return tint
+      ? ({ '--term-glass-bg': tint.background, '--term-glass-header-bg': tint.header } as React.CSSProperties)
+      : null
+  }, [glass, visual.terminalTheme])
   // The account list, for the chip and for the READERS below: a config dir the user links while
   // this pane sits quiet must resolve to its new account immediately, not at the next hook event.
   const claudeAccounts = useSettings((s) => s.settings.claudeAccounts)
@@ -2099,7 +2112,7 @@ export function TerminalNode({
     const s = useSettings.getState().settings
     // Appearance comes from ONE place, shared with the kanban card modal's viewer of this same
     // session (`ModalTerminal`) — see `xtermOptionsFromSettings`.
-    const term = parked?.term ?? new Terminal(xtermOptionsFromSettings(s))
+    const term = parked?.term ?? new Terminal(xtermOptionsFromSettings(s, s.glassTerminals === true))
     // Only on a FRESH instance: a parked terminal already carries the table, and the buffer it kept
     // alive was measured with it — re-registering under a live buffer buys nothing.
     if (!parked) activateUnicode11(term)
@@ -4840,10 +4853,10 @@ export function TerminalNode({
   useEffect(() => {
     const term = termRef.current
     if (!term) return
-    const { metricsChanged, themeChanged } = applyLiveOptions(term, visual)
+    const { metricsChanged, themeChanged } = applyLiveOptions(term, visual, glass)
     if (metricsChanged) applyFitRef.current?.()
     if (themeChanged) fullRepaintRef.current?.()
-  }, [visual])
+  }, [visual, glass])
 
   // glyphgrid participation — whether this node should hold a grid RIGHT NOW.
   //
@@ -5295,9 +5308,11 @@ export function TerminalNode({
         isUnread ? ' unread' : ''
       }${status?.state === 'working' ? ' working' : ''}${
         status?.state === 'waiting' || status?.state === 'blocked' ? ' attention' : ''
-      }${glyphMounted ? ' term-node--glyphgrid' : ''}${focused ? ' term-node--focused' : ''}`}
+      }${glyphMounted ? ' term-node--glyphgrid' : ''}${focused ? ' term-node--focused' : ''}${
+        glassVars ? ' term-node--glass' : ''
+      }`}
       ref={rootRef}
-      style={{ borderTopColor: data.color }}
+      style={glassVars ? { ...glassVars, borderTopColor: data.color } : { borderTopColor: data.color }}
       onMouseEnter={() => (hoveredRef.current = true)}
       onMouseLeave={() => (hoveredRef.current = false)}
     >

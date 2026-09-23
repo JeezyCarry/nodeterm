@@ -106,6 +106,8 @@ describe('every CSS variable resolves', () => {
   // typo — unless the renderer sets it at runtime.
   const SET_FROM_JS = new Set([
     '--term-bg', // App.tsx, from the terminal theme
+    '--term-glass-bg', // TerminalNode, glass tint per node theme (lib/glassContrast.ts)
+    '--term-glass-header-bg',
     '--peer-color', // presence chips, per peer
     '--group-label-boost', // GroupNode, zoom-compensated label size
     '--mascot-w',
