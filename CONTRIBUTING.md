@@ -814,6 +814,13 @@ Two files, two audiences:
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
 
+**Phone consent belongs to the verified handshake, not the browse socket.** A standing phone's
+SAS request survives transport closure only until its 120-second deadline; approval requires the
+issued id and displayed box key together. Keep request/reply outcomes distinct (stale request,
+failed pin save, missing IPC response, saved-but-disconnected). All production pin/revoke writers
+must use `updateApprovedDevices` for the whole read/modify/write, so concurrent updates cannot
+lose approvals or resurrect revoked keys. Server Edition does not host this legacy relay path.
+
 Managed Codex login terminals are agent-less: core identifies their provider from the saved
 account list. Before opening one, await `useSettings.getState().flush()` after adding the account.
 The normal 300 ms coalesced save is too late: an unknown id can launch against the system home.
