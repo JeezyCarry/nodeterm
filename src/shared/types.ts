@@ -1,3 +1,4 @@
+import type { TextDeliveryResult } from './text-delivery'
 // Types shared across the main, preload, and renderer processes.
 
 import { TABBAR_HEIGHT_PX } from './window-chrome-metrics'
@@ -1006,8 +1007,9 @@ export interface PtyApi {
   readScrollback(persistKey: string): Promise<string>
   /** Send literal text into a session, by default followed by Enter (e.g. a slash command).
    *  `opts.enter: false` writes the text without submitting it (dictation's Insert). Returns
-   *  false if unavailable. */
-  sendText(persistKey: string, text: string, opts?: { enter?: boolean }): Promise<boolean>
+   *  false if unavailable; `pasted-not-submitted` means input was accepted but Enter was not
+   *  confirmed written. Surface it without automatically resending. True is not an app receipt. */
+  sendText(persistKey: string, text: string, opts?: { enter?: boolean }): Promise<TextDeliveryResult>
   /** Is tmux available on this host (else the silent plain-shell fallback), plus a suggested
    *  install command for the "tmux not found" banner. */
   tmuxStatus(): Promise<TmuxStatus>

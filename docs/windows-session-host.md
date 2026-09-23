@@ -685,3 +685,14 @@ Windows named-pipe DACL hardening remain outside this profile pass as described 
   `spawnSession()`'s new branch automatically (they call it directly with no prior async
   pre-check), so they work, but were not separately hand-verified end-to-end through the relay
   feature itself in this pass — only the primary create/join/reconnect/capture/kill paths were.
+
+### Non-message delivery result (#780)
+
+New callers use additive `sendKeysV2`, returning `result.delivery`: `true` for completed
+requested writes, `false` before input, or `pasted-not-submitted` when paste landed but the
+settle/mode/generation checks withheld Enter. The last result is terminal for automatic
+delivery: inspect the terminal, do not resend or blindly press Enter. Canvas write, trigger
+run history, and one-way UI writers surface it. An older host refuses this command and keeps
+its sessions; there is no fallback to `sendKeys`, raw input, or automatic restart. Legacy
+clients retain their existing `sendKeys` wire contract. No real Windows TUI measurement is
+claimed by the fake-PTY regression fixtures.

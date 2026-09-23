@@ -1,3 +1,4 @@
+import type { TextDeliveryResult } from '../shared/text-delivery'
 import { randomUUID } from 'crypto'
 import { TerminalEmulator } from '../session-host/terminal-emulator'
 import { readWindowsConsoleOwner, sameNativeProcess } from '../session-host/windows-pane-owner'
@@ -84,7 +85,7 @@ export class NativeWindowsPane {
    * the pane. Without it those callers fell through to the session-host backend, which has no
    * session for a direct PTY, and failed every time.
    */
-  async sendText(text: string, enter: boolean): Promise<boolean> {
+  async sendText(text: string, enter: boolean): Promise<TextDeliveryResult> {
     return sendTextWhenSettled(this, text, enter, {
       current: () => this.alive,
       bracketed: () => this.pasteAware(),

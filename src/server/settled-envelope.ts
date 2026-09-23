@@ -1,3 +1,4 @@
+import type { TextDeliveryResult } from '../shared/text-delivery'
 /**
  * Server-only adapter: the tmux-backed pane is reached through PtyManager's capture + sendText.
  * The sequencing itself (paste, observe the envelope settle, submit in a second write) lives in
@@ -9,7 +10,7 @@ export { ENVELOPE_SETTLE_POLL_MS, ENVELOPE_SETTLE_POLLS } from '../core/settled-
 
 export interface SettledEnvelopePty {
   captureSession(nodeId: string): Promise<string>
-  sendText(nodeId: string, text: string, opts?: { enter?: boolean }): Promise<boolean>
+  sendText(nodeId: string, text: string, opts?: { enter?: boolean }): Promise<TextDeliveryResult>
 }
 
 export type SettledEnvelopeOptions = SettleOptions
@@ -33,7 +34,7 @@ export async function sendSettledEnvelope(
       },
       paste: async () => {
         try {
-          return await pty.sendText(nodeId, envelope, { enter: false })
+          return (await pty.sendText(nodeId, envelope, { enter: false })) === true
         } catch {
           return false
         }

@@ -217,6 +217,30 @@ describe('SessionHostClient handshake transition', () => {
     // No fallback to sendKeys/write/executeLaunch, no kill, no replacement/attach request.
   })
 
+  it.each([true, false, 'pasted-not-submitted', undefined] as const)('preserves sendKeysV2 outcome %s', async (delivery) => {
+    const { userDataDir, paths } = createUserData('text-delivery-result')
+    const commands: string[] = []
+    await serve(paths.endpoint, (request, socket) => {
+      commands.push(request.cmd)
+      if (request.cmd === 'hello') socket.write(acceptedHello(request.id))
+      else socket.write(encodeFrame({ id: request.id, ok: true, result: { delivery } }))
+    })
+    const client = new SessionHostClient({ userDataDir, repoRoot: userDataDir })
+    expect(await within(client.sendKeys('nt-existing', 'long text', true))).toBe(delivery ?? 'pasted-not-submitted')
+    expect(commands).toEqual(['hello', 'sendKeysV2'])
+  })
+  it('does not fall back or restart an older host that refuses sendKeysV2', async () => {
+    const { userDataDir, paths } = createUserData('old-text-host')
+    const commands: string[] = []
+    await serve(paths.endpoint, (request, socket) => {
+      commands.push(request.cmd)
+      socket.write(request.cmd === 'hello' ? acceptedHello(request.id) : encodeFrame({ id: request.id, ok: false, error: 'unknown command' }))
+    })
+    const client = new SessionHostClient({ userDataDir, repoRoot: userDataDir })
+    expect(await within(client.sendKeys('nt-existing', 'text', true))).toBe(false)
+    expect(commands).toEqual(['hello', 'sendKeysV2'])
+  })
+
   it('hands the socket to the production listener before the first attach response and data', async () => {
     const { userDataDir, paths, token } = createUserData('test-token-kept-off-argv')
 

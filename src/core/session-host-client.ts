@@ -1,3 +1,4 @@
+import type { TextDeliveryResult } from '../shared/text-delivery'
 // The Electron-main-side client for the session host: one long-lived connection per app process,
 // auto-spawning the host on first use and restoring every live local attachment before allowing
 // ordinary traffic through a replacement connection.
@@ -1408,10 +1409,11 @@ export class SessionHostClient {
     }
   }
 
-  async sendKeys(name: string, text: string, enter: boolean): Promise<boolean> {
+  async sendKeys(name: string, text: string, enter: boolean): Promise<TextDeliveryResult> {
     try {
-      await this.request({ cmd: 'sendKeys', name, text, enter })
-      return true
+      const result = await this.request<{ delivery?: TextDeliveryResult } | undefined>({ cmd: 'sendKeysV2', name, text, enter })
+      // A malformed success cannot prove submission; never retry a possibly accepted paste.
+      return result?.delivery === true || result?.delivery === false ? result.delivery : 'pasted-not-submitted'
     } catch {
       return false
     }

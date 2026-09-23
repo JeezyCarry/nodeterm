@@ -1,3 +1,4 @@
+import type { TextDeliveryResult } from '../shared/text-delivery'
 // The thin facade `pty-manager.ts` talks to — owns the ONE process-wide `SessionHostClient` (one
 // long-lived connection per app process, matching how `PtyManager` itself keeps one `tmuxPath`
 // for the whole process) and exposes exactly the operations pty-manager's existing tmux/ssh call
@@ -83,7 +84,7 @@ export function attachExistingSessionHostPty(name: string): SessionHostPty {
 
 /** Background write — works whether or not this process currently has a live client for `name`,
  *  exactly like `sendText`'s tmux `send-keys -t <name>` needs no attached client. */
-export async function sessionHostSendKeys(name: string, text: string, enter: boolean): Promise<boolean> {
+export async function sessionHostSendKeys(name: string, text: string, enter: boolean): Promise<TextDeliveryResult> {
   return getClient().sendKeys(name, text, enter)
 }
 

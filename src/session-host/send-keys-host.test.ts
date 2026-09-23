@@ -55,7 +55,7 @@ function fakePtyPlugin(): Plugin {
                   draining = true
                   setTimeout(() => {
                     draining = false
-                    output?.(data.slice(6, -6))
+                    output?.(process.env.NT_TEST_RENDER === 'folded' ? '[Pasted text #1 +40 lines]' : data.slice(6, -6))
                   }, 150)
                 }
               },
@@ -157,7 +157,7 @@ afterEach(() => {
 /** Boot the real bundled host against the fake pty and return the writes one sendKeys produced. */
 async function writesForSendKeys(opts: {
   announce?: string
-  render?: boolean
+  render?: boolean | 'folded'
   text: string
   enter: boolean
   /** Poll `capture` until the serialized screen proves this mode reached the emulator. */
@@ -214,9 +214,9 @@ async function writesForSendKeys(opts: {
     }
 
     socket.write(
-      encodeFrame({ id: 900, cmd: 'sendKeys', name: 'keys', text: opts.text, enter: opts.enter })
+      encodeFrame({ id: 900, cmd: 'sendKeysV2', name: 'keys', text: opts.text, enter: opts.enter })
     )
-    await expect(connected.response(900)).resolves.toMatchObject({ id: 900, ok: true })
+    await expect(connected.response(900)).resolves.toMatchObject({ id: 900, ok: true, result: { delivery: opts.render === false || opts.render === 'folded' ? 'pasted-not-submitted' : true } })
     return readFileSync(writeLog, 'utf8')
       .split('\n')
       .filter(Boolean)
@@ -239,6 +239,14 @@ describe('session-host sendKeys delivery', () => {
       enter: true
     })
     expect(writes).toEqual([`${PASTE_START}summarise the linked context${PASTE_END}`, '\r'])
+  }, 30_000)
+
+  it('returns partial delivery over the wire for a folded multiline paste', async () => {
+    const text = Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n')
+    expect(await writesForSendKeys({
+      announce: '\x1b[?2004h', awaitMode: '\x1b[?2004h',
+      text, enter: true, render: 'folded'
+    })).toEqual([`${PASTE_START}${text}${PASTE_END}`])
   }, 30_000)
 
   it('does not submit a paste that never renders', async () => {

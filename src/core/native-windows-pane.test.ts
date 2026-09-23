@@ -69,6 +69,17 @@ describe('native Windows envelope delivery', () => {
 })
 
 describe('native Windows sendText (the write verb and the app’s own writers)', () => {
+  it('reports folded pasted text without submitting or retrying', async () => {
+    const write = vi.fn()
+    const pane = new NativeWindowsPane({ pid: 10, write },
+      { cols: 80, rows: 24, scrollback: 100 }, async () => expected, {
+        wait: async () => pane.recordOutput('\r> [Pasted text #1 +40 lines]')
+      })
+    panes.push(pane)
+    pane.recordOutput('\x1b[?2004h')
+    expect(await pane.sendText('a\nb\nc', true)).toBe('pasted-not-submitted')
+    expect(write.mock.calls).toEqual([['\x1b[200~a\nb\nc\x1b[201~']])
+  })
   it('waits for a busy direct PTY composer before its single Enter', async () => {
     const write = vi.fn()
     let polls = 0

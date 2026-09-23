@@ -83,7 +83,7 @@ export type SessionHostRequest =
   | { id: number; cmd: 'resize'; name: string; cols: number; rows: number }
   | { id: number; cmd: 'pause'; name: string }
   | { id: number; cmd: 'resume'; name: string }
-  | { id: number; cmd: 'sendKeys'; name: string; text: string; enter: boolean }
+  | { id: number; cmd: 'sendKeys' | 'sendKeysV2'; name: string; text: string; enter: boolean }
   | { id: number; cmd: 'paneCommand'; name: string }
   | { id: number; cmd: 'messageOwnerV1'; name: string }
   | { id: number; cmd: 'messagePasteReadyV1'; name: string }

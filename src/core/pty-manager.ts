@@ -1,3 +1,4 @@
+import type { TextDeliveryResult } from '../shared/text-delivery'
 import os from 'os'
 import fs from 'fs'
 import path from 'path'
@@ -4194,7 +4195,7 @@ export class PtyManager {
    * composition is exported, both callers use it, and the only thing left in this method is which
    * transport runs it.
    */
-  async sendText(persistKey: string, text: string, opts?: { enter?: boolean }): Promise<boolean> {
+  async sendText(persistKey: string, text: string, opts?: { enter?: boolean }): Promise<TextDeliveryResult> {
     const enter = opts?.enter ?? true
     const target = sessionName(persistKey)
     const live = this.liveSessionForPersistKey(persistKey)

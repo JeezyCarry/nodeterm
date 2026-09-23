@@ -841,9 +841,11 @@ who never saw it.
 
 **Windows text submission waits for the composer.** Use `core/settled-text.ts` for native PTY and
 session-host `sendText`: adjacent paste/Enter writes can be consumed in one read. The bounded
-screen check may leave text unsubmitted; a true result means text was accepted, not that a turn
-started. Never retry the paste just because no submit was observed. Collapsed or hidden pastes
-may need manual Enter; device testing remains necessary.
+screen check may leave text unsubmitted; propagate `pasted-not-submitted` all the way to the
+caller and tell the user to inspect the terminal. Never treat that truthy string as success or
+automatically retry the paste. True means the requested writes completed, not that a turn began.
+The versioned `sendKeysV2` host request refuses old hosts without fallback or restart. Collapsed
+or hidden pastes may need manual Enter; device testing remains necessary.
 
 An unanswered Claude `AskUserQuestion` is correlated by session and tool-use ID in the core
 mirror, independently of its short-lived display stash. Ordinary hooks, subagent activity and

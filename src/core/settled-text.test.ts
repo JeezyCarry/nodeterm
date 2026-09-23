@@ -33,19 +33,19 @@ describe('observed text settlement', () => {
       if (kind === 'unreadable') f.screen(null)
       if (kind === 'unstable') f.screen('hello ' + polls)
     }
-    expect(await sendTextWhenSettled(f, 'hello', true, f.pane, { wait })).toBe(true)
+    expect(await sendTextWhenSettled(f, 'hello', true, f.pane, { wait })).toBe('pasted-not-submitted')
     expect(polls).toBe(15)
     expect(f.write).toHaveBeenCalledTimes(1)
   })
   it('does not send Enter after the generation exits/replaces', async () => {
     const f = fixture()
-    expect(await sendTextWhenSettled(f, 'hello', true, f.pane, { wait: async () => f.exit() })).toBe(true)
+    expect(await sendTextWhenSettled(f, 'hello', true, f.pane, { wait: async () => f.exit() })).toBe('pasted-not-submitted')
     expect(f.write).toHaveBeenCalledTimes(1)
   })
   it('refuses overlapping text and bare Enter before they write', async () => {
     const f = fixture()
     let once = false
-    const overlaps: boolean[] = []
+    const overlaps: unknown[] = []
     await sendTextWhenSettled(f, 'hello', true, f.pane, { wait: async () => {
       if (!once) {
         once = true
@@ -66,7 +66,7 @@ describe('observed text settlement', () => {
         return captures === 1 ? 'prompt' : 'hello'
       })
       vi.spyOn(f.pane, 'bracketed').mockImplementation(async () => !(change === 'mode' && captures >= 3))
-      expect(await sendTextWhenSettled(f, 'hello', true, f.pane, { wait: async () => {} })).toBe(true)
+      expect(await sendTextWhenSettled(f, 'hello', true, f.pane, { wait: async () => {} })).toBe('pasted-not-submitted')
       expect(f.write).toHaveBeenCalledTimes(1)
     }
   })
@@ -75,8 +75,16 @@ describe('observed text settlement', () => {
     f.write.mockImplementation((s) => { if (s === '\r') throw Error('exited') })
     expect(await sendTextWhenSettled(f, 'hello', true, f.pane, {
       wait: async () => f.screen('hello')
-    })).toBe(true)
+    })).toBe('pasted-not-submitted')
     expect(f.write).toHaveBeenCalledTimes(2)
+  })
+  it('reports a folded multiline paste without submitting or duplicating it', async () => {
+    const f = fixture()
+    const text = Array.from({ length: 80 }, (_, i) => `line ${i}`).join('\n')
+    expect(await sendTextWhenSettled(f, text, true, f.pane, {
+      wait: async () => f.screen('> [Pasted text #1 +80 lines]')
+    })).toBe('pasted-not-submitted')
+    expect(f.write.mock.calls).toEqual([[`\x1b[200~${text}\x1b[201~`]])
   })
   it('keeps insert-only and empty text immediate', async () => {
     const f = fixture()

@@ -818,7 +818,8 @@ async function main(): Promise<void> {
         s.resumeFor(socket)
         return { ok: true }
       }
-      case 'sendKeys': {
+      case 'sendKeys':
+      case 'sendKeysV2': {
         const s = sessions.get(req.name)
         if (!s || s.exited) return { ok: false, error: 'no such session' }
         const ok = await sendTextWhenSettled(s, req.text, req.enter, {
@@ -827,7 +828,7 @@ async function main(): Promise<void> {
           capture: () => s.serialize(200),
           write: (chunk) => s.proc.write(chunk)
         })
-        return ok ? { ok: true } : { ok: false, error: 'session unavailable or delivery busy' }
+        return ok !== false ? { ok: true, result: { delivery: ok } } : { ok: false, error: 'session unavailable or delivery busy' }
       }
       case 'paneCommand': {
         const s = sessions.get(req.name)

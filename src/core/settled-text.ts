@@ -1,3 +1,4 @@
+import type { TextDeliveryResult } from '../shared/text-delivery'
 import { sendKeysWrites } from '../session-host/send-keys-delivery'
 import { sanitizePasteText } from './paste-injection'
 import { ENVELOPE_SETTLE_POLLS, ENVELOPE_SETTLE_POLL_MS, type SettleOptions } from './settled-submit'
@@ -16,13 +17,13 @@ const visible = (text: string): string => text
   .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
   .replace(/\s+/g, '')
 
-/** True means text reached the PTY, NOT that the app accepted Enter. Never return false after
- * pasting: callers may retry false, duplicating the composer contents. No blind submit retry.
- * Generic text has no unique envelope footer, so require a changed, stable screen containing
- * the sanitized payload. Collapsed/hidden/oversize pastes may need the user's manual Enter. */
+/** True means the requested writes completed (not application acknowledgement). A partial
+ * paste is explicit: callers must surface it and never automatically resend it. Generic text
+ * requires a changed, stable screen containing the payload before submitting; unknown/folded
+ * composers are left untouched rather than blindly pressing Enter. */
 export async function sendTextWhenSettled(
   key: object, text: string, enter: boolean, pane: TextPane, options: SettleOptions = {}
-): Promise<boolean> {
+): Promise<TextDeliveryResult> {
   if (pending.has(key) || !pane.current()) return false
   pending.add(key)
   let written = false
@@ -57,15 +58,18 @@ export async function sendTextWhenSettled(
       const now = await capture()
       if (before !== null && needle && now !== null && now !== before && now.includes(needle)) {
         if (now === previous) {
-          if (await pane.bracketed() && pane.current()) pane.write('\r')
+          if (await pane.bracketed() && pane.current()) {
+            pane.write('\r')
+            return true
+          }
           break
         }
         previous = now
       } else previous = null
     }
-    return true
+    return 'pasted-not-submitted'
   } catch {
-    return written
+    return written ? 'pasted-not-submitted' : false
   } finally {
     pending.delete(key)
   }

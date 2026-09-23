@@ -1096,13 +1096,16 @@ as one burst (#780). Both native Windows `sendText` and host `sendKeys` now exec
 `core/settled-text.ts`: capture a baseline, paste without Enter, then poll at 40 ms for at most
 15 polls for a changed, stable screen containing the sanitized text. Only then write one Enter,
 after rechecking liveness/generation and paste mode. Unknown capture, unchanged output or timeout
-leaves the paste unsubmitted. True still means accepted text, so callers must not retry an
-unconfirmed submit and duplicate the paste. Overlapping sendText operations on the same pane
+leaves the paste unsubmitted and returns `pasted-not-submitted`, never `true`. The discriminant
+survives IPC/WS and `sendKeysV2`; canvas writes name the partial delivery, trigger runs record
+a terminal miss (including queue flush), and one-way UI writers raise a visible warning. Test
+success with `=== true`, never truthiness. Do not retry an unconfirmed submit and duplicate the paste. Overlapping sendText operations on the same pane
 are refused before input; insert-only, empty Enter and unframed input retain their contracts.
 A collapsed/hidden/oversize paste may require manual Enter. This is an observed-screen heuristic,
 not an application acknowledgement. Linux fake-PTY tests cover a 150 ms busy reader; real Windows
 Codex/Claude, context-link/write, dictation and rename device checks remain required. Existing
-hosts keep their old implementation until they retire; no automatic host restart is performed.
+hosts refuse the additive `sendKeysV2` command until they retire; no raw-write fallback or
+automatic host restart is performed. Legacy clients still use the existing `sendKeys` command.
 
 
 **The actual fix is older than the problem: `paste-buffer -p`.** From tmux's own man page — *"If

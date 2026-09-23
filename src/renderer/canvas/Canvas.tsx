@@ -1,3 +1,5 @@
+import { reportTextDelivery } from '../lib/textDelivery'
+import { TEXT_NOT_SUBMITTED } from '@shared/text-delivery'
 import { VisibleMiniMap } from './VisibleMiniMap'
 import { LINK_ENDPOINT_NOT_FOUND } from '@shared/canvas-link'
 import { createControlOpenBatch } from '../lib/controlOpenBatch'
@@ -3562,7 +3564,7 @@ export function Canvas() {
           void api.pty.sendText(
             selfId,
             buildContextLinkNote(agentIdOf(selfId), titleOf(otherId), shimPath)
-          )
+          ).then(reportTextDelivery)
         }
         void note(source, target)
         void note(target, source)
@@ -3579,7 +3581,7 @@ export function Canvas() {
         (sticky?.data.text as string) ?? '',
         agentIdOf(target)
       )
-      if (msg) void api.pty.sendText(target, msg)
+      if (msg) void api.pty.sendText(target, msg).then(reportTextDelivery)
     },
     [linkEndpointOf, agentIdOf, setLinkEdges, markDirty, nodes]
   )
@@ -6964,7 +6966,8 @@ export function Canvas() {
       const known = useAgentStatus.getState().byId[nodeId]?.sessionId
       let originalId = known
       if (known) {
-        await api.pty.sendText(nodeId, '/branch')
+        const delivery = await api.pty.sendText(nodeId, '/branch')
+        if (delivery !== true) return { ok: false, error: delivery === 'pasted-not-submitted' ? TEXT_NOT_SUBMITTED : 'Branch delivery failed.' }
       } else {
         const res = await branchClaudeSession(api, nodeId)
         if (!res.ok || !res.originalId) {
@@ -12160,7 +12163,8 @@ export function Canvas() {
               const outcome = await guardConcurrentRestart(args.node, async () => {
                 try {
                   const ok = await api.pty.sendText(args.node, args.text ?? '')
-                  return ok ? ('sent' as const) : ('failed' as const)
+                  if (ok === 'pasted-not-submitted') thrown = TEXT_NOT_SUBMITTED
+                  return ok === true ? ('sent' as const) : ('failed' as const)
                 } catch (e) {
                   thrown = String(e)
                   return 'failed' as const
