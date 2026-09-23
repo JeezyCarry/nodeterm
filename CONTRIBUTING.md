@@ -690,3 +690,7 @@ Two files, two audiences:
 **If you change or discover something other contributors must know, update this file too.** An
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
+
+Managed Codex login terminals are agent-less: core identifies their provider from the saved
+account list. Before opening one, await `useSettings.getState().flush()` after adding the account.
+The normal 300 ms coalesced save is too late: an unknown id can launch against the system home.
