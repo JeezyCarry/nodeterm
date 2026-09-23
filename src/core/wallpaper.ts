@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFile, mkdir, readdir, readFile, stat, unlink } from 'node:fs/promises'
+import { copyFile, mkdir, open, readdir, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { IPC } from '../shared/ipc'
@@ -162,15 +162,23 @@ function stills(): Promise<ScannedStill[]> {
   return stillScan
 }
 
+/**
+ * The size check and the read go through ONE open descriptor, so the file measured is the file
+ * read: a stat-then-readFile pair could be handed a different (larger) file between the two.
+ */
 async function toDataUrl(file: string): Promise<string | null> {
+  let fh
   try {
-    const st = await stat(file)
-    if (st.size > MAX_LOAD_BYTES) return null
+    fh = await open(file, 'r')
+    const st = await fh.stat()
+    if (!st.isFile() || st.size > MAX_LOAD_BYTES) return null
     const ext = path.extname(file).slice(1).toLowerCase()
     const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
-    return `data:${mime};base64,${(await readFile(file)).toString('base64')}`
+    return `data:${mime};base64,${(await fh.readFile()).toString('base64')}`
   } catch {
     return null
+  } finally {
+    await fh?.close().catch(() => {})
   }
 }
 

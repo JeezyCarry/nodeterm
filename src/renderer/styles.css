@@ -1746,6 +1746,12 @@ body,
   animation-play-state: paused;
 }
 
+/* A glass node is rounder (14px) than the 10px the status glows above are drawn at, so the ring
+   would sit off the corners. Declared after them: same specificity, later wins. */
+.react-flow__node:has(.term-node.term-node--glass)::after {
+  border-radius: 14px;
+}
+
 /* Bridge link handles (Claude nodes): dots on the header row, on top of the node so they're
    never buried under the terminal body. Subtle until you hover the node, then prominent.
    Never set `transform` on a React Flow handle: the side classes (.react-flow__handle-left/right/
