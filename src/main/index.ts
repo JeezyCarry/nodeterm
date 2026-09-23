@@ -19,6 +19,7 @@ installLogSink(logBuffer)
 import { writeFilesToClipboard } from './clipboard-files'
 import { pickProjectIcon } from './project-icon-upload'
 import { allowGuestNavigation } from './webview-nav'
+import { installWebviewZoom } from './webview-zoom'
 import { hostOsFromPlatform, sshServerCopy } from '../shared/ssh-server'
 import { macTitleBarOptions, trafficLightPositionFor } from './window-chrome'
 import { resolveTabBarHeight } from '@shared/window-chrome-metrics'
@@ -1264,6 +1265,7 @@ app.whenReady().then(async () => {
         /* logging must never break a page */
       }
     })
+    installWebviewZoom(contents, process.platform === 'darwin')
     if (contents.getType() !== 'webview') return
     // Web nodes may only show http(s) pages, jailed nt-media:// content, or origin-gated
     // local file:// pages (policy + tests in webview-nav.ts).
