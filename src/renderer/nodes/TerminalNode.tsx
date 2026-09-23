@@ -1,3 +1,5 @@
+import { patchImeModeSwitch } from '../terminal/ime-mode-switch'
+
 import { deliverRelayInitialLaunch } from '../terminal/relay-initial-launch'
 import { commitLaunch } from '../terminal/launch-attempt'
 import { isLaunchShell } from '@shared/agents/pane'
@@ -2847,6 +2849,7 @@ export function TerminalNode({
       term.loadAddon(fit)
       term.loadAddon(searchAddon)
       term.open(container)
+      patchImeModeSwitch(term)
       // Renderer-parity: quantize the char measurement to the device-pixel grid, so a budget
       // grant/release swaps renderers without the text visibly reflowing (see the helper).
       quantizeCharSize(term)

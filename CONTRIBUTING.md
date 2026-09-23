@@ -824,6 +824,11 @@ Two files, two audiences:
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
 
+- Media URLs live for the app run. Remote cache pruning must keep files already handed to
+  players; the cache cap is soft until restart. Use the existing `video` node for audio too.
+- Subagent reload replay is display-only and current-host-only. Never replay status/permission
+  events or treat a replayed card as verified process ownership; subscribe before taking its snapshot.
+
 **Phone consent belongs to the verified handshake, not the browse socket.** A standing phone's
 SAS request survives transport closure only until its 120-second deadline; approval requires the
 issued id and displayed box key together. Keep request/reply outcomes distinct (stale request,
