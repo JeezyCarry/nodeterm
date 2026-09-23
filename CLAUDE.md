@@ -3780,8 +3780,9 @@ Two opt-in settings, both default OFF so an update changes nothing on screen:
   imported image must be a hash-named DIRECT child of `<userData>/wallpapers/` (`cachedImagePath`,
   the whole jail). Chromium cannot decode HEIC, so macOS converts with `/usr/bin/sips` to a JPEG
   ≤ 3840px — and `sips -Z` also UPSCALES (measured: 320px → 3840px), so it is passed only when the
-  image is larger. Every macOS import goes through it; elsewhere an import over the 25 MB load cap is
-  refused at import time, where the picker shows the reason, rather than failing silently at load.
+  image is larger. An import is copied untouched unless it must be converted (HEIC, over 3840px or
+  over the 25 MB load cap — re-encoding everything would flatten PNG/WebP alpha); off macOS, HEIC or
+  an over-cap image is refused at import time, where the picker shows the reason.
 - **The cache is pruned on a SAVED change and on import, never at boot.** `SettingsStore.init`
   answers an unreadable settings.json with the defaults, and pruning against that would delete the
   image the user chose. Only hash-named full-size files are candidates; thumbnails, temps and
