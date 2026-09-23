@@ -813,7 +813,7 @@ export const SHADOW_CMD_TIMEOUT_MS = 5_000
  * It exists so a BURST — an agent pushing a multi-line prompt, a run of slash commands — costs one
  * `tmux -C` child instead of one per keystroke batch, and nothing more. Ten seconds is past any
  * plausible gap inside one such burst and far short of every lifecycle it must not interfere with:
- * the renderer's 5-minute park (`TERM_PARK_MS`), the 10-minute offscreen dispose
+ * the renderer's park (10 min by default), the 10-minute offscreen dispose
  * (`offscreen-policy.ts`) and the 10-minute idle reap (`REAP_IDLE_MS`). That ordering is the point
  * of picking a number this small: an idle client is a real tmux client on some session, and the
  * shorter it lives the smaller the window in which anything has to reason about it at all.

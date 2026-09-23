@@ -625,7 +625,7 @@ Lifecycle, by intent:
   carry over; do NOT "optimize" this into a respawn+redraw — a fresh xterm on a reused client
   misses the attach-time mode sequences and breaks scrolling). The park timer then runs the real
   teardown: `kill()` detaches the PTY client; the tmux session keeps running. **Window and cap
-  are settings (issue #886)**: `settings.terminalParkMinutes` (default 5; **0 = until app quit** —
+  are settings (issue #886)**: `settings.terminalParkMinutes` (default **10**, raised from 5; **0 = until app quit** —
   `parkWindowMs` returns `null` and NO timer is armed, never `Infinity`, which `setTimeout` clamps
   to ~1 ms and would dispose every park at once) and `settings.terminalParkMax` (default **20**, raised from 12), both
   re-validated at park time. The LRU cap evicts **local parks before remote ones**
@@ -1344,6 +1344,18 @@ session.
 - **browser** (`BrowserNode.tsx`) — a navigable Chromium browser wrapping the shared
   `BrowserSurface` (webview + toolbar); the last top-level URL persists to `data.url`, and the same
   surface backs the kanban card modal's browser popup.
+  **Page zoom is owned by the GUEST boundary, not the canvas DOM** (`@shared/webview-zoom` +
+  `main/webview-zoom.ts`, 2026-09-20). Measured on Electron 42.10.1 with a physical wheel injection:
+  Ctrl+wheel over the page arrived in its OOPIF with `ctrl=true`, the host received NO `wheel`
+  event, and Electron left the factor at 1 until the guest `WebContents`'s `zoom-changed` handler
+  called `setZoomLevel` (one level produced 1.2). So `.browser-node__view` / the web node body KEEP
+  `nowheel` — it prevents React Flow from taking a wheel packet over the page, and removing it
+  cannot make an OOPIF event bubble. Main's one `web-contents-created` listener installs wheel and
+  Cmd/Ctrl +/-/0 zoom only for `getType() === 'webview'`; the shared `WebviewZoomControls` calls the
+  same 50%–300% policy for `WebNode` and `BrowserSurface`, which also covers the card modal. The app
+  does NOT persist zoom in `project.json`: Electron propagates a zoom level by origin, so a per-node
+  persisted value would make two nodes for one origin fight. Desktop: full; Server Edition:
+  controls hidden (no Electron guest); Mobile: N/A (no canvas).
 - **files** (`FilesNode.tsx`) — a file-manager node: ONE directory listing (`data.cwd`, persisted),
   pinned to the canvas beside the terminals working in it. Deliberately not a second Explorer: the
   drawer is a single tree rooted at the project cwd that covers the canvas, so it gives you one
@@ -3159,8 +3171,19 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     on an SSH host got a Claude dir that does not exist and NO `CODEX_HOME` — its codex silently ran
     as the host's system login (`remoteCodexTmuxEnvArgs` existed with no caller). The system Codex
     account is left to the host's own env (a remote `CODEX_HOME` of the user's — a snap remap — must
-    win). The running-node **Switch Codex account** is shown disabled on SSH nodes: its three-phase
-    switch plans rollouts in LOCAL homes only.
+    win).
+  - **Switch Codex account on an SSH node** (2026-09) does NOT use the local three-phase reservation
+    (it plans rollouts in LOCAL homes). It is one host-side exposure —
+    `codexAccounts.switchThreadRemote` → `SshProjectManager.remoteCodexSwitchThread` →
+    `remoteCodexExposeThread` (relay `expose-thread`): resolve the thread across every account
+    catalog on the host, hardlink the one authoritative rollout into the target home, verify the
+    target's app-server discovers it, roll the link back if not; an ambiguous thread is refused.
+    Then the usual still-eligible check and a restart-shell recycle, with the rebind riding
+    `beforeRecycle` (never a separate setNodes). A hardlink, not a copy: both accounts see ONE file,
+    so there is no diverged-copy case. Needs the relay runtime on the host (node + codex + curl);
+    without it the switch fails with a notice and nothing changes. `planCodexAccountSwitch` now
+    refuses a target on another machine than the node (`hostKey`) — the switch never crosses
+    machines (moving a local conversation to a host is `transferThreadToSsh`, a separate flow).
   - **Linked accounts** (`ClaudeAccount.configDir`) — a PRE-EXISTING local config
     dir the user already drives themselves (`export CLAUDE_CONFIG_DIR=~/.claude-2; claude …` in a
     plain terminal) adopted as a first-class account without a login node. Settings → Accounts →

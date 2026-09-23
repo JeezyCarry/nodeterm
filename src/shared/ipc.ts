@@ -78,6 +78,7 @@ export const IPC = {
   codexAccountsCommitSwitch: 'codex-accounts:commit-switch',
   codexAccountsFinishSwitch: 'codex-accounts:finish-switch',
   codexAccountsRollbackSwitch: 'codex-accounts:rollback-switch',
+  codexAccountsSwitchThreadRemote: 'codex-accounts:switch-thread-remote',
   codexAccountsTransferThreadToSsh: 'codex-accounts:transfer-thread-to-ssh',
   claudeCliCaps: 'claude-cli:caps',
   grokCliCaps: 'grok-cli:caps',

@@ -354,6 +354,13 @@ lane unaffected.
   unmounting. `display:none` is safe (measured: state, scroll and viewport size survive); a reorder
   or unmount reloads the user's page and loses their in-page state.
 
+- **A `<webview>` page's wheel never reaches the host DOM.** The guest is an out-of-process frame:
+  measured on Electron 42, physical Ctrl/Cmd+wheel reached the page and emitted `zoom-changed` on
+  the guest `WebContents`, while no host `wheel` listener fired. Keep `nowheel` on the webview host
+  (it protects React Flow routing) and install page zoom in main through `installWebviewZoom`;
+  removing the class or adding a renderer wheel handler cannot implement guest zoom. The shared
+  renderer controls call the same `@shared/webview-zoom` policy directly on the attached guest.
+
 These are the ones that come up in review most often. Each exists because its absence caused a real
 bug.
 
