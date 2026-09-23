@@ -398,7 +398,7 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
       <SearchableRow {...ROWS.glassTerminals}>
         <FieldRow
           label="Glass terminals"
-          description="Terminal nodes become frosted glass over the wallpaper or canvas. Their tint is set per terminal theme so text keeps at least 4.5:1 contrast whatever is behind it (Solarized Light is already below that and stays opaque). Terminal nodes only."
+          description="Terminal nodes become frosted glass over the wallpaper or canvas. Their tint is set per terminal theme so regular text keeps at least 4.5:1 contrast whatever is behind it (Solarized Light is already below that and stays opaque). Coloured output such as red or blue can fade over bright parts of the wallpaper. Terminal nodes only."
           control={
             <Switch
               checked={glassTerminals === true}

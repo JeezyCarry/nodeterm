@@ -3797,7 +3797,9 @@ Two opt-in settings, both default OFF so an update changes nothing on screen:
   header takes the TERMINAL foreground for its text tokens, since it sits on the terminal's tint.
   **ANSI palette colours are NOT protected** (only the foreground is): protecting all 16 at
   min(3, own opaque contrast) forces alpha 1 on every built-in theme, because slots like `black` on
-  a dark theme sit at ~1.3:1 and any translucency moves some backdrop onto them. Open product call.
+  a dark theme sit at ~1.3:1 and any translucency moves some backdrop onto them. Decided: keep the
+  glass (foreground-only guarantee); the blur softens bright spots, and the Settings copy says
+  coloured output can fade.
 - **xterm paints no background under glass**: the theme background keeps its RGB at alpha 0
   (`glassTheme`, memoised per theme so `applyLiveOptions`' identity compare stays a no-op) plus
   `allowTransparency`, so the WebGL atlas is rasterised without a baked-in background. Both toggle
