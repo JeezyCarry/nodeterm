@@ -14,7 +14,17 @@ import {
   sshHostKey,
   type SshConnection
 } from '../../shared/ssh'
-import type { DownloadResult, SshPassphraseRequest, SshProjectStatusEvent } from '../../shared/types'
+import type {
+  ClaudeSessionCopyResult,
+  DownloadResult,
+  SshPassphraseRequest,
+  SshProjectStatusEvent
+} from '../../shared/types'
+import {
+  parseRemoteSessionCopy,
+  remoteClaudeConfigDir,
+  remoteSessionCopyCommand
+} from '../../core/remote-claude-session-copy'
 import { candidateName, safeDownloadBasename } from '../../core/download-name'
 import { removeAtomic, renameAtomic } from '../../core/fs-atomic'
 import { findExecutableSync, shellPathNow } from '../../core/exec-path'
@@ -2215,6 +2225,44 @@ export class SshProjectManager {
     if (!c) return
     const dir = remoteAccountConfigDir(accountId)
     await this.r.run(childArgs(c.conn, c.controlPath, `rm -rf ${quoteRemotePath(dir)}`))
+  }
+
+  /**
+   * The SSH leg of "Switch Claude account": copy a conversation between two account dirs ON THE
+   * HOST (`remote-claude-session-copy.ts` builds the script; it runs over this project's master).
+   * Refuses an account pinned to another host — its dir would name a path on a machine this
+   * connection does not reach — and a connection whose `$HOME` never resolved (the account dirs are
+   * absolute paths under it). A cut stream or failed ssh parses as `failed`, never as success.
+   */
+  async remoteClaudeSessionCopy(
+    projectId: string,
+    sessionId: string,
+    source: { id?: string; host?: string },
+    target: { id?: string; host?: string }
+  ): Promise<ClaudeSessionCopyResult> {
+    const c = this.conns.get(projectId)
+    if (!c || !c.remoteHome) return { ok: false, reason: 'failed' }
+    const here = sshHostKey(c.conn)
+    if ((source.id && source.host !== here) || (target.id && target.host !== here))
+      return { ok: false, reason: 'unknown-account' }
+    let cmd: string | null
+    try {
+      cmd = remoteSessionCopyCommand({
+        sessionId,
+        sourceConfigDir: remoteClaudeConfigDir(c.remoteHome, source.id),
+        targetConfigDir: remoteClaudeConfigDir(c.remoteHome, target.id),
+        tempId: randomUUID()
+      })
+    } catch {
+      return { ok: false, reason: 'bad-request' } // an account id outside the alphabet
+    }
+    if (!cmd) return { ok: false, reason: 'bad-request' }
+    try {
+      const { code, stdout } = await this.r.run(childArgs(c.conn, c.controlPath, cmd))
+      return code === 0 ? parseRemoteSessionCopy(stdout) : { ok: false, reason: 'failed' }
+    } catch {
+      return { ok: false, reason: 'failed' }
+    }
   }
 
   /**

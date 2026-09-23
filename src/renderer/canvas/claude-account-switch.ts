@@ -9,13 +9,24 @@
 //   4. recycle the tmux session, whose respawn gets the new CLAUDE_CONFIG_DIR and whose cold-restore
 //      auto-resume runs `claude --resume <same id>` under it.
 //
+// An SSH project's node switches the same way between the accounts pinned to ITS host; step 2 then
+// runs on the host (`claudeAccounts.copySession` with the project's ctx).
+//
 // This file is the renderer's own fail-closed refusal of what cannot work; core re-checks the target.
 
 import type { ClaudeAccount } from '@shared/types'
+import { sshHostKey, type SshServer } from '@shared/ssh'
 
-/** Accounts a node on THIS machine can be switched onto: settled, local (managed or linked). */
-export function claudeSwitchTargets(accounts: readonly ClaudeAccount[]): ClaudeAccount[] {
-  return accounts.filter((a) => !a.host && !a.pending)
+/**
+ * Accounts a node can be switched onto: settled ones on the node's OWN machine — local (managed or
+ * linked) for a local node, the accounts pinned to its host for an SSH node (`hostKey` =
+ * `sshHostKey`). An account on another machine has no dir where the pane runs.
+ */
+export function claudeSwitchTargets(
+  accounts: readonly ClaudeAccount[],
+  hostKey?: string
+): ClaudeAccount[] {
+  return accounts.filter((a) => !a.pending && (hostKey ? a.host === hostKey : !a.host))
 }
 
 export interface ClaudeSwitchNode {
@@ -24,7 +35,10 @@ export interface ClaudeSwitchNode {
   accountId?: string
   /** Where its transcript actually lives — `effectiveAccountId(...)`, the same id its readers use. */
   readAccountId?: string
-  /** A remote (SSH) or relay session: its transcript and account dirs are on another machine. */
+  /** An SSH project's node: the `sshHostKey` of the host its pane runs on. */
+  hostKey?: string
+  /** A session this canvas cannot switch: a relay tab (another core's accounts), or a remote node
+   *  whose host could not be identified. */
   remote: boolean
   sessionId?: string
 }
@@ -52,7 +66,7 @@ export function planClaudeAccountSwitch(
   if (target === (node.accountId || undefined)) return { ok: false, reason: 'same-account' }
   // Never substitute: a target that is gone, pending or on another host is refused, not swapped for
   // the system account.
-  if (target !== undefined && !claudeSwitchTargets(accounts).some((a) => a.id === target))
+  if (target !== undefined && !claudeSwitchTargets(accounts, node.hostKey).some((a) => a.id === target))
     return { ok: false, reason: 'unavailable' }
   if (!node.sessionId) return { ok: false, reason: 'no-session' }
   return {
@@ -76,4 +90,13 @@ export function copyRefusalText(reason: string, targetLabel: string): string {
           ? `${targetLabel} is no longer available`
           : 'the transcript could not be copied'
   return `Could not move this conversation to ${targetLabel} — ${why}. It was resumed on its current account.`
+}
+
+/** The `sshHostKey` of the host an SSH project's node runs on, or undefined for a local node (and
+ *  for a remote node carrying no `data.ssh`, which the caller then refuses as unswitchable). */
+export function claudeSwitchHostKey(
+  n: { data: Record<string, unknown> } | undefined
+): string | undefined {
+  const ssh = n?.data.ssh as SshServer | undefined
+  return ssh ? sshHostKey(ssh) : undefined
 }
