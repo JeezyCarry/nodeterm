@@ -4326,6 +4326,13 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
     XWayland and quietly ignored otherwise. Size and maximized restore either way, which is what the
     drop-don't-clamp rule already degrades to.
 - **Window chrome**: macOS integrated title bar (`titleBarStyle: 'hiddenInset'`); the tab
+  strip's stationary viewport is the only `no-drag` region for its contents. Explicit regions on
+  scrolled descendants escape the overflow clip in Electron's native hit test and subtract from
+  the wordmark after scrolling (#847). Keep tab/button/input descendants at the initial `none`;
+  the viewport already excludes dragging over them. `scripts/tabbar-drag.test.ts` uses real
+  Electron and native XTest input on a disposable Xvfb display (CDP input bypasses this hit test).
+  It checks 41 tabs at start/partial/middle/end/back, 28/40/64px heights and both padding modes;
+  it does not verify macOS traffic lights, Windows, or movement under a real window manager. The
   bar (`TabBar.tsx`) is the drag region with the `nodeterm` logo + a **Chrome-style tab strip**
   (2026-09-16): inactive tabs are flat and separated by a 1px divider that drops on both sides of a
   hovered or active tab, hover is an inset pill, and the active tab is `--canvas-bg` with rounded

@@ -685,6 +685,11 @@ proof of foreground clipboard-image support. Keep shell/SSH/Server file routing 
 suppression of accompanying text; do not synthesize Ctrl+V or try both routes without a
 capability and receipt protocol. The shortcuts panel documents this distinction (#712).
 
+The titlebar's scroll viewport owns its `no-drag` region. Do not add `app-region: no-drag`
+to tabs or their descendants: Electron can subtract their off-screen rectangles from the
+wordmark's drag area. `scripts/tabbar-drag.test.ts` checks native hit testing with isolated
+Electron/Xvfb on Linux; macOS traffic lights and actual window movement still need device checks.
+
 `npm test` must pass, and `npm run typecheck` is the fastest gate.
 
 Beyond that, one habit is worth more than any other here:
