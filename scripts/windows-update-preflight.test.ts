@@ -5,7 +5,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 
 const root = path.resolve(__dirname, '..')
-const script = path.join(root, 'build/windows-update-preflight.ps1')
+const script = path.join(root, 'scripts/windows-update-preflight.ps1')
 const include = fs.readFileSync(path.join(root, 'build/installer.nsh'), 'utf8')
 const powershell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh'
 const available = spawnSync(powershell, ['-NoProfile', '-Command', 'exit 0']).status === 0
