@@ -218,8 +218,8 @@ reads as disarmed until armed on this machine). A node's `data`
 carries `title, color, group, tags, collapsed, expandedHeight, shell, cwd, text,
 initialCommand, filePath, diffStaged`, `icon` (a user-chosen emoji or picture — see **Node icons**
 below), `agentId` (which agent CLI a terminal node runs —
-persisted), and `accountId` (which managed Claude account a terminal node runs under — immutable,
-resolved at creation, persisted; see **Managed Claude accounts**). `nodeStatesToFlow` defaults a
+persisted), and `accountId` (which managed Claude account a terminal node runs under — resolved
+at creation, changed ONLY by the explicit account-switch actions, persisted; see **Managed Claude accounts**). `nodeStatesToFlow` defaults a
 missing `kind` to `terminal` for backward compat and migrates the legacy `tags:['claude']` marker
 to `data.agentId = 'claude'`. The SDK **chat node** was removed (2026-07); `nodeStatesToFlow` also
 migrates a persisted `chat` node into a **sticky tombstone** in place, reading its legacy
@@ -569,21 +569,28 @@ Lifecycle, by intent:
   landed. The predicate is deliberately the narrowest one that closes it — a tmux-backed session is
   never protected (the kill costs a redraw), and neither is a plain terminal, a finished agent or
   an unknown state (nothing is running to lose). **A fifth lever owes the same gate.**
-  The fifth is the offscreen release of an ARMED node (`--after`, `shouldDeferReleaseForHeldLaunch`,
-  2026-09-02): the held launch is delivered by session NAME, so with tmux underneath the release is
-  harmless and the node stays `sessionReady` (the teardown keeps the flag for an offscreen release
-  of a tmux-backed session); on the plain-shell fallback the release would destroy the very pane
-  the launch is typed into, so it is deferred while armed. MEASURED before the fix: a released
-  QUEUED node held its launch through its dependency going `done`, the badge claimed the terminal
-  "has not started yet", and only a camera travel (revive) ever fired it — "the chain works when I
-  look at it" was this.
+  The fifth is the offscreen release of an ARMED node (`shouldDeferReleaseForHeldLaunch`):
+  held launches now require the attached transport for echo verification, on every backend.
+  Keep that transport until delivery or recovery; a blind paste by session name loses the
+  shell-init repair and canonical-line protections.
 - **Node unmount (project switch)** → the RENDERER **parks** the terminal (`TerminalNode.tsx`
   `parkedTerminals`): the xterm instance + its attached PTY stay alive with the `.xterm` element
-  detached from the DOM, so a remount within `TERM_PARK_MS` (5 min) re-adopts them — instant, and
+  detached from the DOM, so a remount within the park window re-adopts them — instant, and
   exact (the tmux client never detaches, so mouse-tracking/alternate-screen modes and scrollback
   carry over; do NOT "optimize" this into a respawn+redraw — a fresh xterm on a reused client
   misses the attach-time mode sequences and breaks scrolling). The park timer then runs the real
-  teardown: `kill()` detaches the PTY client; the tmux session keeps running. WebGL contexts are
+  teardown: `kill()` detaches the PTY client; the tmux session keeps running. **Window and cap
+  are settings (issue #886)**: `settings.terminalParkMinutes` (default 5; **0 = until app quit** —
+  `parkWindowMs` returns `null` and NO timer is armed, never `Infinity`, which `setTimeout` clamps
+  to ~1 ms and would dispose every park at once) and `settings.terminalParkMax` (default **20**, raised from 12), both
+  re-validated at park time. The LRU cap evicts **local parks before remote ones**
+  (`planParkEviction`'s `isRemote`): a local re-adopt miss is a warm reattach in ms, an SSH one is
+  a new client per terminal paced 4-per-master, plus a login if the master idled out
+  (`ControlPersist`) — and a live parked client is also what keeps that master from idling out.
+  Parking does not raise sshd `MaxSessions` pressure: masters are per project, so a parked SSH
+  project holds exactly the channels it held while in view. Measured (headless xterm, 200×50): a
+  parked tmux-backed terminal ≈ **2 MB** (alternate screen, empty normal buffer — tmux owns the
+  history); a plain shell with a full 10k scrollback ≈ **27 MB**. WebGL contexts are
   **viewport-scoped and budgeted** (browsers cap ~16 live contexts, and a canvas holds far more
   terminals). A per-terminal `IntersectionObserver` (`rootMargin` pre-announces approach) only
   REPORTS visibility to a **module-level budget coordinator** (`terminal/webgl-budget.ts`) that owns
@@ -1173,8 +1180,8 @@ session.
   fall through would reach the pty as `\x03` (SIGINT). Ctrl+Insert exists because Chromium reserves
   Ctrl+Shift+C for the inspector and a page cannot `preventDefault()` it — which is where Server
   Edition users land. Plain **Ctrl+C** is never intercepted.
-  **PASTE is the platform's, never ours** (`isPasteShortcut` → the `'native'` action): we own no
-  paste path — ⌘V on mac reaches the Edit menu's `{role:'paste'}`, whose `paste` event xterm frames
+  **Text paste uses the platform event** (`isPasteShortcut` → the `'native'` action): ⌘V on
+  mac reaches the Edit menu's `{role:'paste'}`, whose `paste` event xterm frames
   as a bracketed paste. All the terminal does is stop CANCELLING the chord, and that is a
   **Windows-only** claim: xterm's keymap turns Ctrl+V into `\x16` with `cancel`, which suppressed
   Chromium's paste command *and* the Ctrl+V accelerator behind it, so Ctrl+V pasted nothing at all
@@ -1184,6 +1191,13 @@ session.
   key nor a cancel for them, so the platform already pastes. To select in **xterm** instead of tmux
   (or inside an app that grabs the mouse, like vim/htop), hold **Option** (mac —
   xterm's `macOptionClickForcesSelection`) or **Shift** (Linux/Windows) while dragging.
+  **Screenshot paste (#712):** the capture handler in both TerminalNode and ModalTerminal
+  owns files/images: save/upload, then paste the path, suppressing accompanying text. A
+  macOS Ctrl+V may instead let a local foreground agent read its own system clipboard.
+  Configured agent identity proves neither foreground state nor clipboard support, and a
+  PTY write has no image receipt. Never synthesize that key or fall back between routes.
+  The macOS shortcuts reference explains both keys; its Server Edition copy explicitly
+  says Ctrl+V cannot transfer the viewer's clipboard to the host. SSH keeps remote uploads.
   **Copying now says so**: the OSC 52 handler floats a transient `Copied N lines` pill over the
   terminal's BOTTOM-RIGHT corner (`.term-copy-pill`, the same class on the canvas node and the
   kanban card modal — one session seen twice must not speak in two voices; bottom-right because
@@ -1616,6 +1630,36 @@ else, and its context links must keep classifying across restarts).
     because `/quit --delete` exits *and permanently deletes* the session history, i.e. exactly what the
     restart exists to resume (pinned by its own test).
   Full picture, measurements, gaps and a device checklist: **`docs/gemini-agent.md`**.
+- **Claude session context capacity (#818)** — the managed hook reports only
+  `CLAUDE_CODE_MAX_CONTEXT_TOKENS` from the effective Claude process environment (including
+  `--settings` env), never the GUI/server process environment. HookServer validates decimal safe
+  integers and verified node identity before passing optional `contextWindow` metadata to BOTH
+  shells. Missing metadata means an older/unverified hook; explicit null means the current hook
+  observed no valid override and clears the old observation. Local and SSH tails apply the exact
+  per-session limit before the family estimate, including SMALLER limits; equal model ids do not
+  share configuration. The renderer labels family fallbacks as estimates. Claude observations are
+  not loaded from localStorage: `context.ensure` rehydrates usage, and until another verified hook
+  observes the session env an idle Claude session has only an estimated window. No arbitrary
+  endpoint fields, credentials, config-file reads or CLI commands are involved. A changed transcript
+  starts fresh tracked state; unchanged hook observations never replay usage. Only `context.ensure`
+  explicitly replays the live snapshot for a remounted consumer. Async reads from replaced/untracked
+  entries cannot publish.
+  Desktop and Server share validation; the SSH tail receives the remote hook's own env. Canvas and
+  kanban share ContextMeter. Mobile's separate implementation needs the same provenance distinction.
+  Gateway catalogue/accepted-launch work remains in #723/#725; this does not replace those PRs.
+- **SSH context polling is a bounded byte protocol** (issue #816). The initial snapshot reads
+  only the last 1 MiB and records the absolute end offset; subsequent polls process at most
+  1 MiB. `core/remote-ssh/transcript-window.ts` measures size and uses block-aligned POSIX `dd`
+  with base64, transferring less than 1.6 MiB including alignment/framing; idle replies contain
+  only the size/range header. The encoded dd exit status must survive the shell pipeline:
+  pipeline success alone can hide a failed read. Short/malformed replies and SSH failures throw,
+  retain the cursor, and back off from 2s to 60s with payload-free diagnostics. Bootstrap and
+  detected truncation restore usage without replaying historical task notifications/tool results,
+  including a historical partial line completed later. A changed remote reference replaces its
+  tracking generation so stale in-flight replies cannot publish. Server Edition uses the local
+  core tail on its host (no SSH-project manager); mobile has its own direct-SSH implementation,
+  so this desktop fix makes no claim about that separate path. Real `/bin/sh` fixtures cover
+  >20 MiB idle files and a new notification split inside UTF-8; BSD/macOS SSH remains a device check.
 - **Context-meter rehydration (`context:ensure`)** — the meter is fed by hook events, and a tmux
   session outlives the app, so a continuing session that is idle after a restart emits nothing and
   its meter stays blank until the user's next prompt. The mount-time read that exists to close that
@@ -1910,6 +1954,14 @@ else, and its context links must keep classifying across restarts).
   - The claude/gemini loop body became `installJsonAgentRemote`, with the same fail-open try/catch
     its three siblings already had. Its three steps stay strictly ordered inside: the merge reads
     the file the write then replaces.
+
+**Command-bearing terminal opens (issue #653):** the shared hook-server route requires verified
+node identity whenever `open-terminal` carries `cmd`, including an empty value or a dry run.
+The strict-policy override and foreign-instance fallback cannot release this gate. Desktop plain
+terminal opens keep their existing identity policy; Server Edition still requires verification
+for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
+command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
+
 - **Per-node hook identity** (`src/core/agents/node-auth-*.ts`, `node-token-*.ts`,
   `node-identity-policy.ts` — full write-up in **`docs/node-identity.md`**) — the shared bearer proves
   "a session on this machine", never *which* session, so every node also gets a capability derived
@@ -2020,6 +2072,22 @@ else, and its context links must keep classifying across restarts).
   refuses TODAY, not on the cutoff** — which is why every token sweep must also call
   `hookServer.forgetProvenNode`. `/hook/*` never 403s a missing token: the phone, the cross-instance
   failover and every pre-token session legitimately have none.
+- **Shared Claude/Gemini settings are user data (issue #851).** The local hook install/remove
+  and Claude fullscreen writers share `core/agents/hooks/settings-file.ts`; SSH system/account
+  hook installs and fullscreen writes share `remote-settings-file.ts`. Only ENOENT / the remote
+  explicit missing-file status or a successfully read empty/whitespace file starts from `{}`.
+  Malformed/non-object/read-error settings are preserved. Each transaction stages the complete output, takes a `.nodeterm-lock` directory,
+  compares its original bytes before rename, and preserves the file mode. Remote snapshots and
+  replacements travel on stdin, with a byte-count check against truncated transport; the shell
+  needs no Python/Node/jq. Local profiles resolve symlinks and lock/update the shared target,
+  rechecking resolution before publication. SSH does the same with plain readlink + cd -P
+  (macOS-compatible, no GNU -f), bounding cycles and refusing dangling links/newline paths.
+  Grok's owned file heals malformed JSON and hook shapes by rebuilding its managed config.
+  A held or crash-left lock skips the update with a diagnostic naming the lock and instructing
+  the user to stop writers before inspecting/removing a stale lock; it never gets stolen. External editors need not honor our lock: the final comparison detects edits
+  during merge/staging, but cannot eliminate an external write between comparison and rename.
+  No claim that the reporter's historical wipe was proven to take this path: the catch-to-empty
+  writer and its data loss were reproduced in fixture homes.
 - **Fullscreen TUI (Claude)** — through the SAME `settings.json` seam the hook installer uses,
   nodeterm ensures Claude's `"tui": "fullscreen"` so a session takes the alternate screen + mouse
   and behaves natively in tmux (else a drag falls into copy-mode). Two guardrails: **write-if-absent**
@@ -2510,17 +2578,35 @@ else, and its context links must keep classifying across restarts).
   live **`lastTurnError`** is NOT (issue #521, below). (2) Only `hasHooks` agents may be
   waited on — a plain terminal never reports done, so `resolveAfter` **refuses** it rather than
   letting `launchesToFire` (which cannot tell "never will" from "not yet") hang the node forever.
-  (3) If the deps are **already satisfied at creation**, the node is NOT armed: the command stays
-  `initialCommand` so the node's own mount path delivers it through `writeWhenShellReady` —
-  arming would hand delivery to the canvas effect, which races the node's PTY into existence.
-  (4) Delivery is **exactly-once via `launchInFlight`** (an id stays in the set forever once
-  `sendText` resolved true — clearing `pendingLaunch` is a state update that can lag a re-render),
-  and a **refused** `sendText` retries (`launchRetryDelay`'s backoff) instead of vanishing.
-  (5) `pendingLaunch` **is persisted** (unlike `initialCommand`), but agent state is not — so after
-  a restart nothing will ever report `done` and the node carries a manual ▶ **run-now** escape in
-  its QUEUED badge (which disarms only on a delivery that LANDED — dropping it unconditionally
-  threw the command away in exactly the state the button exists to rescue). (6) Canvas subscribes
-  to `armedDepSig`, NOT `useAgentStatus(s => s.byId)` —
+  (3) **Control opens always retain the command in `pendingLaunch` until delivery lands**
+  (#827/#811). Even a visible node with no deps has not mounted its PTY when the open reply is
+  sent. `queueControlLaunch` moves the command out of `initialCommand`; the PTY-ready gate below
+  makes this safe. The open reply says `queued`, and project serialization retains the brief.
+  (4) Desktop automatic and manual launch delivery share `terminal/launch-command.ts`, which
+  uses `deliverCommand`: echo verification, bounded Ctrl-U repair, platform kill-line and overlong
+  line refusal. The PTY-lifetime writer coalesces concurrent requests and remembers submission
+  across parked views. Relay queued/restored delivery, including Run now, is refused until a scoped durable
+  claim API exists: a relay workspace load can be project-scoped, while save replaces the host
+  index. Never use that load/save pair for a launch. A new relay UI initialCommand may instead
+  use the verified writer once on a fresh PTY without creating pendingLaunch or writing workspace
+  data. Its transient claim is consumed before settle and survives view remounts; relay snapshots
+  omit that initial command rather than converting it to durable intent. A parked-project deferral before any input
+  retains never-attempted intent and can proceed on activation without a retry timer.
+  New intent has `attempted:false`; the writer awaits a workspace save of
+  `attempted:true, manualOnly:true` before input, then rechecks the shell after that save. A warm
+  attach may automatically deliver never-attempted intent, preserving long-running `--after`
+  graphs through project switches/park expiry. Attempted/legacy-unknown intent stays manual: its
+  clearing autosave may have been lost after Enter. Explicit Run now rechecks the foreground shell and
+  clears any incomplete line; a refused/throwing/cancelled launch stays held, `manualOnly`.
+  (5) UI `initialCommand` stays until submission; serialization converts unsubmitted UI intent
+  into a never-attempted `pendingLaunch`, including a project switch during shell settle. A live
+  initialCommand alias on remount cannot reset an attempted marker. Server saves
+  `attempted:true, manualOnly:true` BEFORE sending and only clears the command after acknowledgment. Failed
+  independent/dependent launches are never retried by unrelated hooks. Boot remains inert.
+  Server deferred delivery is deliberately one-shot: a transient probe/send failure needs Run now.
+  Desktop keeps the attached echo-verification transport even for offscreen held nodes; a large
+  long-waiting fan-out therefore keeps those xterm instances in memory until delivery/recovery.
+  (6) Canvas subscribes to `armedDepSig`, NOT `useAgentStatus(s => s.byId)` —
   the same discipline as `loopSig`; the full map re-renders the canvas on every hook event.
   Pure logic + refusal matrix in `renderer/lib/pendingLaunch.ts` (unit-tested);
   the dep→node edge is a **rope** (`ctrl-<dep>-<node>`, persisted in `project.ropes` like the
@@ -2551,21 +2637,26 @@ else, and its context links must keep classifying across restarts).
   an ADOPTED park (already typeable, and its create continuation ran on a previous mount) and, for
   a fresh spawn, at the SAME `whenShellSettled` moment `writeWhenShellReady` delivers an
   `initialCommand` — both write a CLI command line, and a line delivered across zsh's rc-file tty
-  flush comes out mangled. A **park keeps it** (a parked tmux session is still addressable by name);
-  only a real teardown clears it. The loop then WAITS instead of burning attempts, and the backoff
-  (`launchRetryDelay`, ~12 s over five attempts) covers only the residual race after readiness.
+  flush comes out mangled. A **park keeps the writer and transport**; a real teardown removes
+  the writer. The loop WAITS instead of burning attempts before readiness. Once attempted,
+  only the verified writer's bounded echo repair runs; further recovery is explicit.
   Because a wait with no end is the failure mode this replaces, both give-up states are **visible**
   in the transient `state/launchDelivery.ts` and rendered by the QUEUED badge's amber ⚠ + tooltip
   (`launchTooltip`, pure): `stalled` = gate open, no terminal yet, **still held** (raised by a
   `LAUNCH_STALL_MS` timer with a fire-time re-ask; the launch still fires whenever the session
-  finally comes up — an SSH host reconnecting takes this path) and `failed` = the session came up
-  and refused every attempt, so nothing will retry it. Neither is ever inferred from silence, and
+  finally comes up) and `failed` = submission is unconfirmed, so automatic retry is stopped.
+  A persisted `manualOnly` record carries that warning after reload too. Neither is ever inferred from silence, and
   the tooltip names no cause it did not measure (the node's own overlay owns the diagnosis).
   The open verbs' replies carry the same fact for callers OUTSIDE the app: `result.queued` +
   `result.queuedIds` on `open-terminal`/`open-claude`/`open-agent`, always true for the
   `--project` cold-open branch — an orchestrator was previously told "opened" either way and
   routed work to a session that did not exist. Agent-facing copy is generated in
   `canvas-control-core.ts` and pinned in its test, per the sync rule above.
+  `queued:false` is NOT proof of a running CLI: Server's `deliveredIds` acknowledges terminal
+  delivery only. Its initial commands are persisted before attach/send and retained on failure;
+  only acknowledged sends clear them. Boot ownership remains fail-closed. Desktop `list` (live
+  and stored projects) names QUEUED / LAUNCH FAILED / DROPPED / AGENT STATUS UNCONFIRMED rather
+  than treating absence of a hook as success. Server v1 still explicitly refuses `list`.
   **(8) An armed node must not cold-start its own agent** (found while fixing (7)). The mount-time
   cold-restore relaunch (`fresh && agentId && canResume(...)`) carries a second, independent
   refusal beside the `paused` one (`shouldColdResume`): `!data.pendingLaunch`. A first open is
@@ -2719,7 +2810,8 @@ else, and its context links must keep classifying across restarts).
   --version`, `isSupportedClaudeVersion`).
   - **`data.accountId` (terminal nodes)** — resolved **once at node creation**
     (`resolveNewNodeAccount`: explicit submenu pick → `project.defaultAccountId` → system default
-    `~/.claude`), then **immutable** and **persisted** (serializers). `undefined` = system default
+    `~/.claude`), then **persisted** (serializers) and changed ONLY by an explicit **account switch**
+    (below). `undefined` = system default
     = **bit-for-bit legacy behavior** (no env touched). Inherited by **Branch** (the
     terminal→chat fork it also fed is gone — the SDK chat node was removed 2026-07). Two #419
     rules inside the resolver: the submenu's **System row passes `null`** (an EXPLICIT system
@@ -2727,6 +2819,21 @@ else, and its context links must keep classifying across restarts).
     the project-default account), and validation runs against `accountsForProject`, not the raw
     list, so a **pending** account or one **pinned to another machine's host** is never stamped
     onto a node it cannot run on (both used to reach the missing-dir fallback at spawn).
+  - **Switch Claude account (running node, local only)** — node right-click → *Switch Claude
+    account ▸* moves the conversation onto another account **already logged in** on this machine,
+    with no `/login` in the pane. It works because a transcript carries **no account identity**
+    (measured on 2.1.280: under a config dir lacking the file `--resume` says "No conversation found";
+    with the file copied into `<configDir>/projects/<encoded cwd>/<id>.jsonl` only the login is
+    missing). Choreography = "Restart agent and shell" with a `beforeRecycle` step
+    (`agent-restart.ts`): exit the CLI (refused while working/blocked) → core
+    `claudeAccounts.copySession` (`core/claude-session-copy.ts`) → rebind `accountId` → recycle, whose
+    respawn gets the new `CLAUDE_CONFIG_DIR` and whose cold restore resumes the same id. Two rules:
+    the copy runs **after** the exit, so the source is final and a target that is a byte-**prefix**
+    of it is just an older copy (A→B→A) and may be replaced, while a **diverged** target is never
+    overwritten; and the rebind is **returned** by `beforeRecycle` and merged into the closure's own
+    `updateNodeData`, never set by a separate Canvas `setNodes` in the same tick (React Flow's update
+    queue rebuilds the node from the store's copy and can drop it). Builtin `claude` only (the
+    `boundAccountId` rule below). SSH / relay: shown disabled — the host-side copy is a follow-up.
   - **`boundAccountId(accountId, agentId)` (`shared/agents/account-binding.ts`) is the ONE rule for
     whether a node is account-bound at all**, and it feeds `data.accountId` *and* the account color
     from a single decision — split them and a node carries an account it is not painted for, or is
@@ -2904,6 +3011,24 @@ else, and its context links must keep classifying across restarts).
     correct (their credentials aren't on the host) but read as "multi-account is broken on SSH".
   - **Remote accounts** — selection + login + env injection, plus **usage** (below); no
     per-account transcript readers beyond env.
+  - **Settings → Accounts is ONE machine-grouped surface for BOTH providers** (2026-09): a panel
+    per machine (this one, then each saved SSH server ∪ the active project's server — a saved server
+    with no accounts and no connection is folded into a footnote count), each holding a Claude and a
+    Codex block with the SAME row, system row and Add button (`groupAccountsByMachine`). A remote
+    machine's Add / Retry / Remove act ON that host over a **connected** project only — a
+    disconnected host's Add is disabled and its Remove only forgets the record (the dialog says so);
+    a remote id never reaches a LOCAL remove. Codex gained the remote lifecycle this needed:
+    `codexAccounts.add/waitLogin/identity/remove` take an SSH `ctx` (desktop `src/main/codex-accounts.ts`
+    → the `SshProjectManager.remoteCodex*` legs; the credential is written on the host by
+    `codex login --device-auth` — the default browser flow calls back to the HOST's localhost), and
+    `systemIdentity({projectId})` now asks the host instead of answering `null`.
+  - **The remote spawn scopes the account BY PROVIDER** (`core/remote-account-env.ts`). It used to
+    hand every `accountId` to Claude's `CLAUDE_CONFIG_DIR`, so a node bound to a managed Codex account
+    on an SSH host got a Claude dir that does not exist and NO `CODEX_HOME` — its codex silently ran
+    as the host's system login (`remoteCodexTmuxEnvArgs` existed with no caller). The system Codex
+    account is left to the host's own env (a remote `CODEX_HOME` of the user's — a snap remap — must
+    win). The running-node **Switch Codex account** is shown disabled on SSH nodes: its three-phase
+    switch plans rollouts in LOCAL homes only.
   - **Linked accounts** (`ClaudeAccount.configDir`) — a PRE-EXISTING local config
     dir the user already drives themselves (`export CLAUDE_CONFIG_DIR=~/.claude-2; claude …` in a
     plain terminal) adopted as a first-class account without a login node. Settings → Accounts →
@@ -2920,8 +3045,8 @@ else, and its context links must keep classifying across restarts).
     **from settings only** — never a dir named by the POST. **Removing a linked account only
     forgets the record**: the `rm -rf` names `accountConfigDir(userData, id)` directly, so it is
     structurally incapable of reaching outside the managed root even if the settings row is gone
-    before the IPC lands. The hook installer writes `settings.json` THROUGH a symlink
-    (`writeFileSync`) — a profile whose `settings.json` symlinks to `~/.claude/settings.json` (the
+    before the IPC lands. The hook installer resolves `settings.json` symlinks and atomically updates their target
+    (without replacing the link) — a profile whose `settings.json` symlinks to `~/.claude/settings.json` (the
     two-profile layout) stays a symlink; pinned by `claude-accounts-link-symlink.test.ts`, and
     switching that write to `renameAtomic` would be the regression (it replaces the link).
   - **Observed account** (`ObservedClaudeAccount`, `NormalizedAgentEvent.account`) — which account
@@ -2947,6 +3072,13 @@ else, and its context links must keep classifying across restarts).
     tooltip pointing at Settings → Accounts, where **Detected config dirs** lists it for one-click
     linking. Mobile: N/A (additive mirror fields).
 
+- **Bottom chrome shares a measured width budget** (issue #853). `CanvasPills` observes the canvas
+  wrapper and actual dock, bounds the left row with an 8px gap, and uses a row above the dock when
+  fewer than 200 CSS pixels remain. Rects are converted back through UI scale. Usage summary text
+  ellipsizes; refresh never shrinks. Do not clip the whole row or give it a stacking context:
+  usage/RAM popovers must escape independently above the sidebar and board. Desktop and Server
+  share this renderer. The real-browser regression is `scripts/usage-layout.test.ts` (`CHROME_BIN`).
+
 - **The usage indicator is scoped to the ACTIVE project** (`renderer/lib/usageScope.ts`, pure +
   unit-tested) — it describes **the machine that project runs on**, and nothing else. A local
   project shows this machine (system + managed local accounts + the billing providers, whose
@@ -2963,6 +3095,11 @@ else, and its context links must keep classifying across restarts).
   every canvas edit. ⟳ refreshes only what is on screen, and `usage.remote({hostKey})` reads only
   that host (cache eviction still runs against the FULL target list, so switching between two SSH
   projects doesn't throw each host's cache away).
+
+- **Usage failure readouts** — an empty Claude snapshot with `status: error` says "Could not
+  read usage." in both the single-account and multi-account popovers, including beside healthy
+  provider rows. Nonempty snapshots retain their last-known bars on error; no error-specific
+  authentication advice is inferred from the status.
 
 - **Remote usage** (SSH hosts, `src/core/usage/remote-claude-usage.ts`) — the source behind the
   SSH scope above. v1 excluded remote accounts, which left a user whose Claude only ever runs on a
@@ -3563,7 +3700,14 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   right-click; nothing running is interrupted), restart-agent
   (single agent node — the in-place CLI restart above; absent for a CLI we cannot quit + resume,
   disabled with a hint while the session is busy or has no id yet), delete. Actions live
-  in `Canvas.tsx`, operate on `targetIds`. The non-destructive rows are user-hideable from
+  in `Canvas.tsx`, operate on `targetIds`. **Conversation actions are grouped** so an agent node's
+  menu fits on screen: **Transfer conversation ▸** holds one row per target (a model-capable target
+  nests its gateway models one level further), and **Restart ▸** holds the restart variants —
+  restart, restart + fresh shell, restart on subscription, then Reopen as. Switch model ▸ and Switch
+  account ▸ stay first-level rows beside it (everyday choices, not recovery restarts).
+  `ContextMenu` renders submenus to any depth (`MenuRows` is recursive); a flyout that hosts a
+  submenu drops its scroll (`.ctx-submenu--host` — `overflow: auto` would clip the
+  nested flyout) and `useSubmenuFlip` lifts a flyout that would run off the bottom. The non-destructive rows are user-hideable from
   **Settings → Appearance** ("Node menu items" / "Terminal header buttons"), stored as HIDDEN
   lists in `settings.hiddenNodeMenuItems` / `settings.hiddenHeaderButtons` (empty = everything
   shows). `lib/ui-visibility.ts` owns the two inventories and `isHidden`, which only answers for
@@ -4566,8 +4710,8 @@ the target BEFORE both complete paths are quoted, then the shell preserves the w
 while cleaning that exact temp. The temp leaf must stay independent of the target leaf — appending
 `.uuid.tmp` to a valid `NAME_MAX` target makes the write impossible. It currently protects
 filesystem API writes, tmux.conf, the private hook endpoint, node
-tokens, agent status and pending answers; generated hook scripts/config merges still use their
-existing direct writes and must not be described as atomic. Upload directories use UUIDs across app
+tokens, agent status and pending answers; some generated hook scripts/config merges still use direct writes; only the guarded shared
+Claude/Gemini settings transactions stage and rename here. Do not generalize that claim to every installer. Upload directories use UUIDs across app
 processes. Downloads and media-cache copies use hidden UUID `.part` names; user-visible downloads
 also hold an exclusive candidate lock until the rename and cleanup finish. Never simplify any of
 those back to `<target>.tmp` / `<target>.part` or a read-only "does the destination exist?" check —

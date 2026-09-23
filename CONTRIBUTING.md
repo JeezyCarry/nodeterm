@@ -107,6 +107,12 @@ lane unaffected.
   PR; copy that really is macOS-specific (the ptmx-limit banner, the notch step) is exempt by name
   with its reason. Comments are not scanned.
 
+- **Bottom canvas pills must leave room for the measured dock.** `CanvasPills` bounds their row
+  and moves it above the dock when the side budget is too small. Only usage summary text may
+  truncate; keep refresh outside that overflow and keep the row free of stacking contexts so
+  popovers can still clear the sidebar/board. `scripts/usage-layout.test.ts` verifies real Chrome
+  layout and hit targets (set `CHROME_BIN` when Chrome is not at the Linux default path).
+
 - **An overlay you lay over a live terminal steals its wheel — give it `pointer-events: none`.**
   Wheel routing is a per-packet hit test on `closest('.nowheel')` (ours in `Canvas.tsx`, and React
   Flow's own `panOnScroll` independently), so the element under the pointer decides, not the node.
@@ -349,6 +355,11 @@ come from git-shared JSON and can end up interpolated into a shell command line.
 **Test generated shell for real.** If you generate a shell command, run it under an actual
 `/bin/sh` against a fixture tree. A composed fixture will not tell you that `echo ##MEM` prints an
 empty line because `#` starts a comment.
+
+**Remote context polling must bound bytes before SSH transports them.** Bootstrap from the
+file's measured end, keep offsets in raw bytes, and distinguish an idle read from failure so
+the poller can back off. Bootstrap history restores usage only, never task/result events.
+`core/remote-ssh/transcript-window.ts` and the real-shell remote-context tests pin this contract.
 
 **A shared agent daemon is live-session infrastructure.** Codex's app-server control socket is
 shared by every `--remote` TUI in an account scope, so stopping or replacing one daemon disconnects
@@ -616,7 +627,64 @@ Maximize placement and refocusing must use the same measured usable rectangle
 Do not hardcode chrome heights or add the outer margin twice; transient menus must not resize
 terminals. Ordinary focus and zone snap keep their own policies.
 
+**Usage readouts distinguish failed reads from empty data.** For Claude, show the failure when
+`status` is `error` and limits are empty, including beside other providers; preserve last-known
+bars when limits remain. Keep both single-account and multi-account views covered.
+
+**A context capacity needs session provenance.** Claude's effective `CLAUDE_CODE_MAX_CONTEXT_TOKENS`
+is reported by its managed hook, accepted only with verified node identity, and validated as a
+positive decimal safe integer. Never read the app's global env for another session or let a
+model-family guess enlarge an observed limit. Unobserved Claude windows are labelled estimates.
+The renderer rehydrates through `context.ensure`; it does not restore Claude denominators from
+storage. Other agents retain transcript-window persistence.
+Only an explicit ensure replays an unchanged live snapshot; repeated hook observations must not
+broadcast it again. Remote path, ControlMaster or connection changes replace the tracked generation.
+
+**Command-bearing terminal opens (issue #653):** the shared hook-server route requires verified
+node identity whenever `open-terminal` carries `cmd`, including an empty value or a dry run.
+The strict-policy override and foreign-instance fallback cannot release this gate. Desktop plain
+terminal opens keep their existing identity policy; Server Edition still requires verification
+for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
+command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
+
+## User-owned agent settings
+
+Claude/Gemini settings must go through the guarded transactions in
+`src/core/agents/hooks/{settings-file,remote-settings-file}.ts`. Confirmed absence or a successfully read empty/whitespace file may start from `{}`;
+malformed, non-object and unreadable files must survive unchanged.
+Keep unrelated settings and foreign hook handlers. Stage writes, serialize nodeterm writers,
+and compare the original bytes again before publishing; never use `cat … || echo '{}'` or a
+catch-all read fallback. Local and SSH symlinked profiles update and lock the resolved target without replacing
+the link; recheck resolution before publishing. SSH uses plain readlink and cd -P (no GNU -f),
+and refuses dangling/cyclic links and newline paths. A conflicting/stale lock skips installation
+with a diagnostic naming the lock and safe manual recovery; do not steal it from another process. These locks
+coordinate nodeterm, not external editors, so do not claim a filesystem-wide compare-and-swap.
+**Creating an agent node is not proof it started.** Control opens retain their launch command
+until delivery is acknowledged, and report `queued` while it is held. A successful terminal send
+proves delivery only; never describe it as a healthy/running agent without agent evidence.
+Desktop launches (automatic and Run now) use the echo-verified command writer, not `sendText`.
+Keep unsubmitted UI intent durable through shell settle/unmount. New intent carries `attempted:false`;
+Desktop and Server save `attempted:true` before input. Never-attempted warm `--after` launches may
+proceed after shell verification; attempted/legacy-unknown intent requires Run now. Only confirmed
+submission clears intent. Desktop open replies use `createControlOpenBatch` for queued accounting;
+protect that contract and concurrent submission with behavior tests, never source-text pins.
+Relay queued/restored launches and Run now are refused until a scoped durable claim API exists.
+A new relay UI initialCommand may run once on a fresh PTY through the verified writer, without
+workspace writes or pendingLaunch creation. Consume its transient attempt before shell settle;
+never retry it on remount or serialize it as durable intent.
+Never round-trip a relay workspace load into save: the load can contain only one shared project,
+while save replaces the entire host index. A pre-input parked-project deferral keeps intent
+never-attempted; it must not poison the writer or trigger a retry timer.
+Held Desktop launches retain their attached transport even offscreen with tmux (large fan-outs cost
+memory). Server deferred delivery is one-shot: a failed probe/send needs explicit recovery.
+
 ## Testing
+
+**Screenshot paste has one route per gesture.** On macOS, Cmd+V saves/uploads a file and
+pastes its path; Ctrl+V belongs to the foreground program. A node's configured agent is not
+proof of foreground clipboard-image support. Keep shell/SSH/Server file routing and capture
+suppression of accompanying text; do not synthesize Ctrl+V or try both routes without a
+capability and receipt protocol. The shortcuts panel documents this distinction (#712).
 
 `npm test` must pass, and `npm run typecheck` is the fastest gate.
 
@@ -695,3 +763,7 @@ Two files, two audiences:
 **If you change or discover something other contributors must know, update this file too.** An
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
+
+Managed Codex login terminals are agent-less: core identifies their provider from the saved
+account list. Before opening one, await `useSettings.getState().flush()` after adding the account.
+The normal 300 ms coalesced save is too late: an unknown id can launch against the system home.
