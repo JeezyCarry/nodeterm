@@ -64,6 +64,14 @@ describe('Grok billing diagnostics in the usage popover', () => {
     expect(text).not.toContain('expired')
     expect(text).not.toContain('No usage data.')
   })
+  it.each(['unavailable', 'error'] as const)('keeps Claude %s distinct from a Grok failure', async (status) => {
+    await open(snapshot(status), [{ provider: 'grok', account: null,
+      status: 'error', limits: [], updatedAt: 0, diagnostics: [{ view: 'credits', reason: 'network' }] }])
+    const body = host.querySelector('.usage-popover__body')!
+    expect(body.textContent).toContain('Credits view: Could not reach Grok')
+    expect(body.textContent).not.toContain('No usage data.')
+    expect(body.textContent?.includes('Could not read usage.')).toBe(status === 'error')
+  })
   it('shows recovered limits alongside the failed view', async () => {
     await open(snapshot('unavailable'), [{ provider: 'grok', account: null,
       status: 'ok', limits: [limit], updatedAt: 0, diagnostics: [

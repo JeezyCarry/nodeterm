@@ -524,9 +524,8 @@ parts that touch this secret and the invariants here:
   (invariant 1 — no credential *or* scope-shaping input on a command line).
 
 Two S6 surfaces remain **owed device verifications** rather than shipped-and-verified: the imperative
-pane-recycle glue behind a live switch, and the remote-host account **lifecycle** UI (add/login/remove
-*on* an SSH host — the local picker + switch are wired, the remote lifecycle surface is display-only,
-fail-closed). Both, plus the live-daemon and real-WAN legs, are in
+pane-recycle glue behind a live switch, and the remote-host account **lifecycle** (add/login/remove
+*on* an SSH host — wired 2026-09 from the machine panels in Settings → Accounts, unit-tested only). Both, plus the live-daemon and real-WAN legs, are in
 [the acceptance gate](codex-accounts-acceptance.md).
 
 ## Invariants a future change must not break

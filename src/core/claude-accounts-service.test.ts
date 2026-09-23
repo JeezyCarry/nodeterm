@@ -477,3 +477,57 @@ describe('claudeAccounts.copySession', () => {
     })
   })
 })
+
+describe('claudeAccounts.copySession over SSH (ctx.projectId)', () => {
+  const SID = '0123abcd-4567-89ef-0123-456789abcdef'
+  const acct = (id: string, extra: Partial<ClaudeAccount> = {}): ClaudeAccount => ({
+    id,
+    label: id,
+    createdAt: 0,
+    ...extra
+  })
+  const remoteWith = (copySession?: unknown) => ({
+    remote: () => ({
+      add: async () => null,
+      readLogin: async () => null,
+      remove: async () => {},
+      ...(copySession ? { copySession } : {})
+    })
+  })
+
+  it('hands remote accounts (with their hosts) to the shell leg and never touches local disk', async () => {
+    const leg = vi.fn(async () => ({ ok: true as const, copied: true }))
+    registerClaudeAccountsSource(() => [acct('r1', { host: 'u@h' }), acct('r2', { host: 'u@h' })])
+    registerClaudeAccountsIpc(remoteWith(leg) as never)
+    expect(await call(IPC.claudeAccountsCopySession, SID, 'r1', 'r2', { projectId: 'p1' })).toEqual({
+      ok: true,
+      copied: true
+    })
+    expect(leg).toHaveBeenCalledWith('p1', SID, { id: 'r1', host: 'u@h' }, { id: 'r2', host: 'u@h' })
+    // The host's system ~/.claude is `{}` — no id, no host.
+    await call(IPC.claudeAccountsCopySession, SID, 'r1', undefined, { projectId: 'p1' })
+    expect(leg).toHaveBeenLastCalledWith('p1', SID, { id: 'r1', host: 'u@h' }, {})
+  })
+
+  it('refuses a LOCAL or pending account as an SSH target', async () => {
+    const leg = vi.fn()
+    registerClaudeAccountsSource(() => [acct('loc'), acct('pend', { host: 'u@h', pending: true })])
+    registerClaudeAccountsIpc(remoteWith(leg) as never)
+    for (const t of ['loc', 'pend']) {
+      expect(await call(IPC.claudeAccountsCopySession, SID, undefined, t, { projectId: 'p1' })).toEqual({
+        ok: false,
+        reason: 'unknown-account'
+      })
+    }
+    expect(leg).not.toHaveBeenCalled()
+  })
+
+  it('answers failed for an SSH ctx with no remote leg (the Server Edition) — not a local copy', async () => {
+    registerClaudeAccountsSource(() => [acct('r1', { host: 'u@h' })])
+    registerClaudeAccountsIpc()
+    expect(await call(IPC.claudeAccountsCopySession, SID, undefined, 'r1', { projectId: 'p1' })).toEqual({
+      ok: false,
+      reason: 'failed'
+    })
+  })
+})

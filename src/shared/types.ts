@@ -337,6 +337,10 @@ export type NodeKind = 'terminal' | 'sticky' | 'group' | 'editor' | 'diff' | 'vi
  * a stalled station must never be a dead end.
  */
 export interface PendingLaunch {
+  /** false proves no input attempt; true/absent require explicit recovery after reload. */
+  attempted?: boolean
+  /** An attempted/uncertain delivery requires explicit Run now; never replay on hooks. */
+  manualOnly?: boolean
   /**
    * Node ids to wait for. Only nodes running a hook-reporting agent may appear here — a plain
    * terminal never reports `done`, so waiting on one would stall forever (refused at creation).
@@ -1605,6 +1609,13 @@ export interface Settings {
   /** Minutes a terminal may sit fully offscreen before its xterm+PTY client is torn down in
    *  place (tmux keeps the session; re-approach reattaches and redraws). 0 = never. */
   offscreenTerminalMinutes: number
+  /** Minutes a terminal stays PARKED after its project is switched away — xterm + PTY client kept
+   *  alive off-DOM so switching back is instant and exact (no reattach). 0 = until the app quits.
+   *  Default 5. Hand-editable; re-validated at the use site (`parkWindowMs`). Issue #886. */
+  terminalParkMinutes: number
+  /** Max parked terminals across all projects before the oldest (local first, then remote) are
+   *  released early. Default 20. Re-validated at the use site (`parkCap`). Issue #886. */
+  terminalParkMax: number
   /** AI commit message agent: a local coding-agent CLI run read-only. */
   commitAgent: 'claude' | 'codex' | 'custom'
   /** For commitAgent='custom': command template; {prompt} placeholder optional (else stdin). */
@@ -1878,6 +1889,8 @@ export const DEFAULT_SETTINGS: Settings = {
   tmuxScrollback: 50000,
   tmuxLeadPaneWidth: 0,
   offscreenTerminalMinutes: 10,
+  terminalParkMinutes: 5,
+  terminalParkMax: 20,
   commitAgent: 'claude',
   commitAgentCommand: '',
   commitExtraPrompt: '',
@@ -2620,6 +2633,8 @@ export interface UsageApi {
 
 /** A Claude session's context-window fill, pushed per sessionId from the transcript tailer. */
 export interface ContextWindowUsage {
+  /** Missing on older hosts; only session-env is an observed Claude configuration. */
+  windowSource?: 'session-env' | 'transcript' | 'estimate'
   sessionId: string
   /** input + cache_read + cache_creation tokens of the latest assistant message. */
   usedTokens: number
@@ -2798,13 +2813,16 @@ export interface ClaudeAccountsApi {
   /**
    * Copy a conversation's transcript from one LOCAL account's config dir into another's (`undefined`
    * = the system `~/.claude`), so a node switched onto the target account resumes the SAME
-   * conversation there with no `/login`. Called only after the CLI has exited. Never overwrites a
+   * conversation there with no `/login`. With an SSH `ctx` the same copy runs on that project's host,
+   * between REMOTE accounts pinned to it. Called only after the CLI has exited. Never overwrites a
    * diverged copy (`diverged`); never throws — every refusal is a reason.
    */
   copySession(
     sessionId: string,
     sourceAccountId: string | undefined,
-    targetAccountId: string | undefined
+    targetAccountId: string | undefined,
+    /** An SSH project's node: the copy runs ON THAT HOST, between its remote account dirs. */
+    ctx?: AccountSshCtx
   ): Promise<ClaudeSessionCopyResult>
 }
 
@@ -2842,22 +2860,26 @@ export interface ClaudeSkillShareResult {
  */
 export interface CodexAccountsApi {
   /** Mint a new managed account: create its private CODEX_HOME (0700) and symlink the shared,
-   *  non-secret runtime assets in. Returns the new id + its home. */
-  add(): Promise<{ id: string; home: string }>
+   *  non-secret runtime assets in. Returns the new id + its home. With an SSH `ctx` the home is
+   *  created ON that connected host (no credential ever travels); throws when it cannot be. */
+  add(ctx?: AccountSshCtx): Promise<{ id: string; home: string }>
   /** Poll the account's `auth.json` (a real file, never a symlink) every 2s up to 5min for a
-   *  completed device login, then read its email; null on timeout/cancel. */
-  waitLogin(id: string): Promise<{ email: string | null } | null>
+   *  completed device login, then read its email; null on timeout/cancel. With an SSH `ctx` the poll
+   *  runs on the host, and a login whose email cannot be read there resolves `{ email: null }`. */
+  waitLogin(id: string, ctx?: AccountSshCtx): Promise<{ email: string | null } | null>
   /** Cancel an in-flight `waitLogin` for this account. */
   cancelWaitLogin(id: string): Promise<void>
-  /** Read a managed account's already-logged-in identity (email), or null if not logged in. */
-  identity(id: string): Promise<{ email: string | null } | null>
+  /** Read a managed account's already-logged-in identity (email), or null if not logged in. With an
+   *  SSH `ctx`, asked of the account's home on that host. */
+  identity(id: string, ctx?: AccountSshCtx): Promise<{ email: string | null } | null>
   /** Read a machine's system (`~/.codex`) account identity. No arg ⇒ this Mac. `{ projectId }` ⇒
    *  the connected SSH host behind that project; a host whose system identity cannot be resolved
    *  resolves `null` (fail-closed — a remote machine panel never borrows this Mac's login). */
   systemIdentity(ctx?: { projectId?: string }): Promise<{ email: string | null } | null>
   /** Remove a managed account: stop its daemon and delete its home. Refused while a switch
-   *  reservation holds it or a concurrent removal is in flight (Property 10). */
-  remove(id: string): Promise<void>
+   *  reservation holds it or a concurrent removal is in flight (Property 10). With an SSH `ctx`,
+   *  the home is deleted on that host; throws when it could not be. */
+  remove(id: string, ctx?: AccountSshCtx): Promise<void>
   /** Phase 1 of the owner-authorized same-machine switch: plan + reserve the rollout exposure of a
    *  conversation from one account to another under a `rollbackToken` (TTL 60s, owner = caller). */
   switchThread(

@@ -1,3 +1,4 @@
+import { sessionContextWindow } from '../model-window'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
 import { randomUUID, timingSafeEqual } from 'crypto'
 import { writeFileSync, mkdirSync, chmodSync, unlinkSync } from 'fs'
@@ -190,6 +191,8 @@ function observedClaudeAccount(
  * it. A later task makes the label useful; until then, false must cost a caller nothing.
  */
 export interface HookEventMeta {
+  /** undefined: old/unverified client; null: observed env has no valid override. */
+  contextWindow?: number | null
   verified: boolean
 }
 
@@ -776,7 +779,12 @@ class HookServer {
           if (form.nodeterm_answered) payload.nodeterm_answered = form.nodeterm_answered
           // Raw listener first: it drives the transcript-tailing features (which need
           // transcript_path). Inside the try so a throwing raw listener still ends 204.
-          this.rawListener?.(agentId, nodeId, payload, { verified })
+          this.rawListener?.(agentId, nodeId, payload, {
+            verified,
+            ...(verified && agentId === 'claude' && form.nodeterm_context_window !== undefined
+              ? { contextWindow: sessionContextWindow(form.nodeterm_context_window) }
+              : {})
+          })
           // WHICH CLAUDE ACCOUNT this session is on. A third LABEL alongside
           // `verified`/`clientRevision`, computed HERE so ONE implementation serves both shells —
           // the "both raw listeners change together" rule is sidestepped rather than violated,
