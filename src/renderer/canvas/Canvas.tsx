@@ -4700,21 +4700,38 @@ export function Canvas() {
   // The Codex sibling of the block above: Settings → Accounts "Add Codex account" dispatches
   // 'nodeterm:add-codex-account-login' and then polls `codexAccounts.waitLogin` for the account
   // home's auth.json. Nothing was listening, so no `codex login` ever ran and the poll waited out
-  // its timeout on a credential nothing was writing (issue #346). Local only: `codexAccounts.add()`
-  // mints on THIS machine, so there is no remote/host leg to resolve — the remote account
-  // lifecycle lands with the host relay.
+  // its timeout on a credential nothing was writing (issue #346). A REMOTE account (its home was
+  // created on an SSH host) logs in ON that host, resolved BY HOST among connected projects exactly
+  // like the Claude branch — and with no match nothing is spawned: a local `codex login` would write
+  // this machine's credential while waitLogin polls the host.
   useEffect(() => {
     const onAddCodexAccountLogin = (ev: Event): void => {
-      const accountId = (ev as CustomEvent<{ accountId?: string }>).detail?.accountId
+      const detail = (ev as CustomEvent<{ accountId?: string; remote?: boolean; host?: string }>)
+        .detail
+      const accountId = detail?.accountId
       if (!accountId) return
-      // Same cwd reasoning as the Claude branch above (issue #553). Local only, so `project.cwd`
-      // is the only field that can be read here — an SSH project's `remoteCwd` names a directory
-      // on the host and would send this local shell somewhere that does not exist.
+      let ssh: ReturnType<typeof useProjects.getState>['projects'][number]['ssh']
+      if (detail?.remote) {
+        const host = detail.host
+        const conn = useSshConn.getState().byProject
+        const project = host
+          ? useProjects
+              .getState()
+              .projects.find((p) => p.ssh && sshHostKey(p.ssh.server) === host && conn[p.id])
+          : undefined
+        if (!project) return // defensive: mismatched/disconnected remote login — never spawn locally
+        ssh = project.ssh
+      }
+      // Same cwd reasoning as the Claude branch above (issue #553). A remote login ignores it —
+      // `createTerminalNode` prefers `ssh.remoteCwd` — because a local path names nothing there.
       const { getProject, activeProjectId: pid } = useProjects.getState()
       const cwd = getProject(pid)?.cwd
       setNodes((ns) => [
         ...ns.map((n) => ({ ...n, selected: false })),
-        { ...createCodexAccountLoginNode(accountId, ns.length, viewCenter(), cwd), selected: true }
+        {
+          ...createCodexAccountLoginNode(accountId, ns.length, viewCenter(), cwd, ssh),
+          selected: true
+        }
       ])
       markDirty()
       // Same reason as the Claude branch: the event fires from the full-screen Settings overlay,
@@ -8550,6 +8567,19 @@ export function Canvas() {
                       (a) => !a.pending && (hostKey ? a.host === hostKey : !a.host)
                     )
                     if (onMachine.length === 0) return []
+                    // The three-phase switch (`switchThread`) plans and links rollouts in LOCAL
+                    // homes only; for a node on an SSH host it could only fail. Say so instead of
+                    // offering rows that roll back — the host-side switch is a follow-up.
+                    if (hostKey)
+                      return [
+                        {
+                          label: 'Switch Codex account',
+                          icon: <IconSwitch />,
+                          disabled: true,
+                          hint: 'Switching Codex accounts is not available for SSH sessions yet.',
+                          onClick: () => {}
+                        }
+                      ] as MenuItem[]
                     const currentAccountId = (n?.data.accountId as string | undefined) || undefined
                     const systemCodexLabel = systemAccountDisplay(
                       undefined,

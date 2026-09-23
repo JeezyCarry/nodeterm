@@ -937,6 +937,16 @@ describe('createCodexAccountLoginNode', () => {
     )
     expect(createCodexAccountLoginNode('acct-2', 0).data.cwd).toBeUndefined()
   })
+
+  it('logs a REMOTE account in on its host with the device flow (the browser callback cannot reach it)', () => {
+    const ssh = { server: { host: 'h', user: 'u' }, remoteCwd: '/srv/app' } as never
+    const node = createCodexAccountLoginNode('acct-2', 0, undefined, '/local/repo', ssh)
+    expect(node.data.initialCommand).toBe('codex login --device-auth')
+    expect(node.data.accountId).toBe('acct-2')
+    expect(node.data.ssh).toBeTruthy()
+    expect(node.data.cwd).toBe('/srv/app')
+    expect(createCodexAccountLoginNode('acct-2', 0).data.initialCommand).toBe('codex login')
+  })
 })
 
 describe('createSystemLoginNode (issue #420)', () => {
