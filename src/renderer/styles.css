@@ -305,10 +305,12 @@ body,
   pointer-events: none;
 }
 
-/* Interactive elements inside the bar must not drag the window. */
-.tabbar button,
-.tabbar input,
-.tab,
+/* Only the stationary strip viewport excludes window dragging. Electron includes explicit
+   no-drag rectangles from scrolled-out descendants without clipping them to the viewport
+   (issue #847), so tab/button/input rectangles would cover the wordmark after scrolling.
+   Children need no region of their own: the viewport already keeps them interactive. */
+.tabbar button:not(.tabbar__tabs *),
+.tabbar input:not(.tabbar__tabs *),
 .tabbar__tabs {
   -webkit-app-region: no-drag;
 }
@@ -7319,6 +7321,16 @@ button.group-node__setup:disabled {
 .usage-account__use:hover {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+/* The bulk "Move N sessions" control: the picked targets wrap onto their own line under the label. */
+.usage-account__move-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  margin-top: 3px;
+}
+.usage-account__move-targets .usage-account__use {
+  margin-left: 0;
 }
 
 /* Popover-footer action (issue #420): opens the system-scoped `claude /login` terminal. A quiet

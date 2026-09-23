@@ -2819,7 +2819,7 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     the project-default account), and validation runs against `accountsForProject`, not the raw
     list, so a **pending** account or one **pinned to another machine's host** is never stamped
     onto a node it cannot run on (both used to reach the missing-dir fallback at spawn).
-  - **Switch Claude account (running node, local only)** — node right-click → *Switch Claude
+  - **Switch Claude account (running node)** — node right-click → *Switch Claude
     account ▸* moves the conversation onto another account **already logged in** on this machine,
     with no `/login` in the pane. It works because a transcript carries **no account identity**
     (measured on 2.1.280: under a config dir lacking the file `--resume` says "No conversation found";
@@ -2833,7 +2833,21 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     overwritten; and the rebind is **returned** by `beforeRecycle` and merged into the closure's own
     `updateNodeData`, never set by a separate Canvas `setNodes` in the same tick (React Flow's update
     queue rebuilds the node from the store's copy and can drop it). Builtin `claude` only (the
-    `boundAccountId` rule below). SSH / relay: shown disabled — the host-side copy is a follow-up.
+    `boundAccountId` rule below). **SSH nodes** switch between the accounts pinned to THEIR host (and
+    the host's own `~/.claude`): the copy runs ON the host as one generated `sh` script over the
+    project's master (`core/remote-claude-session-copy.ts`, tested under a real `/bin/sh`; same
+    prefix/diverged rule, via `head -c | cmp`), and `SshProjectManager.remoteClaudeSessionCopy`
+    refuses an account pinned to another host. An SSH ctx with no remote leg (Server Edition) is
+    refused, never answered from the local disk. Relay tabs: shown disabled.
+    **Two more surfaces, one choreography** (`runClaudeAccountSwitch` returns a
+    `ClaudeSwitchOutcome` instead of announcing it): the **kanban card** right-click menu gets the
+    node's rows from the SAME builder the canvas node menu uses (`accountSwitchRows` → KanbanView's
+    `accountMenuItems`), and the **usage popover** puts "⇄ Move N sessions" on each account row —
+    every Claude session on this canvas running on that account, on the popover's machine
+    (`bulkSwitchCandidates`), is moved to the picked account ONE AT A TIME (N parallel copies +
+    recycles on one host is a load spike), busy ones skipped and counted, one summary line
+    (`summarizeBulkSwitch`). The cross-project board (GlobalKanbanView) does not offer it:
+    its cards belong to other projects' canvases, whose nodes have no restart closure mounted.
   - **`boundAccountId(accountId, agentId)` (`shared/agents/account-binding.ts`) is the ONE rule for
     whether a node is account-bound at all**, and it feeds `data.accountId` *and* the account color
     from a single decision — split them and a node carries an account it is not painted for, or is
@@ -4316,6 +4330,13 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
     XWayland and quietly ignored otherwise. Size and maximized restore either way, which is what the
     drop-don't-clamp rule already degrades to.
 - **Window chrome**: macOS integrated title bar (`titleBarStyle: 'hiddenInset'`); the tab
+  strip's stationary viewport is the only `no-drag` region for its contents. Explicit regions on
+  scrolled descendants escape the overflow clip in Electron's native hit test and subtract from
+  the wordmark after scrolling (#847). Keep tab/button/input descendants at the initial `none`;
+  the viewport already excludes dragging over them. `scripts/tabbar-drag.test.ts` uses real
+  Electron and native XTest input on a disposable Xvfb display (CDP input bypasses this hit test).
+  It checks 41 tabs at start/partial/middle/end/back, 28/40/64px heights and both padding modes;
+  it does not verify macOS traffic lights, Windows, or movement under a real window manager. The
   bar (`TabBar.tsx`) is the drag region with the `nodeterm` logo + a **Chrome-style tab strip**
   (2026-09-16): inactive tabs are flat and separated by a 1px divider that drops on both sides of a
   hovered or active tab, hover is an inset pill, and the active tab is `--canvas-bg` with rounded
