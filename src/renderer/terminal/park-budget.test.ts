@@ -24,9 +24,9 @@ describe('planParkEviction', () => {
   it('evicts the oldest entries beyond the cap, oldest first', () => {
     expect(planParkEviction(['a', 'b', 'c', 'd'], 2)).toEqual(['a', 'b'])
   })
-  it('default cap is 12', () => {
-    expect(PARK_MAX).toBe(12)
-    const keys = Array.from({ length: 13 }, (_, i) => `k${i}`)
+  it('default cap is 20', () => {
+    expect(PARK_MAX).toBe(20)
+    const keys = Array.from({ length: 21 }, (_, i) => `k${i}`)
     expect(planParkEviction(keys, PARK_MAX)).toEqual(['k0'])
   })
   it('skips protected parks and takes the next disposable one instead', () => {
@@ -91,7 +91,7 @@ describe('a parked plain-shell agent survives the departure clear (#126)', () =>
     park('victim', { tmuxBacked: false, parkedAgentState: 'working', liveAgentState: 'working' })
     departureClear('victim')
     for (let i = 0; i < PARK_MAX; i++) park(`other${i}`, { tmuxBacked: true })
-    // 13 parks against a cap of 12, oldest ('victim') first — the exact >PARK_MAX project switch.
+    // PARK_MAX+1 parks against the cap, oldest ('victim') first — the exact >PARK_MAX project switch.
     const plan = planParkEviction([...registry.keys()], PARK_MAX, disposable)
     expect(plan).not.toContain('victim')
     expect(plan).toEqual(['other0']) // the cap still holds, paid by the next-oldest disposable park

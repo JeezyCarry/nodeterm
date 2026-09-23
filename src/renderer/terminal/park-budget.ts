@@ -14,9 +14,14 @@ import type { AgentState } from '@shared/agents/normalize'
  * park just means the next remount is a warm tmux reattach (tmux redraws), the same path every
  * remount after the 5-minute window already takes.
  *
- * 12 ≈ one busy project's worth of terminals; the same order of magnitude as WEBGL_BUDGET.
+ * 20 (raised from 12 in issue #886): with several SSH projects open, 12 was hit long before the
+ * park window and turned ordinary project cycling into seconds-long remote reattaches. A parked
+ * tmux-backed terminal measured ≈ 2 MB (headless xterm, 200×50), so the raise costs ≈ 16 MB more
+ * in the common case; a plain shell with a full scrollback (≈ 27 MB) is the expensive exception,
+ * and the memory-pressure lever still drops every disposable park. User-tunable via
+ * `settings.terminalParkMax`.
  */
-export const PARK_MAX = 12
+export const PARK_MAX = 20
 
 /** Default park window in minutes (`settings.terminalParkMinutes`) — the historical
  *  `TERM_PARK_MS` of 5 minutes, unchanged for everyone who never touches the setting. */

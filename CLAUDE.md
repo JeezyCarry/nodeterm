@@ -586,7 +586,7 @@ Lifecycle, by intent:
   teardown: `kill()` detaches the PTY client; the tmux session keeps running. **Window and cap
   are settings (issue #886)**: `settings.terminalParkMinutes` (default 5; **0 = until app quit** —
   `parkWindowMs` returns `null` and NO timer is armed, never `Infinity`, which `setTimeout` clamps
-  to ~1 ms and would dispose every park at once) and `settings.terminalParkMax` (default 12), both
+  to ~1 ms and would dispose every park at once) and `settings.terminalParkMax` (default **20**, raised from 12), both
   re-validated at park time. The LRU cap evicts **local parks before remote ones**
   (`planParkEviction`'s `isRemote`): a local re-adopt miss is a warm reattach in ms, an SSH one is
   a new client per terminal paced 4-per-master, plus a login if the master idled out

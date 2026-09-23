@@ -1610,7 +1610,7 @@ export interface Settings {
    *  Default 5. Hand-editable; re-validated at the use site (`parkWindowMs`). Issue #886. */
   terminalParkMinutes: number
   /** Max parked terminals across all projects before the oldest (local first, then remote) are
-   *  released early. Default 12. Re-validated at the use site (`parkCap`). Issue #886. */
+   *  released early. Default 20. Re-validated at the use site (`parkCap`). Issue #886. */
   terminalParkMax: number
   /** AI commit message agent: a local coding-agent CLI run read-only. */
   commitAgent: 'claude' | 'codex' | 'custom'
@@ -1886,7 +1886,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tmuxLeadPaneWidth: 0,
   offscreenTerminalMinutes: 10,
   terminalParkMinutes: 5,
-  terminalParkMax: 12,
+  terminalParkMax: 20,
   commitAgent: 'claude',
   commitAgentCommand: '',
   commitExtraPrompt: '',
