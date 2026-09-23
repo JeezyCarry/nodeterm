@@ -94,7 +94,8 @@ import {
   codexSessionEnv,
   isCodexScopeRefusal,
   needsCodexAccountScope,
-  resolveCodexSessionScope
+  resolveCodexSessionScope,
+  remoteCodexTmuxEnvArgs
 } from './codex-accounts-core'
 import { NODE_ID_MAX, isSafeNodeId } from './remote-safety'
 import { presenceHub } from './presence/hub'
@@ -2145,18 +2146,26 @@ export class PtyManager {
     if (options.requireRemote && !(options.sshRemote && options.persistKey && findSsh())) {
       return { sessionId: '', fresh: false, unavailable: 'ssh' }
     }
-    // FAIL-CLOSED Codex account scope (S6 §5 property 4 / Decision 2, the carried PR-1 obligation).
-    // A LOCAL Codex spawn that EXPLICITLY selected a managed account whose home is missing REFUSES
-    // here — it must never fall through and spawn against the SYSTEM `~/.codex` (silently acting as
-    // the wrong login is a worse failure for an explicit switch than for a first spawn). This is
-    // deliberately STRICTER than the Claude account path below, which falls back with a warning
-    // chip. `resolveCodexSessionScope` returns `{ unavailable: 'codex-account' }` for exactly that
-    // case; we map it straight through to a real refusal and spawn NOTHING. The system account (no
-    // id) always resolves. Remote (ssh) Codex sessions carry their account env via tmux `-e`.
-    if (needsCodexAccountScope(options.agentId, options.accountId, (id) => this.isCodexAccount(id)) && !options.sshRemote) {
-      const scope = resolveCodexSessionScope(platform().userDataDir, options.accountId)
-      if (isCodexScopeRefusal(scope)) {
-        return { sessionId: '', fresh: false, unavailable: 'codex-account' }
+    // Managed remote Codex accounts are not launchable yet: host-side account validation
+    // and per-account hook installation are not wired. Refuse agents AND login terminals;
+    // treating their id as Claude scope silently runs Codex against the host's system login.
+    if (needsCodexAccountScope(options.agentId, options.accountId, (id) => this.isCodexAccount(id))) {
+      if (options.sshRemote) {
+        if (
+          options.accountId ||
+          !options.sshRemote.remoteHome ||
+          !path.posix.isAbsolute(options.sshRemote.remoteHome)
+        ) {
+          return { sessionId: '', fresh: false, unavailable: 'codex-account' }
+        }
+        if (!options.persistKey || !findSsh()) {
+          return { sessionId: '', fresh: false, unavailable: 'ssh' }
+        }
+      } else {
+        const scope = resolveCodexSessionScope(platform().userDataDir, options.accountId)
+        if (isCodexScopeRefusal(scope)) {
+          return { sessionId: '', fresh: false, unavailable: 'codex-account' }
+        }
       }
     }
     // A tmux-backed session is "fresh" (cold start) when no live session exists to reattach to
@@ -3062,10 +3071,14 @@ export class PtyManager {
       // ABSOLUTE — tmux copies `-e` values verbatim (no `$HOME`/`~` expansion) — so we build it from
       // the connection's resolved remote $HOME. Fail-open: an unknown remoteHome (home resolution
       // failed on connect) skips the account env and the session runs under the remote `~/.claude`.
+      // Codex system scope must overwrite a managed scope inherited by the remote tmux
+      // server. spawnNew has already refused managed Codex and unresolved remote homes.
       const remoteAccountEnv =
-        options.accountId && options.sshRemote.remoteHome
-          ? accountTmuxEnvArgs(remoteAccountConfigDirAbs(options.sshRemote.remoteHome, options.accountId))
-          : []
+        needsCodexAccountScope(options.agentId, options.accountId, (id) => this.isCodexAccount(id))
+          ? remoteCodexTmuxEnvArgs(options.sshRemote.remoteHome!)
+          : options.accountId && options.sshRemote.remoteHome
+            ? accountTmuxEnvArgs(remoteAccountConfigDirAbs(options.sshRemote.remoteHome, options.accountId))
+            : []
       // Custom-agent env for a REMOTE node: expand ${env:VAR} against the LOCAL process env (the
       // key stays local; only the resolved VALUE travels over SSH). PATH is skipped — the local
       // machine can't see the remote box's PATH, so a locally-resolved PATH would break CLI

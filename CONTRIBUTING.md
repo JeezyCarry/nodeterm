@@ -690,3 +690,10 @@ Two files, two audiences:
 **If you change or discover something other contributors must know, update this file too.** An
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
+
+Remote Codex account safety (#736): managed SSH Codex sessions and login terminals are refused
+until host-side account validation and per-account hooks are wired. Do not remove that gate merely
+to enable the picker. System SSH Codex sessions require a resolved absolute remote home and set
+`CODEX_HOME` plus an empty `NODETERM_CODEX_ACCOUNT_ID` explicitly via tmux. Remote account add,
+login, retry, removal and identity UI remain follow-up work; the Server browser still explicitly
+rejects managed Codex account management.

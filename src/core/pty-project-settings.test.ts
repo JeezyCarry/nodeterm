@@ -370,6 +370,41 @@ describe('project settings at the spawn — SSH leg', () => {
   const create = async (options: Record<string, unknown>): Promise<unknown> =>
     fake.handlers[IPC.ptyCreate](1, { cols: 80, rows: 24, ...options })
 
+  it.each(['remote-account', 'missing-account', '../unsafe'])(
+    'refuses remote managed Codex account %s before any spawn', async (accountId) => {
+      await manager(null)
+      const result = await create({ agentId: 'codex', accountId, persistKey: NODE, sshRemote })
+      expect(result).toMatchObject({ sessionId: '', fresh: false, unavailable: 'codex-account' })
+      expect(spawns).toHaveLength(0)
+      expect(staged).toHaveLength(0)
+    }
+  )
+
+  it('refuses an agent-less remote Codex login terminal', async () => {
+    const mgr = await manager(null)
+    mgr.init(() => ({ ...DEFAULT_SETTINGS, codexAccounts: [{ id: 'remote-account', label: 'Work', host: 'u@h' }] }))
+    const result = await create({ accountId: 'remote-account', persistKey: NODE, sshRemote })
+    expect(result).toMatchObject({ unavailable: 'codex-account' })
+    expect(spawns).toHaveLength(0)
+  })
+
+  it.each([undefined, '', 'relative/home', 'C:\\Users\\remote'])('refuses a remote Codex system scope with home %s', async (remoteHome) => {
+    await manager(null)
+    const result = await create({ agentId: 'codex', persistKey: NODE, sshRemote: { ...sshRemote, remoteHome } })
+    expect(result).toMatchObject({ unavailable: 'codex-account' })
+    expect(spawns).toHaveLength(0)
+  })
+
+  it('writes explicit remote system Codex scope into tmux, without Claude scope', async () => {
+    await manager(null)
+    await create({ agentId: 'codex', persistKey: NODE, sshRemote })
+    expect(spawns).toHaveLength(1)
+    const command = spawns[0].args.join(' ')
+    expect(command).toContain('CODEX_HOME=/home/u/.codex')
+    expect(command).toContain('NODETERM_CODEX_ACCOUNT_ID=')
+    expect(command).not.toContain('CLAUDE_CONFIG_DIR=')
+  })
+
   it("stages the project's env in the 0600 file — never on the ssh argv", async () => {
     await manager(async () => ({ env: { PROJECT_TOKEN: 'sekrit' } }))
     await create({ persistKey: NODE, ownerProjectId: PROJECT, sshRemote })
