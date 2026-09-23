@@ -841,3 +841,8 @@ shared nonfatal startup path and surface its actionable diagnostic. A responding
 nodeterm identity: verify bearer acceptance and rejection. Legacy SSH endpoint migration requires
 ownership proof, an unchanged-file check, and stdin-only credential transfer; a project name alone
 is not permission to replace another installation's advertisement.
+
+Held approval attention must not replace subagent, recurring or background-task events, or refresh
+state evidence from those lifecycle hooks. A parent may ask several questions while a child ticket
+is outstanding: track each new picker and preserve child approval cards independently, including
+when their display titles match. Answering either resolves only that question or ticket.

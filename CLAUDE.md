@@ -4961,3 +4961,8 @@ own ticket; the picker stays pending until its correlated answer or explicit res
 When the parent answers first, retain concurrent approval tickets and blocked attention until
 their own replies; ordinary tool activity cannot settle them. Explicit turn/session resets
 still cancel both kinds of pending attention.
+
+Held approval attention must not replace subagent, recurring or background-task events, or refresh
+state evidence from those lifecycle hooks. A parent may ask several questions while a child ticket
+is outstanding: track each new picker and preserve child approval cards independently, including
+when their display titles match. Answering either resolves only that question or ticket.

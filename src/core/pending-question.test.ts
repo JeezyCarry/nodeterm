@@ -166,3 +166,84 @@ describe('subagent attention forwarding (W2)', () => {
     expect(_snapshot().node.state).toBe('blocked')
   })
 })
+
+
+describe('independent question, approval and lifecycle streams', () => {
+  const approval = { agent_id: 'child', session_id: 'child-session', tool_name: 'Bash',
+    tool_input: { command: 'echo child' }, nodeterm_pending_id: 'ticket-1' }
+  const open = () => {
+    ask()
+    hook('PermissionRequest', approval)
+    hook('PermissionRequest', { ...approval, nodeterm_pending_id: 'ticket-2' })
+  }
+  const live = () => _inboxSnapshot().events.filter(e => !e.resolved)
+
+  describe.each([false, true])('parent answered: %s', answered => {
+    it.each([
+      ['PreToolUse', { tool_name: 'Agent', tool_use_id: 'task-1', tool_input: { description: 'Work' } }, 'subagent-start'],
+      ['PostToolUse', { tool_name: 'Agent', tool_use_id: 'task-1', tool_response: { content: [{ type: 'text', text: 'Done' }] } }, 'subagent-end'],
+      ['PreToolUse', { tool_name: 'CronCreate', tool_input: { cron: '* * * * *', prompt: 'Check' } }, 'recurring'],
+      ['PreToolUse', { tool_name: 'CronDelete' }, 'recurring'],
+      ['PreToolUse', { tool_name: 'Bash', tool_input: { run_in_background: true } }, 'background-task']
+    ] as const)('preserves %s %j as %s without refreshing held state', (event, extra, kind) => {
+      open()
+      if (answered) recordQuestionResult('node', 'parent', 'ask-1')
+      const before = _snapshot().node
+      const cards = _inboxSnapshot().events
+      vi.setSystemTime(Date.now() + 5000)
+      const payload = { hook_event_name: event, session_id: 'parent', ...extra }
+      recordRawToolEvent('node', payload)
+      const normalized = normalizeClaude({ nodeId: 'node', agentId: 'claude', payload })!
+      expect(normalized.kind).toBe(kind)
+      expect(recordAgentEvent(normalized)).toBe(normalized)
+      expect(_snapshot().node).toEqual(before)
+      expect(_inboxSnapshot().events).toEqual(cards)
+    })
+  })
+
+  it('does not deduplicate a new picker against an independent approval with the same title', () => {
+    open()
+    recordQuestionResult('node', 'parent', 'ask-1')
+    const title = live().find(e => e.pendingId === 'ticket-2')!.title
+    expect(hook('PreToolUse', { tool_name: 'AskUserQuestion', tool_use_id: 'ask-2',
+      tool_input: { questions: [{ question: title, options: [{ label: 'A' }, { label: 'B' }] }] } }))
+      .toMatchObject({ state: 'waiting', askKind: 'question' })
+    expect(live()).toHaveLength(3)
+    expect(live().find(e => e.kind === 'question')).toMatchObject({ title, options: ['A', 'B'] })
+    expect(live().filter(e => e.kind === 'approval').map(e => e.pendingId)).toEqual(['ticket-1', 'ticket-2'])
+  })
+
+  it.each(['allow', 'deny'])('keeps sequential pickers and independent tickets through both answer orders (%s)', decision => {
+    open()
+    recordQuestionResult('node', 'parent', 'ask-1')
+    // A parent can ask and answer repeatedly while both child permissions remain outstanding.
+    for (const id of ['ask-2', 'ask-3']) {
+      expect(ask(id)).toMatchObject({ kind: 'state', state: 'waiting', askKind: 'question', questionId: id })
+      expect(_snapshot().node.pendingQuestion).toEqual({ sessionId: 'parent', toolUseId: id })
+      expect(live().filter(e => e.kind === 'question')).toHaveLength(1)
+      expect(live().filter(e => e.kind === 'approval').map(e => e.pendingId)).toEqual(['ticket-1', 'ticket-2'])
+      // Reassertions and an older delayed result cannot duplicate or answer the new question.
+      ask(id)
+      expect(live()).toHaveLength(3)
+      expect(recordQuestionResult('node', 'parent', 'ask-1')).toBeUndefined()
+      expect(hook('PostToolUse', { tool_name: 'AskUserQuestion', tool_use_id: 'ask-1' })?.state).toBe('waiting')
+      expect(recordQuestionResult('node', 'parent', id)).toMatchObject({ state: 'blocked', pendingId: 'ticket-2' })
+      expect(live().map(e => e.pendingId)).toEqual(['ticket-1', 'ticket-2'])
+    }
+    // Now answer one child first, then the next parent picker, then the final child.
+    ask('ask-4')
+    expect(hook('PermissionRequest', { ...approval, nodeterm_answered: decision }))
+      .toMatchObject({ state: 'waiting', askKind: 'question' })
+    expect(_snapshot().node.pendingQuestion?.toolUseId).toBe('ask-4')
+    expect(live().filter(e => e.kind === 'approval').map(e => e.pendingId)).toEqual(['ticket-2'])
+    expect(recordQuestionResult('node', 'parent', 'ask-4')).toMatchObject({ state: 'blocked', pendingId: 'ticket-2' })
+    ask('ask-5')
+    expect(hook('PermissionRequest', { ...approval, nodeterm_pending_id: 'ticket-2', nodeterm_answered: decision }))
+      .toMatchObject({ state: 'waiting', askKind: 'question' })
+    expect(live()).toHaveLength(1)
+    expect(live()[0].kind).toBe('question')
+    expect(_snapshot().node.concurrentApprovalIds).toBeUndefined()
+    expect(recordQuestionResult('node', 'parent', 'ask-5')).toMatchObject({ state: 'working' })
+    expect(live()).toHaveLength(0)
+  })
+})

@@ -503,13 +503,14 @@ function reduceEffectiveEntry(
     if (!reset && !answered) return next
     delete next.pendingQuestion
   }
-  if (next.concurrentApprovalIds?.length) {
-    // The picker answer and unrelated parent tool activity cannot answer child permissions.
-    commitState('blocked', !!ev.verified)
-    return next
-  }
   if (ev.questionId && ev.sessionId) {
     next.pendingQuestion = { sessionId: ev.sessionId, toolUseId: ev.questionId }
+  }
+  if (next.concurrentApprovalIds?.length && !next.pendingQuestion) {
+    // A new picker is independent of outstanding child permissions. Other state events
+    // hold blocked attention; lifecycle events must not refresh that state's evidence.
+    if (ev.kind === 'state') commitState('blocked', !!ev.verified)
+    return next
   }
   // Identity is captured off ANY event (mirrors the renderer's per-event setSessionId +
   // agentId threading). agentId is always present on a NormalizedAgentEvent.
@@ -1198,10 +1199,11 @@ export function isEventUnresolved(nodeId: string, eventId: string): boolean {
   return false
 }
 
-/** Mark a node's unresolved approval/question events resolved (it left blocked/waiting). */
-function resolveUnresolvedFor(nodeId: string): void {
+/** Settle older attention cards, optionally retaining independent child approval tickets. */
+function resolveUnresolvedFor(nodeId: string, keepApprovalIds: readonly string[] = []): void {
   for (const e of inboxEvents) {
-    if (e.nodeId === nodeId && !e.resolved && (e.kind === 'approval' || e.kind === 'question')) {
+    if (e.nodeId === nodeId && !e.resolved && (e.kind === 'approval' || e.kind === 'question') &&
+        !(e.kind === 'approval' && e.pendingId && keepApprovalIds.includes(e.pendingId))) {
       e.resolved = true
     }
   }
@@ -1449,6 +1451,10 @@ export function recordAgentEvent(rawEvent: NormalizedAgentEvent): NormalizedAgen
     }
   }
   if (next.concurrentApprovalIds?.length && !next.pendingQuestion) {
+    if (ev.kind !== 'state' && ev.kind !== 'session') {
+      scheduleWrite()
+      return ev
+    }
     if (ev.pendingId && ev.state === 'blocked' && ev.askKind === 'approval') {
       produceInboxFromState(nodeId, ev, prevState, 'blocked', now, true)
     }
@@ -1483,7 +1489,8 @@ export function recordAgentEvent(rawEvent: NormalizedAgentEvent): NormalizedAgen
   if (ev.kind === 'state' && ev.state === 'done' && next.awaitingInput && next.state === 'waiting') {
     out = { ...ev, state: 'waiting' }
   }
-  const classification = produceInboxFromState(nodeId, out, prevState, next.state, now)
+  const classification = produceInboxFromState(nodeId, out, prevState, next.state, now, false,
+    next.concurrentApprovalIds)
   scheduleWrite()
   if (!classification) return out
   // Enrich the broadcast event from the SAME classification the inbox used. A question drops
@@ -1503,7 +1510,8 @@ function produceInboxFromState(
   prevState: AgentState | undefined,
   nextState: AgentState | undefined,
   now: number,
-  concurrentApproval = false
+  concurrentApproval = false,
+  keepApprovalIds: readonly string[] = []
 ): NeedsYouClassification | undefined {
   // Clear any stashed question options on a new turn or session boundary — a stale option set must
   // never attach to a later, unrelated question. (State-leave clearing is handled below.)
@@ -1592,7 +1600,8 @@ function produceInboxFromState(
     // enrichment stays consistent across the re-assert.
     const dup = concurrentApproval
       ? inboxEvents.find(e => e.nodeId === nodeId && e.kind === 'approval' && !e.resolved && e.pendingId === ev.pendingId)
-      : newestUnresolved(inboxEvents, nodeId)
+      : newestUnresolved(inboxEvents.filter(e =>
+        !(e.kind === 'approval' && e.pendingId && keepApprovalIds.includes(e.pendingId))), nodeId)
     const sameTitle = !!dup && dup.title === title
     const freshDup = sameTitle && dup ? now - dup.ts < QUESTION_DEDUP_WINDOW_MS : false
     const newAsk = !freshDup
@@ -1615,11 +1624,10 @@ function produceInboxFromState(
       })
     }
     if (newAsk) {
-      // A NEW ask settles every older one for this node: the CLI blocks on an ask, so it cannot be
-      // asking something else unless the previous one was answered. Without this the Inbox kept a
-      // card per ask and the user had to dismiss answered questions by hand — the state never
-      // leaves `blocked` between them, so the transition-based resolve never ran.
-      if (!concurrentApproval) resolveUnresolvedFor(nodeId)
+      // A new parent ask settles older parent asks, but child approval tickets are independent.
+      // Preserve those tickets while the parent proceeds to another picker; settle older questions
+      // even when the state never leaves needs-you between them.
+      if (!concurrentApproval) resolveUnresolvedFor(nodeId, keepApprovalIds)
       pushInboxEvent({
         ...baseEvent,
         kind,
