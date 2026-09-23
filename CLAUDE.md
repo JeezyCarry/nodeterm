@@ -1158,6 +1158,13 @@ session.
   class the same way and no per-element opt-out can reach it); hoisting it to the whole NODE would
   additionally take wheel-zoom-to-cursor away over every node, which is exactly where a
   `wheelZoom` user aims.
+- **FitAddon reads the host's computed size, not its content rect.** The absolute, inset
+  canvas host uses `box-sizing: content-box` so its padding is excluded from that size
+  (#671). Its outer hit/plate rect still fills the body. The board modal instead keeps
+  padding on a separate wrapper. Do not put border-box padding back on a fit host:
+  it over-reports rows and clips the last line. `scripts/terminal-fit-layout.test.ts`
+  measures real xterm layout through resize sweeps at DPR 1, 1.25, 1.5 and 2 in Chrome
+  (`CHROME_BIN` overrides the executable); this does not verify GPU row-seam rendering.
 - A `ResizeObserver` drives `FitAddon.fit()` + `transport.resize`. Canvas zoom is a CSS
   transform, so it does *not* change `clientWidth` — cols/rows stay stable across zoom.
   `scale-fix.ts` patches xterm's mouse coords so text selection stays aligned when zoomed.
@@ -2566,6 +2573,8 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   would inject a prompt into every session an agent just spawned — the exact intrusion that push
   was reverted for. Links are pull-based, so nothing is lost. The refusal matrix is the pure
   `planBridges` (`renderer/lib/noteLink.ts`, unit-tested); Canvas only wraps it in setState.
+  A missing endpoint is only absent from the calling project: report that scope and the
+  unsupported cross-project boundary, without probing other projects or exposing their metadata.
   Callers that create and link nodes **in the same tick** must pass their own `lookup` — `setNodes`
   is async, so resolving fresh nodes off `nodesRef` would skip every one as "no such node".
   **Dependency edges (`--after`, 2026-07):** `open-terminal`/`open-claude`/`open-agent` accept
@@ -2831,7 +2840,7 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     the project-default account), and validation runs against `accountsForProject`, not the raw
     list, so a **pending** account or one **pinned to another machine's host** is never stamped
     onto a node it cannot run on (both used to reach the missing-dir fallback at spawn).
-  - **Switch Claude account (running node, local only)** — node right-click → *Switch Claude
+  - **Switch Claude account (running node)** — node right-click → *Switch Claude
     account ▸* moves the conversation onto another account **already logged in** on this machine,
     with no `/login` in the pane. It works because a transcript carries **no account identity**
     (measured on 2.1.280: under a config dir lacking the file `--resume` says "No conversation found";
@@ -2845,7 +2854,21 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     overwritten; and the rebind is **returned** by `beforeRecycle` and merged into the closure's own
     `updateNodeData`, never set by a separate Canvas `setNodes` in the same tick (React Flow's update
     queue rebuilds the node from the store's copy and can drop it). Builtin `claude` only (the
-    `boundAccountId` rule below). SSH / relay: shown disabled — the host-side copy is a follow-up.
+    `boundAccountId` rule below). **SSH nodes** switch between the accounts pinned to THEIR host (and
+    the host's own `~/.claude`): the copy runs ON the host as one generated `sh` script over the
+    project's master (`core/remote-claude-session-copy.ts`, tested under a real `/bin/sh`; same
+    prefix/diverged rule, via `head -c | cmp`), and `SshProjectManager.remoteClaudeSessionCopy`
+    refuses an account pinned to another host. An SSH ctx with no remote leg (Server Edition) is
+    refused, never answered from the local disk. Relay tabs: shown disabled.
+    **Two more surfaces, one choreography** (`runClaudeAccountSwitch` returns a
+    `ClaudeSwitchOutcome` instead of announcing it): the **kanban card** right-click menu gets the
+    node's rows from the SAME builder the canvas node menu uses (`accountSwitchRows` → KanbanView's
+    `accountMenuItems`), and the **usage popover** puts "⇄ Move N sessions" on each account row —
+    every Claude session on this canvas running on that account, on the popover's machine
+    (`bulkSwitchCandidates`), is moved to the picked account ONE AT A TIME (N parallel copies +
+    recycles on one host is a load spike), busy ones skipped and counted, one summary line
+    (`summarizeBulkSwitch`). The cross-project board (GlobalKanbanView) does not offer it:
+    its cards belong to other projects' canvases, whose nodes have no restart closure mounted.
   - **`boundAccountId(accountId, agentId)` (`shared/agents/account-binding.ts`) is the ONE rule for
     whether a node is account-bound at all**, and it feeds `data.accountId` *and* the account color
     from a single decision — split them and a node carries an account it is not painted for, or is
@@ -3830,7 +3853,14 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   **ONE exception, and it is not a walk-back of that rule (issue #743): a MAXIMIZED node**
   (`isMaximized` — `data.premaxRect`, the flag `maximizeNodeToRect` writes and
   `restoreMaximizedNode` clears) is framed against the same rectangle `maximizeTargetRect` placed
-  it in, by passing `measurePinnedInsets(box)` to `viewportForRect`. The trade-off above rests on
+  it in, through `viewportForNodeFocus`, which passes `measureMaximizeInsets(box)` to
+  `viewportForRect` only for maximized nodes. `nodeFocus.policy.test.ts` exercises this shared
+  Canvas decision for ordinary, maximized and restored nodes in both zoom modes.
+  Maximize also measures `.controls-cluster` and `.dock` (#711): their screen rectangles reserve
+  top/bottom space with an 8px gap, consuming the existing 24px margin first. Chrome outside the
+  horizontally usable area contributes nothing. Menus and hover peeks never reserve a band. Both
+  focus zoom branches use these same vertical insets; refitting observes the persistent chrome
+  as well as pinned panels and compares all four insets. Zone snap retains its side-only policy. The trade-off above rests on
   ONE number — how much of the node ends up behind the panel — and for a maximized node that
   number is set by the PANEL rather than the node, **by construction**: maximize sized it to be
   *exactly* the free area, so centring it in the wider pane buries half the inset less the margin.
@@ -3840,10 +3870,9 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   free area reproduces maximize's own origin (`marginPx + insets.left`) exactly — which is what
   makes this a fix rather than a second opinion about placement. It applies to BOTH zoom branches
   (the rectangle question is the same one; splitting it would be two rectangles again, which is
-  the bug), and with no pinned panel `insets` is zero and the whole thing is a mathematical no-op.
+  the bug). With no pinned panels or overlapping persistent controls, `insets` is zero.
   A pane narrower than the panels over it falls back to the whole pane rather than solving against
-  a negative width. `measurePinnedInsets` reads the DOM, so it is asked only for a node that can
-  use the answer.
+  a negative width. `measureMaximizeInsets` reads the DOM only when framing a maximized node.
   `settings.focusZoomToNode` (Behavior, default ON) is the escape hatch for the rescale: off, the
   camera keeps the zoom `getZoom()` reports and only pans, and that zoom is passed through
   **unclamped** — it is one the canvas is already displaying, and re-clamping it to the framing
@@ -3999,6 +4028,16 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   the publish flow). Status/history live in the per-cwd `state/scmCache.ts` store (same pattern
   as `scmDraft`), so the close→reopen cycle paints the last-known data instantly while the
   mount refresh replaces it silently — do not move them back into component `useState`.
+  **Branch observations** (`state/gitBranches.ts`) are shared by Source refreshes, Sessions project
+  headers and existing worktree status polls. They are scoped by GitApi identity + exact cwd + SSH
+  project id, never persisted, and latest-started reads win over late responses. Sessions resolves
+  each project's owning session (including background projects); its header reads the project cwd,
+  while a group header reads only its worktree path. No new timer: sidebar mount/reopen/cwd changes
+  read local checkouts once, Source operations refresh as before, and worktrees keep their existing
+  gated cadence.
+  SSH headers only observe Source refreshes: background SSH connections are not git-routable.
+  Local header probes also skip a cwd claimed by the active SSH route.
+  The branch projection does not replace worktree staleness/ownership decisions or SCM history.
 - **Worktrees** (bound to **group frames**) — a git worktree binds to a group node
   (`data.worktree: GroupWorktree {repoPath, branch, baseRef, path, createdByApp}`, persisted), and
   every node created inside that frame inherits the worktree path as its `cwd`
@@ -4210,7 +4249,14 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   changes via fs.watch; desktop SSH projects poll 5s while subscribed; inline projects show a
   hint. Relay tabs BRIDGE boardLog to the host (pre-dispatch `sharedProjectId` scope guard in the
   relay dispatch — an out-of-scope projectId is refused before any registry/path resolution; a
-  connection drop replays its outstanding onChanged unsubscribes). Deliberate v1 gaps: column-level
+  connection drop replays its outstanding onChanged unsubscribes). **The relay-guest scope jail is
+  keyed on channel CLASS, not a per-feature list** (`main/remote/relay-project-scope.ts`): every
+  method whose name starts with `githubIssues:` / `board-log:` / `projects.` is project-scoped, and
+  one the table cannot read a projectId out of is REFUSED on a scoped session. The switch it
+  replaced had a `default: not project-scoped` arm, so a new verb in one of those namespaces reached
+  another project's data with no refusal anywhere. A new channel in a scoped class therefore needs a
+  table row to become reachable — and `relay-project-scope.test.ts` fails if a live IPC channel in a
+  scoped class has none, so the fail-closed default cannot silently swallow a shipped verb. Deliberate v1 gaps: column-level
   events are stored but no card feed shows them; canvas-born nodes get no card-created; no
   card-deleted type.
   Per-column "+ New session" menus create agents/terminal/sticky nodes assigned to the column
@@ -4219,11 +4265,24 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   as a SIBLING of the node root — the roots are overflow:hidden — hidden for Ungrouped/dangling,
   click opens the board). Server Edition works as-is (pure renderer + workspace.save). Scope: no
   agent-driven card movement yet, no board undo.
-  **Mobile (nodeterm-ios) reaches the board through two relay verbs**, both landing in
-  `WorkspaceStore.ensureRemoteBoard` / `setRemoteCardColumn` (host-service `handleKanban`; wired in
-  `main/index.ts`'s `hostBridge.kanban`; pure transforms in `core/project-kanban-write.ts`):
-  `projects.ensureBoard` seeds the default columns on a project that has none, `projects.setCardColumn`
-  moves one card. Three things make them necessary rather than convenient. (1) The desktop board is a
+  **Mobile (nodeterm-ios) reaches the board through three relay verbs**, all landing in
+  `WorkspaceStore.ensureRemoteBoard` / `setRemoteCardColumn` / `editRemoteCardLabels` (host-service
+  `handleKanban`; wired in `main/index.ts`'s `hostBridge.kanban`; pure transforms in
+  `core/project-kanban-write.ts`): `projects.ensureBoard` seeds the default columns on a project that
+  has none, `projects.setCardColumn` moves one card, and `projects.editCardLabels` adds / removes /
+  creates **board labels** on one card (the phone's long-press label sheet, 2026-09). There is ONE
+  label model — the per-project palette in `kanban.labels` plus per-card ids in `kanban.meta[].labels`
+  — and the label verb writes it through the SAME transforms the canvas node's "+ Label" row and the
+  kanban card use: the card-meta + label half of `lib/kanban.ts` moved to `@shared/kanban-labels`
+  (re-exported, renderer call sites unchanged) so core can apply it; a test pins that a phone edit
+  produces the board `toggleCardLabel` produces. Params are validated at the write site
+  (`parseCardLabelEdit`: bounded control-free ids, 1–60-char control-free names, colour from the closed
+  palette, no id both added and removed) because they land in a git-shared, hand-editable file; a
+  created name matching an existing label case-insensitively REUSES it (the picker offers no Create
+  on an exact match); the first label on a board-less project seeds the default board, as the
+  desktop's first "+ Label" does; a stale `add` answers `edited:false` with the CURRENT palette so the
+  phone can redraw. Deleting/renaming palette entries is deliberately desktop-only (it touches every
+  card). The iOS direct-SSH path has a Swift twin of the transform for projects on the host it dials. Three things make them necessary rather than convenient. (1) The desktop board is a
   LAZY default — `kanban` is not written until the user's first board edit — so most project files
   carry NO board and the phone, which knows a project only by its file, could not offer one
   (measured: 1 of 13 project files on the author's machine had a `kanban` block). The default columns
@@ -4322,6 +4381,13 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
     XWayland and quietly ignored otherwise. Size and maximized restore either way, which is what the
     drop-don't-clamp rule already degrades to.
 - **Window chrome**: macOS integrated title bar (`titleBarStyle: 'hiddenInset'`); the tab
+  strip's stationary viewport is the only `no-drag` region for its contents. Explicit regions on
+  scrolled descendants escape the overflow clip in Electron's native hit test and subtract from
+  the wordmark after scrolling (#847). Keep tab/button/input descendants at the initial `none`;
+  the viewport already excludes dragging over them. `scripts/tabbar-drag.test.ts` uses real
+  Electron and native XTest input on a disposable Xvfb display (CDP input bypasses this hit test).
+  It checks 41 tabs at start/partial/middle/end/back, 28/40/64px heights and both padding modes;
+  it does not verify macOS traffic lights, Windows, or movement under a real window manager. The
   bar (`TabBar.tsx`) is the drag region with the `nodeterm` logo + a **Chrome-style tab strip**
   (2026-09-16): inactive tabs are flat and separated by a 1px divider that drops on both sides of a
   hovered or active tab, hover is an inset pill, and the active tab is `--canvas-bg` with rounded
@@ -4647,6 +4713,14 @@ component is absent, which otherwise fails only after the full install with `MSB
 `/opt:lldltojobs` with `LNK1117`. These are gyp overrides, not a reason to reject a Node version
 allowed by `package.json`. `.github/workflows/win-package-smoke.yml` is a
 **workflow_dispatch-only** packaging smoke on windows-latest — build only, never publishes.
+Windows installer safety (#829): `build/installer.nsh` overrides NSIS's process-killing check.
+A running app or session host blocks install/uninstall, and a failed process query blocks too.
+Never restore automatic host termination: quitting the app preserves those live sessions.
+Update preparation must keep saved canvas nodes: exit programs normally, quit, then have the user
+verify and stop any remaining host. Never recommend **End session** (it deletes nodes). Cold agent
+resume depends on supported, saved conversation history; it does not preserve running tasks.
+See `docs/windows-session-host.md` for the user-controlled preparation/recovery steps and limits.
+
 **Follow-ups, in order:** code signing, then Windows auto-update wiring (electron-updater NSIS leg
 + `latest.yml` on the nodeterm.dev feed — blocked on signing: an unsigned auto-update is a
 downgrade in trust), and the fork's PE-identity polish (electron-builder leaves `OriginalFilename`

@@ -65,6 +65,14 @@ Coalesce renderer updates before building the workspace map, without resetting t
 Intermediate publications retain resolved transcript paths only for unchanged identities; changing
 a session/account/location/hook path or removing the target invalidates that cache immediately.
 
+Windows installer safety (#829): `build/installer.nsh` overrides NSIS's process-killing check.
+A running app or session host blocks install/uninstall, and a failed process query blocks too.
+Never restore automatic host termination: quitting the app preserves those live sessions.
+Update preparation must keep saved canvas nodes: exit programs normally, quit, then have the user
+verify and stop any remaining host. Never recommend **End session** (it deletes nodes). Cold agent
+resume depends on supported, saved conversation history; it does not preserve running tasks.
+See `docs/windows-session-host.md` for the user-controlled preparation/recovery steps and limits.
+
 ## Three surfaces
 
 A feature is not done until you have decided how it behaves on each — even if the decision is "not
@@ -105,6 +113,13 @@ bytes. CLAUDE.md's kanban section has the measurements and the eviction rule tha
 lane unaffected.
 
 ## House rules
+
+- **Branch labels describe a checkout on one core.** Share existing status reads through
+  `renderer/state/gitBranches.ts`; do not cache a branch forever by project id or copy a project
+  branch onto worktree nodes. Source, Sessions and worktree headers consume the same observations,
+  keyed by API identity, exact cwd and (for SSH) project identity. Never probe an SSH cwd locally
+  from a background header: only the active SSH project is git-routable. SSH headers observe
+  Source refreshes instead.
 
 - **Never call the user's machine a Mac in user-visible copy.** Use `thisMachine()` /
   `thisMachineCap()` / `machineNoun()` from `src/renderer/lib/machineName.ts` — "this Mac" on
@@ -263,6 +278,12 @@ lane unaffected.
   the relay, so a key that works locks it onto a path that cannot work. CLAUDE.md, "Remote access",
   has the details.
 
+- **A relay channel that names a project needs a row in `relay-project-scope.ts`.** A relay guest
+  bound to one shared project must never reach another, and the jail is keyed on channel class:
+  anything named `githubIssues:*`, `board-log:*` or `projects.*` is refused on a scoped session
+  unless that table can read its projectId. Add the row in the same PR as the channel, or the verb
+  is refused for every scoped guest (and `relay-project-scope.test.ts` goes red telling you so).
+
 - **Normalize BOTH sides of a path comparison, through one function.** A marker normalized where
   it is built and matched raw where it is used is a no-op on the machine you wrote it on and a
   silent defect on Windows. That is issue #558: the managed-hook marker was folded to `/` while
@@ -315,6 +336,10 @@ lane unaffected.
 
 These are the ones that come up in review most often. Each exists because its absence caused a real
 bug.
+
+**A project-scoped lookup cannot prove a node does not exist elsewhere.** Link refusals must
+name the project boundary and explain that cross-project linking is unsupported; do not scan other
+projects just to improve a missing-endpoint diagnostic.
 
 **A failed read is never evidence of absence.** "Could not measure" and "there is nothing" are
 different facts and must stay distinguishable at every layer. Collapsing them is how a panel ends up
@@ -631,6 +656,13 @@ examples). If the same effect also WRITES, latch its first run: otherwise switch
 mid-session applies stored state to whatever the user is doing right then, which is a different
 feature from the one they asked for.
 
+Maximize placement and refocusing must use the same measured usable rectangle
+(`measureMaximizeInsets`): pinned side panels plus persistent top controls and bottom dock.
+Do not hardcode chrome heights or add the outer margin twice; transient menus must not resize
+terminals. Ordinary focus and zone snap keep their own policies. Test the maximized-only
+focus decision through `viewportForNodeFocus`, the same helper Canvas calls, rather than
+passing preselected insets straight to the geometry function.
+
 **Usage readouts distinguish failed reads from empty data.** For Claude, show the failure when
 `status` is `error` and limits are empty, including beside other providers; preserve last-known
 bars when limits remain. Keep both single-account and multi-account views covered.
@@ -689,6 +721,11 @@ pastes its path; Ctrl+V belongs to the foreground program. A node's configured a
 proof of foreground clipboard-image support. Keep shell/SSH/Server file routing and capture
 suppression of accompanying text; do not synthesize Ctrl+V or try both routes without a
 capability and receipt protocol. The shortcuts panel documents this distinction (#712).
+
+The titlebar's scroll viewport owns its `no-drag` region. Do not add `app-region: no-drag`
+to tabs or their descendants: Electron can subtract their off-screen rectangles from the
+wordmark's drag area. `scripts/tabbar-drag.test.ts` checks native hit testing with isolated
+Electron/Xvfb on Linux; macOS traffic lights and actual window movement still need device checks.
 
 `npm test` must pass, and `npm run typecheck` is the fastest gate.
 

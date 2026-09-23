@@ -103,6 +103,62 @@ function DefaultAccountMark({
   )
 }
 
+/** Where a bulk move can send an account's sessions: another account on the same machine. */
+export interface MoveTarget {
+  id: string | undefined
+  label: string
+}
+
+/**
+ * "⇄ Move N sessions" on an account row — the bulk version of a node's "Switch Claude account":
+ * every Claude session on this canvas running on this account is quit, its conversation copied to
+ * the picked account, and resumed there (Canvas `moveAccountSessions`). It sits where the limit is
+ * read, because that is where the user learns an account is spent. Absent when there is nothing to
+ * move or nowhere to move it.
+ */
+function MoveSessionsControl({
+  count,
+  targets,
+  onMove
+}: {
+  count: number
+  targets: readonly MoveTarget[]
+  onMove: (to: MoveTarget) => void
+}) {
+  const [picking, setPicking] = useState(false)
+  if (count === 0 || targets.length === 0) return null
+  return (
+    <span className="usage-account__move">
+      <button
+        type="button"
+        className="usage-account__use"
+        aria-expanded={picking}
+        title="Quit these sessions, move their conversations to another account and resume them there — no login needed. Busy sessions are skipped."
+        onClick={() => setPicking((v) => !v)}
+      >
+        ⇄ Move {count} {count === 1 ? 'session' : 'sessions'}
+      </button>
+      {picking ? (
+        <span className="usage-account__move-targets" role="group" aria-label="Move sessions to">
+          {targets.map((t) => (
+            <button
+              key={t.id ?? 'system'}
+              type="button"
+              className="usage-account__use"
+              onClick={() => {
+                setPicking(false)
+                onMove(t)
+              }}
+            >
+              → {t.label}
+            </button>
+          ))}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
 /**
  * One account's limit bars under a label, for the multi-account popover. Reuses LimitRow's
  * markup — `u` is null while its on-demand fetch is in flight.
@@ -113,7 +169,8 @@ function AccountUsageBlock({
   u,
   mode,
   isDefault = false,
-  onUse
+  onUse,
+  move
 }: {
   label: string
   email?: string
@@ -121,12 +178,14 @@ function AccountUsageBlock({
   mode: 'used' | 'remaining' | 'tokens'
   isDefault?: boolean
   onUse?: () => void
+  move?: React.ReactNode
 }) {
   return (
     <div className="usage-account">
       <div className="usage-account__label">
         {label}
         <DefaultAccountMark isDefault={isDefault} onUse={onUse} />
+        {move}
       </div>
       {(email ?? u?.email) && <div className="usage-account__email">{email ?? u?.email}</div>}
       {u?.limits.map((l) => (
@@ -155,12 +214,14 @@ function RemoteUsageBlock({
   row,
   mode,
   isDefault = false,
-  onUse
+  onUse,
+  move
 }: {
   row: RemoteAccountUsage
   mode: 'used' | 'remaining' | 'tokens'
   isDefault?: boolean
   onUse?: () => void
+  move?: React.ReactNode
 }) {
   if (row.usage.status === 'unavailable') return null
   const showHost = row.label !== row.hostKey
@@ -172,6 +233,7 @@ function RemoteUsageBlock({
           {showHost ? row.hostKey : 'SSH'}
         </span>
         <DefaultAccountMark isDefault={isDefault} onUse={onUse} />
+        {move}
       </div>
       {row.usage.email && <div className="usage-account__email">{row.usage.email}</div>}
       {row.usage.limits.map((l) => (
@@ -225,12 +287,19 @@ function ProviderBlock({ u, mode }: { u: ProviderUsage; mode: 'used' | 'remainin
  */
 export function UsageIndicator({
   overBoard = false,
-  onSetDefaultAccount
+  onSetDefaultAccount,
+  countAccountSessions,
+  onMoveSessions
 }: {
   overBoard?: boolean
   /** Writes `project.defaultAccountId` + persists (Canvas's own TabBar handler). When absent the
    *  popover is a pure readout, exactly as before issue #142. */
   onSetDefaultAccount?: (projectId: string, accountId: string | undefined) => void
+  /** Claude sessions on this canvas running on an account (undefined = system), on the scoped
+   *  machine. With `onMoveSessions`, turns on the rows' "Move N sessions". */
+  countAccountSessions?: (accountId: string | undefined) => number
+  /** Move every such session from one account to another (Canvas `moveAccountSessions`). */
+  onMoveSessions?: (from: string | undefined, to: string | undefined, toLabel: string) => void
 }): JSX.Element | null {
   const [usage, setUsage] = useState<ClaudeUsage | null>(null)
   const [open, setOpen] = useState(false)
@@ -289,6 +358,34 @@ export function UsageIndicator({
           ? () => onSetDefaultAccount(activeProjectId, accountId ?? undefined)
           : undefined
     }
+  }
+
+  // The bulk move's control for one row. Targets are the OTHER accounts this project can launch on
+  // this machine (the same `eligibleAccounts` rule) plus the machine's system login — never an
+  // account on another machine, whose dir does not exist where these panes run.
+  const moveFor = (accountId: string | null): React.ReactNode => {
+    if (!countAccountSessions || !onMoveSessions) return null
+    const from = accountId ?? undefined
+    const systemTarget: MoveTarget = {
+      id: undefined,
+      label: scopeHostKey
+        ? `System account (${scopeHostKey})`
+        : systemAccountDisplay(systemLabelSetting, usage?.email)
+    }
+    const targets = [
+      systemTarget,
+      ...eligibleAccounts.map((a) => ({ id: a.id, label: a.label || a.email || 'Account' }))
+    ].filter((t) => t.id !== from)
+    return (
+      <MoveSessionsControl
+        count={countAccountSessions(from)}
+        targets={targets}
+        onMove={(to) => {
+          setOpen(false)
+          onMoveSessions(from, to.id, to.label)
+        }}
+      />
+    )
   }
 
   useEffect(() => {
@@ -513,6 +610,7 @@ export function UsageIndicator({
                     email={systemLabelSetting.trim() ? (claudeUsage.email ?? undefined) : undefined}
                     u={claudeUsage}
                     {...rowMark(null)}
+                    move={moveFor(null)}
                   />
                   {scoped.accounts.map((a) => (
                     <AccountUsageBlock
@@ -522,6 +620,7 @@ export function UsageIndicator({
                       email={a.email}
                       u={acctUsage[a.id] ?? null}
                       {...rowMark(a.id)}
+                      move={moveFor(a.id)}
                     />
                   ))}
                 </>
@@ -560,6 +659,7 @@ export function UsageIndicator({
                 row={r}
                 mode={percentMode}
                 {...rowMark(r.accountId)}
+                move={moveFor(r.accountId)}
               />
             ))}
             {scope.kind === 'ssh' && visibleRemote.length === 0 && (
@@ -598,7 +698,7 @@ export function UsageIndicator({
                 window.dispatchEvent(new CustomEvent('nodeterm:switch-system-account'))
               }}
             >
-              ⇄ Switch account…
+              ⇄ Switch Claude account…
             </button>
           )}
         </div>
