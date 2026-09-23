@@ -1,6 +1,7 @@
 import { getViewportForBounds, type Rect, type Viewport } from '@xyflow/system'
 
-import { NO_INSETS, type ScreenInsets } from './pinnedInsets'
+import { NO_INSETS, type RectLike, type ScreenInsets } from './pinnedInsets'
+import { measureMaximizeInsets } from './maximizeInsets'
 
 /**
  * "Zoom to this node" geometry, computed without React Flow's `fitView`.
@@ -181,4 +182,16 @@ export function isMeasured(
   node: { measured?: { width?: number | null; height?: number | null } } | null | undefined
 ): boolean {
   return !!(numeric(node?.measured?.width) && numeric(node?.measured?.height))
+}
+
+/** Shared Canvas focus policy: only maximized nodes use their placement's chrome reservations.
+ * Ordinary/restored nodes stay centred in the whole pane, without measuring overlay geometry. */
+export function viewportForNodeFocus(
+  node: { data?: { premaxRect?: unknown } },
+  rect: Rect,
+  box: RectLike & { width: number; height: number },
+  zoom?: number
+): Viewport | null {
+  const insets = isMaximized(node) ? measureMaximizeInsets(box) : NO_INSETS
+  return viewportForRect(rect, box.width, box.height, zoom, insets)
 }

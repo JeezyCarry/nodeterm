@@ -3818,7 +3818,9 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   **ONE exception, and it is not a walk-back of that rule (issue #743): a MAXIMIZED node**
   (`isMaximized` — `data.premaxRect`, the flag `maximizeNodeToRect` writes and
   `restoreMaximizedNode` clears) is framed against the same rectangle `maximizeTargetRect` placed
-  it in, by passing `measureMaximizeInsets(box)` to `viewportForRect`.
+  it in, through `viewportForNodeFocus`, which passes `measureMaximizeInsets(box)` to
+  `viewportForRect` only for maximized nodes. `nodeFocus.policy.test.ts` exercises this shared
+  Canvas decision for ordinary, maximized and restored nodes in both zoom modes.
   Maximize also measures `.controls-cluster` and `.dock` (#711): their screen rectangles reserve
   top/bottom space with an 8px gap, consuming the existing 24px margin first. Chrome outside the
   horizontally usable area contributes nothing. Menus and hover peeks never reserve a band. Both

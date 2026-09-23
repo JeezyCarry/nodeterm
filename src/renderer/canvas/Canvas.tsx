@@ -302,14 +302,13 @@ import {
 } from '../lib/projectOpen'
 import {
   absolutePosition,
-  isMaximized,
   isMeasured,
   nodeFitRect,
-  viewportForRect,
+  viewportForNodeFocus,
   type FocusableNode
 } from '../lib/nodeFocus'
 import { NODE_MAXIMIZE_MARGIN_PX, maximizeTargetRect } from '../lib/nodeMaximize'
-import { NO_INSETS, measurePinnedInsets, type ScreenInsets } from '../lib/pinnedInsets'
+import { measurePinnedInsets, type ScreenInsets } from '../lib/pinnedInsets'
 import { measureMaximizeInsets, MAXIMIZE_CHROME_SELECTOR } from '../lib/maximizeInsets'
 import { ZONE_GUTTER_PX, ZONES, zoneTargetRect, type ZoneId } from '../lib/nodeZones'
 import {
@@ -7306,11 +7305,7 @@ export function Canvas() {
       // `focusZoomToNode` off: keep the zoom the user settled on and only pan — the node still
       // lands in the middle, only the rescale is dropped.
       const keepZoom = useSettings.getState().settings.focusZoomToNode ? undefined : getZoom()
-      // A MAXIMIZED node is framed against the rectangle its own placement used (issue #743);
-      // everything else is centred in the whole pane, as it always was. `measureMaximizeInsets`
-      // reads the DOM, so it is asked only for the node that can use the answer.
-      const insets = isMaximized(node) ? measureMaximizeInsets(box) : NO_INSETS
-      const viewport = viewportForRect(rect, box.width, box.height, keepZoom, insets)
+      const viewport = viewportForNodeFocus(node, rect, box, keepZoom)
       if (viewport) void setViewport(viewport, { duration: 300 })
     },
     [setViewport, getInternalNode, getZoom]

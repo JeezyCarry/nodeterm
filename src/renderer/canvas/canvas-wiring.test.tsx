@@ -182,19 +182,6 @@ describe('breadcrumb wiring the CLAUDE.md bullet calls load-bearing', () => {
     expect(frame).toContain('setViewport(viewport, { duration: 300 })')
   })
 
-  it('centres the node in the pane and never solves chrome around it', () => {
-    // Framing a single focused node against the chrome-free rectangle was reported wrong twice
-    // ("too far right", "not in the middle"): the sessions sidebar is a 300px overlay and it is
-    // open exactly when this is used. The free-rect solve stays in fitAll, which fits every node.
-    const frame = CANVAS_SRC.slice(
-      CANVAS_SRC.indexOf('const frameNode = useCallback'),
-      CANVAS_SRC.indexOf('const goToNode = useCallback')
-    )
-    expect(frame).toContain('viewportForRect(rect, box.width, box.height, keepZoom, insets)')
-    expect(frame).not.toContain('solveFitFrame')
-    expect(frame).toContain('settings.focusZoomToNode ? undefined : getZoom()')
-  })
-
   it('the resume card slot is spent only on a card that can render, and only when opted in', () => {
     // Gated on settings.showResumeCard (default off) FIRST — a disabled card must not spend the
     // one-shot slot — then once per app run, only with a live stop, and never under the opaque

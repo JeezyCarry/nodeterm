@@ -625,7 +625,9 @@ feature from the one they asked for.
 Maximize placement and refocusing must use the same measured usable rectangle
 (`measureMaximizeInsets`): pinned side panels plus persistent top controls and bottom dock.
 Do not hardcode chrome heights or add the outer margin twice; transient menus must not resize
-terminals. Ordinary focus and zone snap keep their own policies.
+terminals. Ordinary focus and zone snap keep their own policies. Test the maximized-only
+focus decision through `viewportForNodeFocus`, the same helper Canvas calls, rather than
+passing preselected insets straight to the geometry function.
 
 **Usage readouts distinguish failed reads from empty data.** For Claude, show the failure when
 `status` is `error` and limits are empty, including beside other providers; preserve last-known
