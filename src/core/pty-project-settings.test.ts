@@ -17,6 +17,7 @@ import { DEFAULT_SETTINGS } from '../shared/types'
 import { AUTH_ENV_STRIP, isReservedSpawnEnvKey } from './claude-accounts-core'
 import { MODEL_GATEWAY_ENV_KEYS } from '../shared/agents/model-gateway'
 import { setCustomAgentBaseResolver } from '../shared/agents/config'
+import { remoteCodexHome } from './codex-accounts-core'
 import { hookServer } from './agents/hook-server'
 import type { ProjectSpawnOverrides } from './project-spawn-overrides'
 
@@ -373,7 +374,7 @@ describe('project settings at the spawn — SSH leg', () => {
   const create = async (options: Record<string, unknown>): Promise<unknown> =>
     fake.handlers[IPC.ptyCreate](1, { cols: 80, rows: 24, ...options })
 
-  it.each(['remote-account', 'missing-account', '../unsafe'])(
+  it.each(['missing-account', '../unsafe'])(
     'refuses remote managed Codex account %s before any spawn', async (accountId) => {
       await manager(null)
       const result = await create({ agentId: 'codex', accountId, persistKey: NODE, sshRemote })
@@ -383,12 +384,36 @@ describe('project settings at the spawn — SSH leg', () => {
     }
   )
 
-  it('refuses an agent-less remote Codex login terminal', async () => {
+  it('launches the remote login factory terminal under its managed Codex home', async () => {
     const mgr = await manager(null)
     mgr.init(() => ({ ...DEFAULT_SETTINGS, codexAccounts: [{ id: 'remote-account', label: 'Work', host: 'u@h' }] }))
-    const result = await create({ accountId: 'remote-account', persistKey: NODE, sshRemote })
+    // Matches createCodexAccountLoginNode(..., ssh): an agent-less terminal carrying
+    // accountId and remote cwd. workspace.test.ts pins that factory and its device-auth command.
+    const result = await create({ accountId: 'remote-account', cwd: '/srv/app', persistKey: NODE, sshRemote })
+    expect(result).not.toHaveProperty('unavailable')
+    expect(spawns).toHaveLength(1)
+    expect(spawns[0].file).toBe('/usr/bin/ssh')
+    expect(spawns[0].args.join(' ')).toContain(`CODEX_HOME=${remoteCodexHome('/home/u', 'remote-account')}`)
+    expect(spawns[0].args.join(' ')).toContain('NODETERM_CODEX_ACCOUNT_ID=remote-account')
+    expect(spawns[0].args.join(' ')).not.toContain('CLAUDE_CONFIG_DIR=')
+  })
+
+  it('refuses an agent-less login before remote home discovery', async () => {
+    const mgr = await manager(null)
+    mgr.init(() => ({ ...DEFAULT_SETTINGS, codexAccounts: [{ id: 'remote-account', label: 'Work', host: 'u@h' }] }))
+    const result = await create({ accountId: 'remote-account', persistKey: NODE, sshRemote: { ...sshRemote, remoteHome: undefined } })
     expect(result).toMatchObject({ unavailable: 'codex-account' })
     expect(spawns).toHaveLength(0)
+    expect(staged).toHaveLength(0)
+  })
+
+  it('refuses an unsafe id even if it appears in saved Codex accounts', async () => {
+    const mgr = await manager(null)
+    mgr.init(() => ({ ...DEFAULT_SETTINGS, codexAccounts: [{ id: '../unsafe', label: 'Invalid', host: 'u@h' }] }))
+    const result = await create({ accountId: '../unsafe', persistKey: NODE, sshRemote })
+    expect(result).toMatchObject({ unavailable: 'codex-account' })
+    expect(spawns).toHaveLength(0)
+    expect(staged).toHaveLength(0)
   })
 
   describe.each(['codex', 'custom:codex'])('%s remote scope', (agentId) => {
@@ -396,10 +421,32 @@ describe('project settings at the spawn — SSH leg', () => {
       const mgr = await manager(null)
       mgr.init(() => ({
         ...DEFAULT_SETTINGS,
+        codexAccounts: [{ id: 'remote-account', label: 'Work', host: 'u@h' }],
         customAgents: [{ id: 'custom:codex', label: 'Codex wrapper', baseAgent: 'codex', launchCmd: 'codex' }]
       }))
       return mgr
     }
+
+    it('launches a known managed account with its private remote scope', async () => {
+      await codexManager()
+      const result = await create({ agentId, accountId: 'remote-account', persistKey: NODE, sshRemote })
+      expect(result).not.toHaveProperty('unavailable')
+      expect(spawns).toHaveLength(1)
+      expect(spawns[0].file).toBe('/usr/bin/ssh')
+      expect(spawns[0].args.join(' ')).toContain(`CODEX_HOME=${remoteCodexHome('/home/u', 'remote-account')}`)
+      expect(spawns[0].args.join(' ')).toContain('NODETERM_CODEX_ACCOUNT_ID=remote-account')
+      expect(spawns[0].args.join(' ')).not.toContain('CLAUDE_CONFIG_DIR=')
+    })
+
+    it.each([undefined, '', 'relative/home', '/home/u\nunsafe', '/home/$(id)'])(
+      'refuses a known managed account with unsafe or unresolved home %s', async (remoteHome) => {
+        await codexManager()
+        const result = await create({ agentId, accountId: 'remote-account', persistKey: NODE, sshRemote: { ...sshRemote, remoteHome } })
+        expect(result).toMatchObject({ unavailable: 'codex-account' })
+        expect(spawns).toHaveLength(0)
+        expect(staged).toHaveLength(0)
+      }
+    )
 
     it.each(['remote-account', 'missing-account', '../unsafe'])(
       'refuses managed id %s even before home discovery', async (accountId) => {

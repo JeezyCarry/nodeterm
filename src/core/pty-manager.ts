@@ -92,10 +92,11 @@ import {
   AUTH_ENV_STRIP as CODEX_AUTH_ENV_STRIP,
   codexSessionEnv,
   isCodexScopeRefusal,
+  isSafeAccountId,
   needsCodexAccountScope,
   resolveCodexSessionScope
 } from './codex-accounts-core'
-import { NODE_ID_MAX, isSafeNodeId } from './remote-safety'
+import { NODE_ID_MAX, isSafeNodeId, isSafeRemoteHome } from './remote-safety'
 import { remoteAccountScopeEnvArgs } from './remote-account-env'
 import { presenceHub } from './presence/hub'
 import {
@@ -2149,12 +2150,17 @@ export class PtyManager {
     if (options.requireRemote && !(options.sshRemote && options.persistKey && findSsh())) {
       return { sessionId: '', fresh: false, unavailable: 'ssh' }
     }
-    // Managed remote Codex accounts are not launchable yet: host-side account validation
-    // and per-account hook installation are not wired. Refuse agents AND login terminals;
-    // treating their id as Claude scope silently runs Codex against the host's system login.
+    // A managed remote Codex account needs a known id and a safe resolved home so the
+    // remote env builder can supply its private CODEX_HOME. Otherwise a fresh spawn would
+    // silently use the host's system login. Agent-less login terminals use this same gate.
     if (needsCodexAccountScope(options.agentId, options.accountId, (id) => this.isCodexAccount(id))) {
       if (options.sshRemote) {
-        if (options.accountId) {
+        if (
+          options.accountId &&
+          (!isSafeAccountId(options.accountId) ||
+            !this.isCodexAccount(options.accountId) ||
+            !isSafeRemoteHome(options.sshRemote.remoteHome))
+        ) {
           return { sessionId: '', fresh: false, unavailable: 'codex-account' }
         }
         if (!options.persistKey || !findSsh()) {

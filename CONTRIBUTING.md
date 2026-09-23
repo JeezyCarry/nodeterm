@@ -796,12 +796,12 @@ Two files, two audiences:
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
 
-Remote Codex account safety (#736): managed SSH Codex sessions and login terminals are refused
-until host-side account validation and per-account hooks are wired. Do not remove that gate merely
-to enable the picker. System SSH Codex sessions retain the remote host’s environment, including during early attach
-before remote home discovery; never inject a guessed `HOME` or `CODEX_HOME`. Custom Codex
-harnesses use the same account guard. Remote account add,
-login, retry, removal and identity UI remain follow-up work; the Server browser still explicitly
+Remote Codex account safety (#736): managed SSH Codex sessions and agent-less login terminals
+require a known safe account id and a safe resolved remote home before spawning. The remote env
+builder supplies their private `CODEX_HOME`; never fall back to the system login when that scope
+is unavailable. System SSH Codex retains the host environment, including during early attach
+before home discovery; never inject a guessed `HOME` or `CODEX_HOME`. Custom Codex harnesses use
+the same guard. Desktop supports remote account lifecycle; the Server browser still explicitly
 rejects managed Codex account management.
 
 Managed Codex login terminals are agent-less: core identifies their provider from the saved
