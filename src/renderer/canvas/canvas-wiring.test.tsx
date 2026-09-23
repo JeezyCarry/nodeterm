@@ -7,6 +7,9 @@
 // the wiring by reading the call site. A source read is a weak test in general, but it is the only
 // thing standing between a one-character deletion and a silently reintroduced bug — which is
 // exactly the shape that survived the whole suite once on this branch already.
+import { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { CanvasPills } from '../components/CanvasPills'
 import fs from 'fs'
 import path from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -54,8 +57,17 @@ describe('the canvas pill cluster is fit-view chrome', () => {
     expect(chromeObstacles(VIEWPORT)).toEqual([])
   })
 
-  it('is what Canvas actually renders', () => {
-    expect(CANVAS_SRC).toContain('<div className="canvas-pills" data-canvas-chrome>')
+  it('the production cluster opts into fit-view obstacles', () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      act(() => root.render(<CanvasPills><button>Usage</button></CanvasPills>))
+      measured(host.querySelector('.canvas-pills')!, PILLS)
+      expect(chromeObstacles(VIEWPORT)).toHaveLength(1)
+    } finally {
+      act(() => root.unmount())
+    }
   })
 })
 

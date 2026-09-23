@@ -14,7 +14,17 @@ import {
   sshHostKey,
   type SshConnection
 } from '../../shared/ssh'
-import type { DownloadResult, SshPassphraseRequest, SshProjectStatusEvent } from '../../shared/types'
+import type {
+  ClaudeSessionCopyResult,
+  DownloadResult,
+  SshPassphraseRequest,
+  SshProjectStatusEvent
+} from '../../shared/types'
+import {
+  parseRemoteSessionCopy,
+  remoteClaudeConfigDir,
+  remoteSessionCopyCommand
+} from '../../core/remote-claude-session-copy'
 import { candidateName, safeDownloadBasename } from '../../core/download-name'
 import { removeAtomic, renameAtomic } from '../../core/fs-atomic'
 import { findExecutableSync, shellPathNow } from '../../core/exec-path'
@@ -1888,6 +1898,33 @@ export class SshProjectManager {
     }
   }
 
+  /**
+   * Has this managed remote account completed its device login? The same gate the local waitLogin
+   * uses — a REAL `auth.json`, never a symlink (shared assets are symlinked in from the system home;
+   * a credential riding the system login is not this account's). `null` = could not ask (not
+   * connected, unsafe `$HOME`, failed ssh), which a poll treats as "not yet", never as "yes".
+   */
+  async remoteCodexAuthPresent(projectId: string, accountId: string): Promise<boolean | null> {
+    assertCodexAccountId(accountId)
+    const c = this.conns.get(projectId)
+    if (!c || !isSafeRemoteHome(c.remoteHome)) return null
+    const auth = `${remoteCodexHome(c.remoteHome as string, accountId)}/auth.json`
+    try {
+      const { code, stdout } = await this.r.run(
+        childArgs(
+          c.conn,
+          c.controlPath,
+          `if test -f ${posixQuote(auth)} && test ! -L ${posixQuote(auth)}; then echo yes; else echo no; fi`
+        )
+      )
+      if (code !== 0) return null
+      const answer = stdout.trim().split('\n').pop()
+      return answer === 'yes' ? true : answer === 'no' ? false : null
+    } catch {
+      return null
+    }
+  }
+
   /** Stop the account's app-server and delete its home (credential jar included). Runs entirely on
    *  the host — the credential never travels. No-op false when not connected. */
   async remoteCodexAccountRemove(projectId: string, accountId: string): Promise<boolean> {
@@ -2188,6 +2225,44 @@ export class SshProjectManager {
     if (!c) return
     const dir = remoteAccountConfigDir(accountId)
     await this.r.run(childArgs(c.conn, c.controlPath, `rm -rf ${quoteRemotePath(dir)}`))
+  }
+
+  /**
+   * The SSH leg of "Switch Claude account": copy a conversation between two account dirs ON THE
+   * HOST (`remote-claude-session-copy.ts` builds the script; it runs over this project's master).
+   * Refuses an account pinned to another host — its dir would name a path on a machine this
+   * connection does not reach — and a connection whose `$HOME` never resolved (the account dirs are
+   * absolute paths under it). A cut stream or failed ssh parses as `failed`, never as success.
+   */
+  async remoteClaudeSessionCopy(
+    projectId: string,
+    sessionId: string,
+    source: { id?: string; host?: string },
+    target: { id?: string; host?: string }
+  ): Promise<ClaudeSessionCopyResult> {
+    const c = this.conns.get(projectId)
+    if (!c || !c.remoteHome) return { ok: false, reason: 'failed' }
+    const here = sshHostKey(c.conn)
+    if ((source.id && source.host !== here) || (target.id && target.host !== here))
+      return { ok: false, reason: 'unknown-account' }
+    let cmd: string | null
+    try {
+      cmd = remoteSessionCopyCommand({
+        sessionId,
+        sourceConfigDir: remoteClaudeConfigDir(c.remoteHome, source.id),
+        targetConfigDir: remoteClaudeConfigDir(c.remoteHome, target.id),
+        tempId: randomUUID()
+      })
+    } catch {
+      return { ok: false, reason: 'bad-request' } // an account id outside the alphabet
+    }
+    if (!cmd) return { ok: false, reason: 'bad-request' }
+    try {
+      const { code, stdout } = await this.r.run(childArgs(c.conn, c.controlPath, cmd))
+      return code === 0 ? parseRemoteSessionCopy(stdout) : { ok: false, reason: 'failed' }
+    } catch {
+      return { ok: false, reason: 'failed' }
+    }
   }
 
   /**
