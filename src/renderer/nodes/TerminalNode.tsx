@@ -5299,6 +5299,9 @@ export function TerminalNode({
   // markdown view's hint names the action instead of promising a chord that never fires.
   const mdChip = chipFor('node.toggleMarkdown')
 
+  // The experimental shared glyph renderer paints text on a canvas BELOW the nodes, so a glass
+  // tint would sit on top of every glyph: glass stands down while a grid is mounted.
+  const glassOn = glassVars !== null && !glyphMounted
   return (
     <>
     {/* Sibling of the root: .term-node is overflow:hidden and would clip the half-pill. */}
@@ -5309,10 +5312,10 @@ export function TerminalNode({
       }${status?.state === 'working' ? ' working' : ''}${
         status?.state === 'waiting' || status?.state === 'blocked' ? ' attention' : ''
       }${glyphMounted ? ' term-node--glyphgrid' : ''}${focused ? ' term-node--focused' : ''}${
-        glassVars ? ' term-node--glass' : ''
+        glassOn ? ' term-node--glass' : ''
       }`}
       ref={rootRef}
-      style={glassVars ? { ...glassVars, borderTopColor: data.color } : { borderTopColor: data.color }}
+      style={glassOn ? { ...glassVars, borderTopColor: data.color } : { borderTopColor: data.color }}
       onMouseEnter={() => (hoveredRef.current = true)}
       onMouseLeave={() => (hoveredRef.current = false)}
     >
