@@ -189,6 +189,7 @@ function buildArch({ arch, triple, minOs }, work, tarballs) {
       // for the next one nobody listed here.
       'ac_cv_func_pipe2=no',
       'ac_cv_func_accept4=no',
+      'ac_cv_func_strtonum=no',
       ...hostArg
     ],
     { cwd: evDir, env }
