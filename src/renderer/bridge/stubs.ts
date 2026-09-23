@@ -379,7 +379,8 @@ export function buildStubApi(): Omit<
       cancelWaitLogin: U('claudeAccounts.cancelWaitLogin'),
       remove: U('claudeAccounts.remove'),
       link: U('claudeAccounts.link'),
-      setSkillSharing: U('claudeAccounts.setSkillSharing')
+      setSkillSharing: U('claudeAccounts.setSkillSharing'),
+      copySession: U('claudeAccounts.copySession')
     },
     codexAccounts: {
       add: U('codexAccounts.add'),

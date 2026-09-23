@@ -189,7 +189,8 @@ export function isAsyncSubagentLaunch(r: { status?: string; isAsync?: boolean } 
 
 export function normalizeClaude(env: RawHookEnvelope): NormalizedAgentEvent | null {
   const p = env.payload as ClaudePayload
-  if (p.agent_id) return null
+  // Child tool activity cannot drive the parent, but permission requests still need a reply.
+  if (p.agent_id && ['PreToolUse', 'PostToolUse', 'PostToolUseFailure'].includes(p.hook_event_name ?? '')) return null
   const base = { nodeId: env.nodeId, agentId: env.agentId, sessionId: p.session_id }
   // Deterministic hook-reply "answered" signal (docs/hook-reply-approvals.md): the managed hook
   // fires this the instant it reads a valid allow/deny answer file — the agent is about to proceed

@@ -2657,7 +2657,10 @@ app.whenReady().then(async () => {
       // wrong-machine read, which is what falling through would produce.
       if (agentId && agentId !== 'claude') return 'unresolved'
       // Already tracked (a hook event landed, or an earlier mount resolved it) — nothing to ask.
-      if (remoteContextTail.pathFor(sessionId)) return 'tracked'
+      if (remoteContextTail.pathFor(sessionId)) {
+        remoteContextTail.replay(sessionId)
+        return 'tracked'
+      }
       // Asks the HOST where the transcript is, jails the answer, and caches a HIT under the session
       // id (shared with the ⌘M read path, which is the locator's first consumer). A clean miss and
       // a failed ssh call both come back `undefined` and cache NOTHING — so a momentarily dead
@@ -2962,11 +2965,7 @@ app.whenReady().then(async () => {
     return isSafeRemoteTranscriptPath(abs, remoteHome) ? abs : undefined
   }
   const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])
-  // `meta` carries the per-node `verified` flag and is deliberately UNUSED here: A13 moved
-  // enforcement into the hook server, which refuses before a listener is ever called. This shell
-  // used to keep a `nodeVerified` map written on every event and read by nothing. The parameter
-  // stays because the flag is part of the listener contract and both shells must take it
-  // (invariant 4, pinned by hook-verified-parity.test.ts); a second copy of the answer is not.
+  // Hook server validates session-env capacity and caller identity once for both shells.
   hookServer.setRawListener((agentId, nodeId, payload, _meta) => {
     if (agentId === 'grok') {
       // This branch records two associations, neither of which grok's envelope states outright.
@@ -3124,11 +3123,12 @@ app.whenReady().then(async () => {
       if (p.hook_event_name === 'SessionEnd' && p.session_id) tail.untrack(p.session_id)
       return
     }
-    if (agentId !== 'claude' || ignoreQuestionHook(nodeId, payload)) return
+    if (agentId !== 'claude') return
     // Mirror the per-node "what it's doing now" activity line for the phone (mobile-usage-inbox).
     // Runs BEFORE the local/remote split so it covers remote (SSH) nodes too — it needs only
     // tool_name/tool_input, never the transcript path the split routes on.
     recordRawToolEvent(nodeId, payload)
+    if (ignoreQuestionHook(nodeId, payload)) return
     const p = payload as {
       hook_event_name?: string
       session_id?: string
@@ -3148,7 +3148,7 @@ app.whenReady().then(async () => {
       const transcriptPath = safeRemoteTranscriptPath(p.transcript_path, remoteHome)
       if (p.session_id && transcriptPath) {
         const ref: RemoteFileRef = { conn: rt.conn, controlPath: rt.controlPath, path: transcriptPath }
-        remoteContextTail.track(p.session_id, ref)
+        remoteContextTail.track(p.session_id, ref, _meta.contextWindow)
         remoteTranscriptBySession.set(p.session_id, ref)
       }
       if (nodeId && p.session_id) nodeContextSession.set(nodeId, p.session_id)
@@ -3204,7 +3204,7 @@ app.whenReady().then(async () => {
     }
     const transcriptPath = safeTranscriptPath(p.transcript_path)
     // Context-window meter: tail the session transcript (any event carrying both fields).
-    if (p.session_id && transcriptPath) contextTail.track(p.session_id, transcriptPath)
+    if (p.session_id && transcriptPath) contextTail.track(p.session_id, transcriptPath, _meta.contextWindow)
     if (nodeId && p.session_id) nodeContextSession.set(nodeId, p.session_id)
     if (nodeId && p.session_id && transcriptPath) setNodeTranscript(nodeId, p.session_id, transcriptPath)
     if (p.hook_event_name === 'SessionEnd' && p.session_id) contextTail.untrack(p.session_id)

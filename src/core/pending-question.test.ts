@@ -73,3 +73,27 @@ describe('Claude pending question correlation (#821)', () => {
     expect(_snapshot().node.state).toBe('blocked')
   })
 })
+
+describe('subagent attention forwarding (W2)', () => {
+  it.each(['PreToolUse', 'PostToolUse', 'PostToolUseFailure'])('filters child %s without changing a blocked parent', event => {
+    hook('PermissionRequest', { tool_name: 'Bash' })
+    expect(hook(event, { agent_id: 'child', tool_name: 'Bash' })).toBeNull()
+    expect(_snapshot().node.state).toBe('blocked')
+  })
+
+  it.each(['allow', 'deny'])('forwards a child approval ticket, summary and %s reply', decision => {
+    const approval = { agent_id: 'child', tool_name: 'Bash', tool_input: { command: 'echo child' }, nodeterm_pending_id: 'node-1-1' }
+    expect(hook('PermissionRequest', approval)).toMatchObject({ state: 'blocked', pendingId: 'node-1-1', askKind: 'approval' })
+    expect(_inboxSnapshot().events[0]).toMatchObject({ kind: 'approval', pendingId: 'node-1-1' })
+    expect(_inboxSnapshot().events[0].resolved).not.toBe(true)
+    expect(JSON.stringify(_inboxSnapshot().events[0])).toContain('echo child')
+    expect(hook('PermissionRequest', { ...approval, nodeterm_answered: decision })).toMatchObject({ state: 'working', pendingId: 'node-1-1' })
+    expect(_inboxSnapshot().events[0].resolved).toBe(true)
+  })
+
+  it('forwards child permission notifications and ignores informational notifications', () => {
+    expect(hook('Notification', { agent_id: 'child', notification_type: 'permission_prompt' })?.state).toBe('blocked')
+    expect(hook('Notification', { agent_id: 'child', notification_type: 'auth_success' })).toBeNull()
+    expect(_snapshot().node.state).toBe('blocked')
+  })
+})

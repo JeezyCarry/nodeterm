@@ -1658,7 +1658,8 @@ export function ignoreQuestionHook(nodeId: string, payload: Record<string, unkno
  * the line actually changes (raw POSTs are bursty).
  */
 export function recordRawToolEvent(nodeId: string, payload: Record<string, unknown>): void {
-  if (!nodeId || ignoreQuestionHook(nodeId, payload)) return
+  // Approval summaries must reach the phone even when the child transcript is excluded.
+  if (!nodeId || (payload.hook_event_name !== 'PermissionRequest' && ignoreQuestionHook(nodeId, payload))) return
   const hook = typeof payload.hook_event_name === 'string' ? payload.hook_event_name : ''
   const now = Date.now()
   if (hook === 'PreToolUse') {
