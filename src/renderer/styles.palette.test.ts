@@ -20,9 +20,32 @@ function block(selector: string): Map<string, string> {
   return new Map(Array.from(body.matchAll(/^\s*(--[a-z0-9-]+)\s*:\s*([^;]+);/gm), (m) => [m[1], m[2].trim()]))
 }
 
+/** Every rule with exactly this selector, merged in source order (later declarations win). */
+function blocks(selector: string): Map<string, string> {
+  const out = new Map<string, string>()
+  let from = 0
+  for (;;) {
+    const start = CSS.indexOf(`\n${selector} {\n`, from)
+    if (start < 0) return out
+    const end = CSS.indexOf('\n}\n', start)
+    const body = CSS.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, '')
+    for (const m of body.matchAll(/^\s*(--[a-z0-9-]+)\s*:\s*([^;]+);/gm)) out.set(m[1], m[2].trim())
+    from = end
+  }
+}
+
+/** The literal a token finally paints (var() chains substituted), for comparing meanings. */
+function literal(name: string, tokens: Map<string, string>, depth = 0): string {
+  const v = tokens.get(name) ?? ''
+  if (depth > 10) return v
+  return v.replace(/var\(\s*(--[a-z0-9-]+)\s*\)/g, (_, r: string) => literal(r, tokens, depth + 1)).toLowerCase()
+}
+
 const DARK = block(':root')
 const LIGHT = new Map([...DARK, ...block(":root[data-theme='light']")])
+const GLASS = blocks(":root[data-nt-glass='on']")
 const THEMES = { dark: DARK, light: LIGHT }
+const GLASS_THEMES = { dark: new Map([...DARK, ...GLASS]), light: new Map([...LIGHT, ...GLASS]) }
 
 /** Follow var() chains; true when every reference bottoms out in a literal colour. */
 function resolves(value: string, tokens: Map<string, string>, depth = 0): boolean {
@@ -70,6 +93,35 @@ describe('palette tokens', () => {
       /rgba?\(\s*(255,\s*69,\s*58|10,\s*132,\s*255|48,\s*209,\s*88|255,\s*159,\s*10|191,\s*122,\s*240|217,\s*119,\s*87)|#(ff453a|30d158|32d74b|ff9f0a|bf7af0|ffb340|f85149|8e8e93)\b/gi
     )
     expect(hits ?? []).toEqual([])
+  })
+})
+
+describe('Liquid Glass palette', () => {
+  for (const [theme, tokens] of Object.entries(GLASS_THEMES)) {
+    it(`every role still resolves under glass (${theme})`, () => {
+      for (const role of ROLES) expect(resolves(tokens.get(role) ?? '', tokens), `${role} in ${theme}`).toBe(true)
+    })
+
+    it(`maps each meaning to its HIG colour (${theme})`, () => {
+      expect(literal('--state-working', tokens)).toBe(literal('--accent', tokens))
+      expect(literal('--state-attention', tokens)).toBe(literal('--sys-orange', tokens))
+      expect(literal('--state-unread', tokens)).toBe(literal('--sys-green', tokens))
+      expect(literal('--state-warning', tokens)).toBe(literal('--sys-yellow', tokens))
+      expect(literal('--state-error', tokens)).toBe(literal('--sys-red', tokens))
+    })
+
+    it(`never uses one colour for two meanings (${theme})`, () => {
+      const meanings = ['--state-working', '--state-attention', '--state-unread', '--state-warning', '--state-error']
+      const hues = meanings.map((m) => literal(m, tokens))
+      expect(new Set(hues).size).toBe(meanings.length)
+    })
+  }
+
+  it('status labels on glass are ink over a tinted chip', () => {
+    const rule = CSS.slice(CSS.indexOf(":root[data-nt-glass='on'] .term-node__status {"))
+    const body = rule.slice(0, rule.indexOf('}'))
+    expect(body).toContain('-webkit-text-fill-color: var(--text)')
+    expect(body).toContain('color-mix(in srgb, currentColor')
   })
 })
 

@@ -3872,9 +3872,17 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   styles (`borderTopColor`, the colour dot's background), so the overrides carry `!important`: a
   neutral `--glass-edge` border, the dot as a neutral ring (it is still the colour-picker button),
   neutral resize handles. State survives without the colour: selection is an ink (`--text`) outline,
-  unread keeps its accent border + glow, working/attention keep their `::after` glows and header
-  badges. The sessions list and the kanban board keep node colours. `styles.liquid-glass.test.ts`
+  unread keeps its `--state-unread` border + glow, working/attention keep their `::after` glows and
+  header badges. The sessions list and the kanban board keep node colours. `styles.liquid-glass.test.ts`
   pins the gate and every neutralising override.
+- **Glass palette** (HIG color.md › Liquid Glass color). The block at the end of styles.css
+  redefines only ROLES (see **Semantic colours**): working = the accent (no longer Claude clay),
+  needs-you = orange, finished-unseen = green, warning = yellow, error = red — one hue per meaning,
+  and orange means only "needs you" (`--warn` becomes `--caution`, the text-safe yellow). The glows,
+  minimap strokes, sidebar signals and badges follow with no rule of their own. Status labels on a
+  glass header are ink over a tinted chip (`-webkit-text-fill-color: var(--text)` with the chip
+  mixed from `currentColor`), not coloured text. `styles.palette.test.ts` pins the mapping and that
+  no two meanings resolve to the same colour, in both themes.
 - **Surfaces.** Desktop: full. Server Edition: gradients + glass; the stills list is empty (not
   macOS) and "Choose image…" is hidden (a picker there browses the SERVER's disk). Relay tabs keep
   a stub (no stills, import refused). Mobile: N/A (no canvas). Kanban: N/A (the board is opaque).

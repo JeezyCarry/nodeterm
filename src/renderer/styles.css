@@ -78,6 +78,10 @@
   --state-warning: var(--sys-orange); /* non-blocking warning, caution */
   --state-queued: var(--sys-gray); /* queued, idle, disarmed */
   --state-automation: var(--sys-purple); /* loop / schedule / trigger status */
+  /* Text-safe hues for the "needs you" LABEL, which an appearance re-maps with its role, and the
+     readable orange Liquid Glass labels it with (dark: the system orange; light: darkened). */
+  --attention-text: var(--danger);
+  --orange-text: #ff9f0a;
   /* Git file status, read by `lib/gitStatusColors.ts` (the ONE table both git panels draw). */
   --git-modified: var(--caution);
   --git-added: var(--success);
@@ -276,6 +280,7 @@
   --sys-pink: #ff2d55;
   --sys-brown: #a2845e;
   --sys-gray: #8e8e93;
+  --orange-text: #a85c00;
   /* The glows always drew the dark clay, in both themes. */
   --state-working: #d97757;
 
@@ -1566,7 +1571,7 @@ body,
    pseudo lives on the React Flow wrapper (via :has) because .term-node is overflow:hidden
    and would clip its own ::after. */
 .term-node.unread {
-  border-color: var(--accent);
+  border-color: var(--state-unread);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--state-unread) 50%, transparent),
     0 0 16px 1px color-mix(in srgb, var(--state-unread) 35%, transparent),
@@ -2092,7 +2097,7 @@ body,
 
 /* NEEDS YOU is red everywhere (same as the sidebar attention dot). */
 .term-node__status--attention {
-  color: var(--danger);
+  color: var(--attention-text);
 }
 
 /* TURN FAILED: the last turn ended on an API/model error (issue #521). Red like NEEDS YOU —
@@ -2182,7 +2187,7 @@ body,
 }
 
 .term-node__status--unread {
-  color: var(--accent);
+  color: var(--state-unread);
 }
 
 /* QUEUED: a node armed with canvas-control `--after`, holding its launch until the stations it
@@ -8027,7 +8032,7 @@ button.group-node__setup:disabled {
 .ss-dot--done { background: var(--success); }
 .ss-check { color: var(--success); margin-top: 2px; flex: 0 0 auto; line-height: 0; }
 /* Unread: the same check, accent-blue and pulsing until the user visits the node. */
-.ss-check--unread { color: var(--accent); animation: nt-pulse 1.1s ease-in-out infinite; animation-play-state: var(--nt-anim-state); }
+.ss-check--unread { color: var(--state-unread); animation: nt-pulse 1.1s ease-in-out infinite; animation-play-state: var(--nt-anim-state); }
 .ss-check svg { width: 13px; height: 13px; }
 /* attention renders as a red bell (ss-bell) — "it's ringing for you". Gentle pulse,
    same cadence as the header badge dot. */
@@ -8368,8 +8373,8 @@ button.group-node__setup:disabled {
    while the group is collapsed — that's their main job. */
 .ss-group__sig { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; flex: 0 0 auto; line-height: 0; }
 .ss-group__sig svg { width: 11px; height: 11px; }
-.ss-group__sig--attention { color: var(--danger); }
-.ss-group__sig--unread { color: var(--accent); }
+.ss-group__sig--attention { color: var(--attention-text); }
+.ss-group__sig--unread { color: var(--state-unread); }
 .ss-group__sig--working { color: var(--agent-working); }
 .ss-group__sig-spin {
   display: inline-block;
@@ -8463,12 +8468,12 @@ button.group-node__setup:disabled {
 .ss-status__label { font-size: 12px; font-weight: 600; color: var(--text); }
 .ss-status__count { font-size: 10px; color: var(--muted); }
 .ss-status__icon { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-.ss-status__icon--attention { width: auto; height: auto; border-radius: 0; color: var(--danger); display: inline-flex; }
+.ss-status__icon--attention { width: auto; height: auto; border-radius: 0; color: var(--attention-text); display: inline-flex; }
 .ss-status__icon--attention svg { width: 11px; height: 11px; }
 .ss-status__icon--working { background: var(--accent); }
 /* Unread: the same accent-blue as the row's "new for you" check, ringed so the section header
    reads as "these are the unlooked-at ones". */
-.ss-status__icon--unread { background: var(--accent); box-shadow: 0 0 0 2px rgba(var(--tint-rgb), 0.18); }
+.ss-status__icon--unread { background: var(--state-unread); box-shadow: 0 0 0 2px rgba(var(--tint-rgb), 0.18); }
 /* Idle: a settled, already-seen turn — a quiet filled success dot. */
 .ss-status__icon--idle { background: var(--success); opacity: 0.7; }
 .ss-status__icon--unknown { background: rgba(var(--tint-rgb), 0.25); }
@@ -8911,7 +8916,7 @@ button.group-node__setup:disabled {
 }
 /* NEEDS YOU is red everywhere (same as the terminal attention badge). */
 .chat-node__badge--needs {
-  color: var(--danger);
+  color: var(--attention-text);
   background: color-mix(in srgb, var(--state-error) 15%, transparent);
   animation: nt-pulse 1.1s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
@@ -10353,7 +10358,7 @@ button.group-node__setup:disabled {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--state-unread);
   flex: 0 0 auto;
 }
 .kanban-col__dot--ungrouped {
@@ -13625,8 +13630,8 @@ body.focus-mode .dock:hover {
     0 12px 40px rgba(0, 0, 0, calc(0.35 * var(--shadow-k)));
 }
 :root[data-nt-glass='on'] .term-node.unread {
-  border-color: var(--accent);
-  border-top-color: var(--accent) !important;
+  border-color: var(--state-unread);
+  border-top-color: var(--state-unread) !important;
 }
 
 /* Minimap: node rectangles are painted in the node's own colour (an inline style, hence
@@ -13648,4 +13653,35 @@ body.focus-mode .dock:hover {
   .minimap
   .react-flow__minimap-node:not(.mm-working):not(.mm-attention):not(.mm-unread) {
   stroke: rgba(var(--tint-rgb), 0.45) !important;
+}
+
+/* ---- Liquid Glass palette (HIG color.md › Liquid Glass color) ---------------------------------
+   Glass has no colour of its own: labels stay monochrome, and colour is reserved for status and
+   the one primary action per surface. So under Liquid Glass each MEANING takes its HIG colour,
+   one hue per meaning and never shared: the accent means working and selection, orange means only
+   "needs you", green means finished-unseen and success, yellow means warning, red means error.
+   Only roles are redefined here; every rule already reads them (the semantic-role block at the
+   top). The fills are the vibrant system values, which hold on translucent surfaces; the text-safe
+   tokens keep their per-theme darkening (--caution is the light theme's readable yellow,
+   --orange-text its readable orange). */
+:root[data-nt-glass='on'] {
+  --state-working: var(--accent);
+  --agent-working: var(--accent-text);
+  --state-attention: var(--sys-orange);
+  --attention-text: var(--orange-text);
+  --state-unread: var(--sys-green);
+  --state-warning: var(--sys-yellow);
+  --warn: var(--caution);
+  --git-renamed: var(--accent-text);
+  --git-conflict: var(--danger);
+}
+
+/* Status labels on a glass header are ink, not coloured text: the hue tints the chip BEHIND the
+   label (stained glass) and fills the dot. `-webkit-text-fill-color` paints the glyphs while
+   `color`, and so `currentColor`, keeps the status hue for the chip and the dot. */
+:root[data-nt-glass='on'] .term-node__status {
+  -webkit-text-fill-color: var(--text);
+  background: color-mix(in srgb, currentColor 24%, transparent);
+  padding: 1px 6px;
+  border-radius: 999px;
 }

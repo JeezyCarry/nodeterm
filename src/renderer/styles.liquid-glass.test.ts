@@ -46,7 +46,7 @@ describe('Liquid Glass stylesheet', () => {
 
   it('keeps the unread state perceivable (its own border survives the neutral top edge)', () => {
     const unread = gated('.term-node.unread')[0]
-    expect(unread?.body).toMatch(/border-top-color:\s*var\(--accent\)\s*!important/)
+    expect(unread?.body).toMatch(/border-top-color:\s*var\(--state-unread\)\s*!important/)
   })
 
   it('never blurs a container nested in a blurred one', () => {
