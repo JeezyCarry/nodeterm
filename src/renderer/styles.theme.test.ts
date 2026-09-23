@@ -109,6 +109,7 @@ describe('every CSS variable resolves', () => {
     '--term-glass-bg', // TerminalNode, glass tint per node theme (lib/glassContrast.ts)
     '--term-glass-header-bg',
     '--term-glass-fg',
+    '--term-glass-chip-wash', // TerminalNode, status-chip wash per theme (glassChipWash)
     '--glass-chrome-bg', // App.tsx, Liquid Glass chrome fill (lib/glassContrast.ts glassChromeAlpha)
     '--glass-fill', // GlassSlider, the slider value (fills the track)
     '--glass-tick', // GlassSlider, the Readable tick position (the notch)

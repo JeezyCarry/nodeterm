@@ -104,11 +104,57 @@ export function glassTintAlpha(fg: string, tint: string, minRatio = 4.5): number
   return Math.max(GLASS_ALPHA_MIN, lowest)
 }
 
+/* Status chips on a glass header (styles.css `.term-node__status` under Liquid Glass): the label
+   is the terminal foreground, and the chip behind it is a wash of the status hue. The wash moves
+   the surface under the text, so it gets the same treatment as the tint: the LARGEST wash (up to
+   GLASS_CHIP_WASH_MAX) at which the foreground keeps 4.5:1 for every hue a badge can take, over
+   any backdrop. A fixed wash cannot do it — measured, One Dark's yellow chip falls to 3.93:1 at
+   12% — and a theme with no margin (Solarized Dark) gets 0, where the chip is its ring alone. */
+export const GLASS_CHIP_WASH_MAX = 0.24
+/** Every hue a glass status badge can be: the text-safe and fill tokens those badges read under
+ *  Liquid Glass, dark then light values (styles.palette.test.ts pins them to the stylesheet). */
+export const GLASS_CHIP_HUES = [
+  '#30d158', '#6cb0ff', '#ff9f0a', '#ff453a', '#ffd60a', '#98989d', '#bf5af2',
+  '#1f7a38', '#0060df', '#a85c00', '#c62a1f', '#34c759', '#806100', '#8e8e93', '#af52de'
+]
+/** The glass header's own layer over the node tint (see `glassTint().header`). */
+const HEADER_LAYER_ALPHA = 0.35
+const CHIP_BACKDROPS: Rgb[] = (() => {
+  const out: Rgb[] = []
+  for (const r of [0, 255]) for (const g of [0, 255]) for (const b of [0, 255]) out.push([r, g, b])
+  for (let v = 0; v <= 255; v += 5) out.push([v, v, v])
+  return out
+})()
+const chipWashCache = new Map<string, number>()
+
+/** Largest status-chip wash keeping `fg` at 4.5:1 on a glass header tinted `bg` at `alpha`. */
+export function glassChipWash(fg: string, bg: string, alpha: number): number {
+  const key = `${fg}|${bg}|${alpha.toFixed(3)}`
+  const hit = chipWashCache.get(key)
+  if (hit !== undefined) return hit
+  const f = parseHex(fg)
+  const b = parseHex(bg)
+  const hues = GLASS_CHIP_HUES.map((h) => parseHex(h)!)
+  let best = 0
+  if (f && b) {
+    const heads = CHIP_BACKDROPS.map((d) => composite(b, composite(b, d, alpha), HEADER_LAYER_ALPHA))
+    for (let i = 1; i <= Math.round(GLASS_CHIP_WASH_MAX * 100); i++) {
+      const w = i / 100
+      if (!heads.every((h) => hues.every((hue) => contrastRatio(f, composite(hue, h, w)) >= 4.5))) break
+      best = w
+    }
+  }
+  chipWashCache.set(key, best)
+  return best
+}
+
 export interface GlassTint {
   /** The node's glass fill, `rgba(r, g, b, a)`. */
   background: string
   /** The header's extra layer on top of it — slightly more opaque in total. */
   header: string
+  /** The status-chip wash for this theme, as a CSS percentage (`glassChipWash`). */
+  chipWash: string
   /** The theme foreground: header text sits on the TERMINAL's tint, so it takes the terminal's
    *  text colour, not the app's (a light app theme over a dark terminal theme measured 1.31:1). */
   foreground: string
@@ -124,11 +170,15 @@ export function glassTint(
   const bg = theme.background ? parseHex(theme.background) : null
   if (!bg) return null
   const foreground = theme.foreground ?? '#ffffff'
-  const alpha = glassSurfaceAlpha(slider, glassTintAlpha(foreground, theme.background!), a11y)
+  const readable = glassTintAlpha(foreground, theme.background!)
+  const alpha = glassSurfaceAlpha(slider, readable, a11y)
   const rgb = bg.join(', ')
+  // Left of the Readable tick the contrast promise is off anyway; size the chip for the tick.
+  const chipWash = glassChipWash(foreground, theme.background!, Math.max(alpha, readable))
   return {
     background: `rgba(${rgb}, ${alpha.toFixed(3)})`,
-    header: `rgba(${rgb}, 0.35)`,
+    header: `rgba(${rgb}, ${HEADER_LAYER_ALPHA})`,
+    chipWash: `${Math.round(chipWash * 100)}%`,
     foreground
   }
 }

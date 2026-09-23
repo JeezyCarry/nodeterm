@@ -23,7 +23,10 @@ import {
   glassSurfaceAlpha,
   snapGlassSlider,
   stepGlassSlider,
-  keepGlassBlurWhileMoving
+  keepGlassBlurWhileMoving,
+  glassChipWash,
+  GLASS_CHIP_HUES,
+  GLASS_CHIP_WASH_MAX
 } from './glassContrast'
 
 const WHITE = [255, 255, 255] as const
@@ -237,5 +240,32 @@ describe('Keep blur while moving', () => {
     const start = src.slice(src.indexOf('const onCanvasMoveStart'))
     const body = start.slice(0, start.indexOf("classList.add('canvas-moving')"))
     expect(body).toContain('if (keepBlurWhileMovingRef.current) return')
+  })
+})
+
+describe('glass status chip keeps its label readable', () => {
+  const rows = TERMINAL_THEMES.map((t) => {
+    const readable = glassTintAlpha(t.theme.foreground!, t.theme.background!)
+    return [t.id, t, readable, glassChipWash(t.theme.foreground!, t.theme.background!, readable)] as const
+  })
+
+  it.each(rows)('%s: the chip wash keeps the foreground at 4.5:1 for every badge hue', (_id, t, readable, wash) => {
+    const fg = parseHex(t.theme.foreground!)!
+    const bg = parseHex(t.theme.background!)!
+    expect(wash).toBeLessThanOrEqual(GLASS_CHIP_WASH_MAX)
+    if (readable >= 1) return // Solarized Light: under 4.5 even opaque; the tint is its whole answer
+    for (let v = 0; v <= 255; v += 3) {
+      const head = composite(bg, composite(bg, [v, v, v], readable), 0.35)
+      for (const h of GLASS_CHIP_HUES) {
+        expect(contrastRatio(fg, composite(parseHex(h)!, head, wash))).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it('the stylesheet uses the computed wash, never a fixed one', () => {
+    const css = readFileSync(join(__dirname, '..', 'styles.css'), 'utf8')
+    const rule = css.slice(css.indexOf(":root[data-nt-glass='on'] .term-node__status {"))
+    const body = rule.slice(0, rule.indexOf('}'))
+    expect(body).toContain('color-mix(in srgb, currentColor var(--term-glass-chip-wash, 0%), transparent)')
   })
 })

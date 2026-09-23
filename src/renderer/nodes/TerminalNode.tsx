@@ -1259,6 +1259,7 @@ export function TerminalNode({
       ? ({
           '--term-glass-bg': tint.background,
           '--term-glass-header-bg': tint.header,
+          '--term-glass-chip-wash': tint.chipWash,
           '--term-glass-fg': tint.foreground
         } as React.CSSProperties)
       : null

@@ -13724,7 +13724,10 @@ body.focus-mode .dock:hover {
    `color`, and so `currentColor`, keeps the status hue for the chip and the dot. */
 :root[data-nt-glass='on'] .term-node__status {
   -webkit-text-fill-color: var(--text);
-  background: color-mix(in srgb, currentColor 24%, transparent);
+  /* The wash is sized per terminal theme so the label keeps 4.5:1 (lib/glassContrast.ts
+     `glassChipWash`); the ring carries the hue when a theme has no margin for a wash. */
+  background: color-mix(in srgb, currentColor var(--term-glass-chip-wash, 0%), transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 55%, transparent);
   padding: 1px 6px;
   border-radius: 999px;
 }
