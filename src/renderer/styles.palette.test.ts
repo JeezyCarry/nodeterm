@@ -281,3 +281,12 @@ describe('needs-you and priorities under glass', () => {
     }
   })
 })
+
+describe('no nested blur for the context popover', () => {
+  it('.ctx-popover (inside a blurred node) takes the fill only', () => {
+    const blurList = CSS.slice(CSS.indexOf('/* Outermost chrome: fill + blur. */'))
+    expect(blurList.slice(0, blurList.indexOf('{'))).not.toContain('.ctx-popover')
+    const fillOnly = CSS.slice(CSS.indexOf('/* .ctx-popover opens INSIDE a terminal node'))
+    expect(fillOnly.slice(0, fillOnly.indexOf('{'))).toContain('.ctx-popover')
+  })
+})

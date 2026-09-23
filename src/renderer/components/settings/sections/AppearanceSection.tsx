@@ -370,7 +370,10 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
       normalizeWallpaper(useSettings.getState().settings.desktopWallpaper).kind !== 'none'
     if (hasWallpaper()) return
     const stills = await window.nodeTerminal.wallpaper.listStills().catch(() => [])
-    if (!hasWallpaper()) update({ desktopWallpaper: defaultWallpaper(stills) })
+    // The stills listing can take a while (first-run thumbnails): only pick a wallpaper if Liquid
+    // Glass is still the choice when it answers.
+    if (!hasWallpaper() && isLiquidGlass(useSettings.getState().settings.appTheme))
+      update({ desktopWallpaper: defaultWallpaper(stills) })
   }
   return (
     <SettingsSection

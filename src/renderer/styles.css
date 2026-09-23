@@ -13572,7 +13572,6 @@ body.focus-mode .dock:hover {
     .sysres-pill,
     .usage-popover,
     .sessmem-panel,
-    .ctx-popover,
     .sessions-sidebar,
     .phone-pair,
     .focus-exit,
@@ -13615,8 +13614,9 @@ body.focus-mode .dock:hover {
 }
 
 /* Nested inside a blurred container (or unknown nesting): the fill only. */
+/* .ctx-popover opens INSIDE a terminal node (the context meter), which is already blurred. */
 :root[data-nt-glass='on']
-  :is(.dock-menu, .dock-menu__sub, .usage-refresh, .sessions-icon-cluster button) {
+  :is(.dock-menu, .dock-menu__sub, .usage-refresh, .sessions-icon-cluster button, .ctx-popover) {
   background: var(--glass-chrome-bg) !important;
 }
 
