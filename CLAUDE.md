@@ -2947,6 +2947,13 @@ else, and its context links must keep classifying across restarts).
     tooltip pointing at Settings → Accounts, where **Detected config dirs** lists it for one-click
     linking. Mobile: N/A (additive mirror fields).
 
+- **Bottom chrome shares a measured width budget** (issue #853). `CanvasPills` observes the canvas
+  wrapper and actual dock, bounds the left row with an 8px gap, and uses a row above the dock when
+  fewer than 200 CSS pixels remain. Rects are converted back through UI scale. Usage summary text
+  ellipsizes; refresh never shrinks. Do not clip the whole row or give it a stacking context:
+  usage/RAM popovers must escape independently above the sidebar and board. Desktop and Server
+  share this renderer. The real-browser regression is `scripts/usage-layout.test.ts` (`CHROME_BIN`).
+
 - **The usage indicator is scoped to the ACTIVE project** (`renderer/lib/usageScope.ts`, pure +
   unit-tested) — it describes **the machine that project runs on**, and nothing else. A local
   project shows this machine (system + managed local accounts + the billing providers, whose

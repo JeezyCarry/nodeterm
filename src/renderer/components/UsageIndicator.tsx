@@ -604,7 +604,7 @@ export function UsageIndicator({
         title={scope.kind === 'ssh' ? `Agent usage on ${scope.hostKey}` : 'Agent usage'}
       >
         <span className="usage-pill__icon">✦</span>
-        {pillBody}
+        <span className="usage-pill__summary">{pillBody}</span>
       </button>
       <button
         className={`usage-refresh${fetching ? ' spin' : ''}`}

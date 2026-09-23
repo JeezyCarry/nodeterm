@@ -241,6 +241,7 @@ import {
   noteTerminalCapture,
   terminalShortcutPolicy
 } from '../lib/keybindingOverrides'
+import { CanvasPills } from '../components/CanvasPills'
 import { UsageIndicator } from '../components/UsageIndicator'
 import { SystemResourcePill } from '../components/SystemResourcePill'
 import { PresenceLayer } from '../components/PresenceLayer'
@@ -14603,7 +14604,7 @@ export function Canvas() {
             `data-canvas-chrome` is fit-view's own documented opt-in: it makes the whole cluster ONE
             obstacle rect (instead of one per pill, overlapping after inflation), so fitView never
             parks a node underneath either pill. */}
-        <div className="canvas-pills" data-canvas-chrome>
+        <CanvasPills>
           {/* `travelToNode`, not `focusNodeById`: the panel resolves sessions in CLOSED projects
               too (their tmux sessions keep running), and reaching one means reopening its tab
               first — the same path a notification click and a peer jump take. */}
@@ -14618,7 +14619,7 @@ export function Canvas() {
           {/* Same write path as the TabBar caret menu (project.defaultAccountId + persist) — the
               popover row is a second, better-placed entrance to the same action (issue #142). */}
           <UsageIndicator overBoard={kanbanOpen} onSetDefaultAccount={setProjectDefaultAccount} />
-</div>
+        </CanvasPills>
 
         {/* Canvas-mounted, deliberately NOT in the .top-banners column: this is about THIS canvas,
             not an app-wide message. Opening a row records a new breadcrumb through goToNode — which

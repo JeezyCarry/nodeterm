@@ -107,6 +107,12 @@ lane unaffected.
   PR; copy that really is macOS-specific (the ptmx-limit banner, the notch step) is exempt by name
   with its reason. Comments are not scanned.
 
+- **Bottom canvas pills must leave room for the measured dock.** `CanvasPills` bounds their row
+  and moves it above the dock when the side budget is too small. Only usage summary text may
+  truncate; keep refresh outside that overflow and keep the row free of stacking contexts so
+  popovers can still clear the sidebar/board. `scripts/usage-layout.test.ts` verifies real Chrome
+  layout and hit targets (set `CHROME_BIN` when Chrome is not at the Linux default path).
+
 - **An overlay you lay over a live terminal steals its wheel — give it `pointer-events: none`.**
   Wheel routing is a per-packet hit test on `closest('.nowheel')` (ours in `Canvas.tsx`, and React
   Flow's own `panOnScroll` independently), so the element under the pointer decides, not the node.
