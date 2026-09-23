@@ -256,3 +256,28 @@ describe('createContextTail — `wholeFile` (grok: a document rewritten, not app
     expect(JSON.stringify(pushes)).not.toContain('222222')
   }, 8000)
 })
+
+it('delivers each tool result ID across a torn local transcript read', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nt-question-tail-'))
+  const file = path.join(dir, 'session.jsonl')
+  const onToolResult = vi.fn()
+  const tail = createContextTail(() => {}, { onToolResult })
+  try {
+    fs.writeFileSync(file, '')
+    tail.track('session', file)
+    await new Promise(resolve => setTimeout(resolve, 1200))
+    const line = JSON.stringify({ type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: 'other', content: 'ok' },
+      { type: 'tool_result', tool_use_id: 'ask', content: 'User declined to answer questions' }
+    ] } })
+    fs.appendFileSync(file, line.slice(0, 40))
+    await new Promise(resolve => setTimeout(resolve, 1200))
+    expect(onToolResult).not.toHaveBeenCalled()
+    fs.appendFileSync(file, line.slice(40) + '\n')
+    await new Promise(resolve => setTimeout(resolve, 1200))
+    expect(onToolResult.mock.calls).toEqual([['session', 'other'], ['session', 'ask']])
+  } finally {
+    tail.untrack('session')
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}, 8000)

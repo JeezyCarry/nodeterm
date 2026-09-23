@@ -4685,3 +4685,10 @@ sessions is a hazard whatever kills it; this removes the hazard, not a proven ca
     follow-up note rather than same-PR work — but flag it so it isn't forgotten.
   When a change is genuinely desktop-only (native menus, auto-update, Keychain), say so; the
   point is to make the call consciously, not to leave the other surfaces to rot.
+
+An unanswered Claude `AskUserQuestion` is correlated by session and tool-use ID in the core
+mirror, independently of its short-lived display stash. Ordinary hooks, subagent activity and
+unrelated transcript results must not clear attention or archive its inbox card. Both shells
+use `recordQuestionResult` for transcript rescue (including Escape/decline), and broadcast the
+mirror's effective event. Keep result IDs through local and SSH tails; a boolean “some tool
+finished” is insufficient. Explicit new user turns, interrupts and session boundaries reset it.

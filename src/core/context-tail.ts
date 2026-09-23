@@ -107,19 +107,25 @@ export function parseTaskNotifications(text: string | string[]): TaskNotificatio
   return out
 }
 
-/**
- * Did this chunk of transcript carry a TOOL RESULT? That is the moment a tool the CLI was blocked
- * on has settled — which is the only signal we get when an ask ENDS without a hook.
- *
- * The case: an `AskUserQuestion` picker is up (node = needs-you) and the user presses Esc. Claude
- * records "User declined to answer questions" as the tool's result and carries on, but the aborted
- * tool fires no PostToolUse, and Stop does not run either — so nothing told us the ask was over and
- * the node sat on NEEDS YOU (badge, notch capsule, phone card) until the next prompt hours later.
- *
- * Deliberately not decline-specific: any tool_result means the blocking tool finished, whatever the
- * answer was. The caller only acts on it while the node is still in needs-you, so a normal turn's
- * constant stream of results costs nothing.
- */
+/** IDs of settled tools, including Escape/decline results. Never infer an answer from
+ * another tool's result or from result text. */
+export function parseToolResultIds(text: string | string[]): string[] {
+  const ids: string[] = []
+  for (const line of toLines(text)) {
+    if (!line.includes('tool_result')) continue
+    try {
+      const o = JSON.parse(line)
+      if (!Array.isArray(o.message?.content)) continue
+      for (const c of o.message.content) {
+        if (c?.type === 'tool_result' && typeof c.tool_use_id === 'string' && c.tool_use_id)
+          ids.push(c.tool_use_id)
+      }
+    } catch { /* torn or malformed transcript line */ }
+  }
+  return ids
+}
+
+/** Legacy presence scanner; answer consumers must use parseToolResultIds. */
 export function hasToolResult(text: string | string[]): boolean {
   for (const line of toLines(text)) {
     const s = line.trim()
@@ -141,8 +147,8 @@ export function hasToolResult(text: string | string[]): boolean {
 export interface ContextTailOptions {
   /** Fired when a tracked session's transcript announces a completed async subagent. */
   onTaskNotification?: (sessionId: string, n: TaskNotification) => void
-  /** Fired when a tracked session's transcript records a tool RESULT — see `hasToolResult`. */
-  onToolResult?: (sessionId: string) => void
+  /** Fired when a tracked session's transcript records a tool RESULT — see `parseToolResultIds`. */
+  onToolResult?: (sessionId: string, toolUseId: string) => void
   /**
    * How to read the used/window numbers out of this agent's transcript. Defaults to claude's
    * `parseLatestUsage`. gemini and codex pass their own (`core/gemini-session.ts`
@@ -287,7 +293,8 @@ export function createContextTail(
             for (const n of parseTaskNotifications(completeLines))
               opts.onTaskNotification(sessionId, n)
           }
-          if (opts?.onToolResult && hasToolResult(completeLines)) opts.onToolResult(sessionId)
+          if (opts?.onToolResult)
+            for (const id of parseToolResultIds(completeLines)) opts.onToolResult(sessionId, id)
         }
       }
 

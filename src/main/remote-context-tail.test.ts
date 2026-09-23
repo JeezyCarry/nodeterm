@@ -100,3 +100,28 @@ describe('createRemoteContextTail', () => {
     tail.untrack('sess3')
   })
 })
+
+it('passes SSH transcript result IDs to the correlated answer consumer', async () => {
+  const { win } = fakeWin()
+  const onToolResult = vi.fn()
+  const result = (id: string) => JSON.stringify({ type: 'user', message: { content: [
+    { type: 'tool_result', tool_use_id: id, content: 'User declined to answer questions' }
+  ] } })
+  const remoteFile = {
+    readTail: vi.fn(async () => line(50, 'claude-haiku') + '\n'),
+    readFrom: vi.fn(async (_r: RemoteFileRef, o: number) => {
+      const text = result('other') + '\n' + result('ask') + '\n'
+      return { text, newOffset: o + Buffer.byteLength(text) }
+    })
+  }
+  const tail = createRemoteContextTail(win, remoteFile as never, { onToolResult })
+  try {
+    tail.track('session', ref)
+    await tick()
+    await vi.waitFor(() => expect(onToolResult.mock.calls).toEqual([
+      ['session', 'other'], ['session', 'ask']
+    ]), { timeout: 2500 })
+  } finally {
+    tail.untrack('session')
+  }
+})

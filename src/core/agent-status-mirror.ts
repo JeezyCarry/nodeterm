@@ -38,6 +38,8 @@ export const EXPIRE_MS = 6 * 60 * 60_000
 export const WRITE_DEBOUNCE_MS = 300
 
 export interface MirrorEntry {
+  /** Live question identity, independent of the short-lived display stash. */
+  pendingQuestion?: { sessionId: string; toolUseId: string }
   /** working/waiting/blocked/done; undefined = idle/unknown (e.g. after a session reset). */
   state?: AgentState
   agentId?: AgentId
@@ -474,6 +476,20 @@ function reduceEffectiveEntry(
     // it was. `restored` means "this state came off disk", not "we have heard something since
     // boot", and gate 2 will read it as the former.
     delete next.restored
+  }
+  // Unrelated tool hooks (including untagged child hooks) are not answers. Keep both
+  // the state and its original evidence/identity until a correlated result or explicit reset.
+  const ask = prev?.pendingQuestion
+  if (ask) {
+    const sameSession = ev.sessionId === ask.sessionId
+    const reset = (ev.kind === 'session' && ev.sessionPhase === 'start') ||
+      (sameSession && (ev.kind === 'session' || ev.newTurn || ev.interrupted))
+    const answered = sameSession && ev.answeredQuestionId === ask.toolUseId
+    if (!reset && !answered) return next
+    delete next.pendingQuestion
+  }
+  if (ev.questionId && ev.sessionId) {
+    next.pendingQuestion = { sessionId: ev.sessionId, toolUseId: ev.questionId }
   }
   // Identity is captured off ANY event (mirrors the renderer's per-event setSessionId +
   // agentId threading). agentId is always present on a NormalizedAgentEvent.
@@ -1407,6 +1423,13 @@ export function recordAgentEvent(rawEvent: NormalizedAgentEvent): NormalizedAgen
   // the broadcast to what the reducer decided, so every consumer (canvas store, notch, phone)
   // agrees the node is still waiting rather than each re-deriving it from the raw done.
   let out = ev
+  if (next.pendingQuestion && prev?.pendingQuestion && next.state) {
+    if (ev.kind !== 'state' && ev.kind !== 'session') return ev
+    // Broadcast the same held state to Desktop, Server, canvas/board and the phone.
+    return { ...ev, kind: 'state', state: next.state, sessionId: next.sessionId,
+      verified: ev.verified, newTurn: undefined, interrupted: undefined,
+      askKind: 'question', pendingId: undefined }
+  }
   if (ev.kind === 'state' && ev.state === 'done' && next.awaitingInput && next.state === 'waiting') {
     out = { ...ev, state: 'waiting' }
   }
@@ -1436,9 +1459,9 @@ function produceInboxFromState(
   if (ev.kind === 'session' || (ev.kind === 'state' && ev.state === 'working' && ev.newTurn)) {
     pendingQuestions.delete(nodeId)
   }
-  // Leaving blocked/waiting (any newer, different state — incl. a session reset to idle) resolves
+  // Leaving needs-you (including a session reset to idle) resolves
   // that node's pending approval/question cards; they move to the phone's archive.
-  if ((prevState === 'blocked' || prevState === 'waiting') && nextState !== prevState) {
+  if ((prevState === 'blocked' || prevState === 'waiting') && nextState !== 'blocked' && nextState !== 'waiting') {
     resolveUnresolvedFor(nodeId)
     pendingQuestions.delete(nodeId)
   }
@@ -1620,6 +1643,14 @@ function clearActivity(nodeId: string, now: number): void {
   inboxNodes.set(nodeId, { contextPercent: n.contextPercent, updatedAt: now })
 }
 
+/** Child hooks must not replace the parent transcript association while a picker is open. */
+export function ignoreQuestionHook(nodeId: string, payload: Record<string, unknown>): boolean {
+  if (payload.agent_id) return true
+  const ask = state.get(nodeId)?.pendingQuestion
+  return !!ask && payload.hook_event_name !== 'SessionStart' &&
+    typeof payload.session_id === 'string' && payload.session_id !== ask.sessionId
+}
+
 /**
  * Fold a RAW hook tool event into the per-node "what it's doing now" line (spec:
  * mobile-usage-inbox). Called from the shells' `setRawListener` for claude events. PreToolUse sets
@@ -1627,7 +1658,7 @@ function clearActivity(nodeId: string, now: number): void {
  * the line actually changes (raw POSTs are bursty).
  */
 export function recordRawToolEvent(nodeId: string, payload: Record<string, unknown>): void {
-  if (!nodeId) return
+  if (!nodeId || ignoreQuestionHook(nodeId, payload)) return
   const hook = typeof payload.hook_event_name === 'string' ? payload.hook_event_name : ''
   const now = Date.now()
   if (hook === 'PreToolUse') {
@@ -1813,6 +1844,16 @@ export function setNodeHibernated(nodeId: string, on: boolean): void {
 /** A node's published session name (see MirrorEntry.name), or undefined. */
 export function nodeSessionName(nodeId: string): string | undefined {
   return state.get(nodeId)?.name
+}
+
+/** Shared Desktop/Server transcript rescue. An unrelated result is never an answer. */
+export function recordQuestionResult(
+  nodeId: string, sessionId: string, toolUseId: string
+): NormalizedAgentEvent | undefined {
+  const ask = state.get(nodeId)?.pendingQuestion
+  if (!ask || ask.sessionId !== sessionId || ask.toolUseId !== toolUseId) return
+  return recordAgentEvent({ nodeId, agentId: 'claude', sessionId, kind: 'state',
+    state: 'working', answeredQuestionId: toolUseId })
 }
 
 /** A node's current main state, or undefined when unknown. Read-only peek for the shells. */

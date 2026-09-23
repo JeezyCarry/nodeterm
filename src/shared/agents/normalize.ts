@@ -48,6 +48,9 @@ export interface NormalizedAgentEvent {
   // the node to a green "done" over a blocked session. Cleared by the next genuine turn, any
   // other tool activity, an interrupt, or a session boundary (see reduceEntry).
   awaitingInput?: boolean
+  /** Claude picker lifecycle, correlated with its transcript tool_result. */
+  questionId?: string
+  answeredQuestionId?: string
   // true only for a genuine new turn (Claude UserPromptSubmit), so the renderer can
   // clear per-turn fan-out without clearing on every mid-turn tool event.
   newTurn?: boolean
@@ -138,6 +141,7 @@ const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])
 const RECURRING_TOOLS = new Set(['Skill', 'CronCreate', 'ScheduleWakeup'])
 
 interface ClaudePayload {
+  agent_id?: string
   hook_event_name?: string
   session_id?: string
   /** Deterministic-approval ticket the managed hook script added to its POST body and the hook
@@ -185,6 +189,7 @@ export function isAsyncSubagentLaunch(r: { status?: string; isAsync?: boolean } 
 
 export function normalizeClaude(env: RawHookEnvelope): NormalizedAgentEvent | null {
   const p = env.payload as ClaudePayload
+  if (p.agent_id) return null
   const base = { nodeId: env.nodeId, agentId: env.agentId, sessionId: p.session_id }
   // Deterministic hook-reply "answered" signal (docs/hook-reply-approvals.md): the managed hook
   // fires this the instant it reads a valid allow/deny answer file — the agent is about to proceed
@@ -205,6 +210,11 @@ export function normalizeClaude(env: RawHookEnvelope): NormalizedAgentEvent | nu
   const tool = p.tool_name ?? ''
 
   if (ev === 'PreToolUse' || ev === 'PostToolUse') {
+    if (tool === 'AskUserQuestion' && p.tool_use_id) {
+      return ev === 'PreToolUse'
+        ? { ...base, kind: 'state', state: 'waiting', questionId: p.tool_use_id }
+        : { ...base, kind: 'state', state: 'working', answeredQuestionId: p.tool_use_id }
+    }
     if (SUBAGENT_TOOLS.has(tool)) {
       if (ev === 'PreToolUse') {
         return {

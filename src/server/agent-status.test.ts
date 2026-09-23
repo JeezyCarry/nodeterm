@@ -10,6 +10,7 @@ import {
   registerClaudeAccountsSource,
   resetClaudeAccountsSourceForTests
 } from '../core/claude-config-dir'
+import { normalizeClaude } from '../shared/agents/normalize'
 import { IPC } from '../shared/ipc'
 import { decodePtyData } from '../shared/rpc'
 
@@ -97,6 +98,23 @@ describe('wireAgentStatus', () => {
     const ev = { nodeId: 'n1', agentId: 'claude', kind: 'state', state: 'working' }
     fh.fireNormalized(ev)
     expect(sent).toContainEqual({ t: 'ev', channel: IPC.agentStatus, args: [ev] })
+  })
+
+  it('broadcasts the held question instead of unrelated working or done hooks', () => {
+    const fh = fakeHooks()
+    wireAgentStatus(platform, { hooks: fh.hooks as never })
+    const fire = (payload: Record<string, unknown>) => {
+      fh.fireRaw('claude', 'n1', payload)
+      const e = normalizeClaude({ nodeId: 'n1', agentId: 'claude', payload })
+      if (e) fh.fireNormalized(e)
+    }
+    fire({ hook_event_name: 'PreToolUse', session_id: 's', tool_name: 'AskUserQuestion', tool_use_id: 'q' })
+    for (const hook_event_name of ['PreToolUse', 'Stop']) {
+      fire({ hook_event_name, session_id: 's', tool_name: 'Bash' })
+      expect(lastAgentStatus()).toMatchObject({ state: 'waiting', askKind: 'question' })
+    }
+    fire({ hook_event_name: 'PostToolUse', session_id: 's', tool_name: 'AskUserQuestion', tool_use_id: 'q' })
+    expect(lastAgentStatus()).toMatchObject({ state: 'working' })
   })
 
   it('broadcasts the ENRICHED event: an AskUserQuestion blocked edge loses its pendingId (askKind question)', () => {

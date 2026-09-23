@@ -11,7 +11,7 @@ import { cachedWindowFor, resolveModelWindow } from '../core/model-window'
 import {
   parseLatestUsage,
   parseTaskNotifications,
-  hasToolResult,
+  parseToolResultIds,
   type ContextTailOptions
 } from '../core/context-tail'
 import { splitCompleteLines } from '../core/subagent-tail'
@@ -71,7 +71,8 @@ export function createRemoteContextTail(
       t.used = latest.used
       t.model = latest.model ?? t.model
     }
-    if (opts?.onToolResult && hasToolResult(completeLines)) opts.onToolResult(sessionId)
+    if (opts?.onToolResult)
+      for (const id of parseToolResultIds(completeLines)) opts.onToolResult(sessionId, id)
     if (opts?.onTaskNotification) {
       for (const n of parseTaskNotifications(completeLines)) opts.onTaskNotification(sessionId, n)
     }

@@ -12,7 +12,7 @@ import { join, resolve } from 'path'
 import { homedir } from 'os'
 import { hookServer } from '../core/agents/hook-server'
 import { recordAgentEvent, recordRawToolEvent, recordContextUsage,
-  nodeState
+  recordQuestionResult, ignoreQuestionHook
 } from '../core/agent-status-mirror'
 import { createSubagentTail, type SubagentTail } from '../core/subagent-tail'
 import { createContextTail, type ContextTail, type TaskNotification } from '../core/context-tail'
@@ -106,21 +106,12 @@ export function wireAgentStatus(
 
   /** See the identical handler in src/main/index.ts: a tool RESULT settles an ask that ended with
    *  no hook (Esc on an AskUserQuestion), which otherwise left the node stuck on needs-you. */
-  const onToolResult = (sessionId: string): void => {
+  const onToolResult = (sessionId: string, toolUseId: string): void => {
     let nodeId: string | undefined
     for (const [nid, sid] of nodeContextSession) if (sid === sessionId) nodeId = nid
     if (!nodeId) return
-    const st = nodeState(nodeId)
-    if (st !== 'blocked' && st !== 'waiting') return
-    const ev = {
-      nodeId,
-      agentId: 'claude',
-      sessionId,
-      kind: 'state',
-      state: 'working'
-    } satisfies NormalizedAgentEvent
-    platform.broadcast(IPC.agentStatus, ev)
-    recordAgentEvent(ev)
+    const ev = recordQuestionResult(nodeId, sessionId, toolUseId)
+    if (ev) platform.broadcast(IPC.agentStatus, ev)
   }
 
   // Every context tail pushes through here, so an agent's meter reaches the browser and the phone's
@@ -353,7 +344,7 @@ export function wireAgentStatus(
       if (p.hook_event_name === 'SessionEnd' && p.session_id) tail.untrack(p.session_id)
       return
     }
-    if (agentId !== 'claude') return
+    if (agentId !== 'claude' || ignoreQuestionHook(nodeId, payload)) return
     // Mirror the per-node "what it's doing now" activity line for the phone (mobile-usage-inbox).
     // Independent of the transcript-tailing below (no path needed), so it runs first.
     recordRawToolEvent(nodeId, payload)
