@@ -193,6 +193,7 @@ import { UpdateCard } from '../components/UpdateCard'
 import { AnnouncementBanner } from '../components/AnnouncementBanner'
 import { ResumeCard } from '../components/ResumeCard'
 import { TmuxBanner } from '../components/TmuxBanner'
+import { localSession } from '../session/localSession'
 import { PtyPressureBanner } from '../components/PtyPressureBanner'
 import { ShortcutCaptureBanner } from '../components/ShortcutCaptureBanner'
 import { ConflictBar } from '../components/ConflictBar'
@@ -14156,7 +14157,10 @@ export function Canvas() {
 
       <div className="top-banners">
         <AnnouncementBanner />
-        <TmuxBanner onInstall={runInTerminal} />
+        {/* Discovery belongs to the local core; never run its installer on an SSH/relay host. */}
+        <TmuxBanner
+          onInstall={!isSshProject && session.id === localSession.id ? runInTerminal : undefined}
+        />
         {/* This MACHINE is running out of pty devices — subscribes for itself; a failed
             "Fix automatically…" lands in the same notice strip as every other async op. */}
         <PtyPressureBanner onError={(text) => setNotice({ kind: 'error', text })} />
