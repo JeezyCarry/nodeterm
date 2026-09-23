@@ -226,3 +226,15 @@ describe('needs-you under Liquid Glass is an inner light', () => {
     expect(reduced).toContain('animation: none')
   })
 })
+
+describe('terminal glass blur', () => {
+  it('terminal nodes frost 15% less than the chrome, and drop it under Reduce Transparency', () => {
+    const glass = blocks(":root[data-nt-glass='on']")
+    expect(glass.get('--glass-blur')).toContain('blur(calc(16px + 12px * var(--glass-t)))')
+    expect(glass.get('--glass-term-blur')).toContain('blur(calc((16px + 12px * var(--glass-t)) * 0.85))')
+    const rule = CSS.slice(CSS.indexOf(":root[data-nt-glass='on'] .term-node {\n"))
+    expect(rule.slice(0, rule.indexOf('}'))).toContain('backdrop-filter: var(--glass-term-blur)')
+    const reduce = CSS.slice(CSS.indexOf('@media (prefers-reduced-transparency: reduce) {'))
+    expect(reduce.slice(0, reduce.indexOf('}'))).toMatch(/--glass-term-blur:\s*none/)
+  })
+})

@@ -13542,6 +13542,10 @@ body.focus-mode .dock:hover {
   --glass-refract: url(#nt-refract);
   --glass-blur: var(--glass-refract) blur(calc(16px + 12px * var(--glass-t)))
     saturate(calc(200% - 55% * var(--glass-t)));
+  /* Terminal nodes frost 15% less than the chrome (the user asked for less blur under the terminal
+     windows): same curve, radius × 0.85, same saturation and refraction. */
+  --glass-term-blur: var(--glass-refract) blur(calc((16px + 12px * var(--glass-t)) * 0.85))
+    saturate(calc(200% - 55% * var(--glass-t)));
   /* A diagonal light across the surface, strongest at the top-left rim. Painted as a background
      layer (under the content), and only left of the Readable tick: it lightens the surface, so it
      may only appear where the contrast promise is already off. */
@@ -13626,6 +13630,8 @@ body.focus-mode .dock:hover {
    top border and the colour dot are INLINE styles from `data.color`, hence !important. The dot
    stays as a neutral ring: it is also the button that opens the colour picker. */
 :root[data-nt-glass='on'] .term-node {
+  -webkit-backdrop-filter: var(--glass-term-blur);
+  backdrop-filter: var(--glass-term-blur);
   border-color: var(--glass-edge);
   border-top-width: 1px;
   border-top-color: var(--glass-edge) !important;
@@ -13717,6 +13723,7 @@ body.focus-mode .dock:hover {
 @media (prefers-reduced-transparency: reduce) {
   :root[data-nt-glass='on'] {
     --glass-blur: none;
+    --glass-term-blur: none;
     --glass-sheen: 0;
     --glass-sheen-image: none;
   }

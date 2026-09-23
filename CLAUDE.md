@@ -3892,7 +3892,8 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   alpha right of it is higher — so Readable→Tinted keeps 4.5:1; left of the tick the row says the
   guarantee is off. Measured: chrome dark 0.20 / 0.70 / 0.95, chrome light 0.20 / 0.745 / 0.95,
   nodeterm-dark 0.20 / 0.675 / 0.95 (Clear / Readable / Tinted). App.tsx sets `--glass-t` (blur
-  16→28px, saturation 200→145%) and `--glass-sheen`. **Refraction** is ONE shared SVG filter
+  16→28px on chrome and × 0.85 = 13.6→23.8px on terminal nodes via `--glass-term-blur`, saturation
+  200→145%) and `--glass-sheen`. **Refraction** is ONE shared SVG filter
   (`components/GlassRefraction.tsx`, `#nt-refract`: a 256² edge-lens displacement map generated once,
   `primitiveUnits="objectBoundingBox"` so one filter fits every element), referenced from
   `--glass-blur` as `url(#nt-refract)` — no per-node filters. Its scale is `0.06 × (1 − t)`; it moves
