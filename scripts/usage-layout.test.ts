@@ -76,7 +76,7 @@ it.skipIf(!existsSync(chrome))('keeps refresh clickable beside/above the real do
         }, sessionId)
         const result = value.result.value
         expect(result).toMatch(/^PASS /)
-        console.log(result)
+        console.log('Usage layout checks passed.')
       } finally {
         await call('Browser.close')
         // The CDP acknowledgement precedes profile flush/child shutdown. Wait for the process
