@@ -1976,20 +1976,20 @@ body,
   }
 }
 
-/* Codex: pet-codex.webp first row, 8-frame walk at ~8fps ⇒ 0.96s/cycle. Only the first row is
-   shown (background-position-y stays 0); steps(8) walks left one frame at a time. */
+/* Codex: the first row has six populated frames and two empty cells. Keep 120ms per frame
+   and loop before the empty cells; the sheet itself remains eight columns wide. */
 .term-node__mascot--codex {
   width: var(--cmascot-w);
   height: var(--cmascot-h);
   background-position: 0 0;
   background-size: var(--cmascot-sheet-w) var(--cmascot-sheet-h);
-  animation: mascot-walk-codex 0.96s steps(8) infinite;
+  animation: mascot-walk-codex 0.72s steps(6) infinite;
   animation-play-state: var(--nt-anim-state);
 }
 
 @keyframes mascot-walk-codex {
   to {
-    background-position-x: calc(var(--cmascot-w) * -8);
+    background-position-x: calc(var(--cmascot-w) * -6);
   }
 }
 
