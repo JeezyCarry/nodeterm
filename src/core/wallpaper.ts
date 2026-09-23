@@ -219,10 +219,12 @@ export async function loadWallpaper(value: unknown): Promise<string | null> {
  * Put a picked image into the cache and return the value to store. The cached copy is what keeps
  * the wallpaper when the original moves.
  *
- * On macOS every import goes through `sips` to a JPEG no larger than 3840px, like the stills — a
- * 60 MB camera PNG would otherwise be copied as-is and then refused by `load`'s 25 MB cap, which
- * reads as a wallpaper that silently never appears. Elsewhere there is no converter, so an image
- * over the cap is refused HERE, where the picker can show the reason. HEIC needs `sips`.
+ * The file is copied untouched when the page can show it as-is. On macOS `sips` converts to a
+ * JPEG ≤ 3840px only when it must: HEIC (Chromium cannot decode it), or an image over 3840px or
+ * over `load`'s 25 MB cap — a 60 MB camera PNG copied as-is would otherwise be refused at load,
+ * which reads as a wallpaper that silently never appears. Re-encoding everything would flatten a
+ * PNG/WebP's alpha and recompress a JPEG for nothing. Elsewhere there is no converter, so HEIC and
+ * an over-cap image are refused HERE, where the picker can show the reason.
  */
 export async function importWallpaper(sourcePath: unknown): Promise<DesktopWallpaper> {
   if (typeof sourcePath !== 'string' || !IMPORT_EXT.test(sourcePath)) {
@@ -230,12 +232,15 @@ export async function importWallpaper(sourcePath: unknown): Promise<DesktopWallp
   }
   const src = path.resolve(sourcePath)
   const current = currentWallpaper()
+  const mac = process.platform === 'darwin'
+  const heic = /\.heic$/i.test(src)
+  const tooBig = (await stat(src)).size > MAX_LOAD_BYTES
   let result: DesktopWallpaper
-  if (process.platform === 'darwin') {
+  if (mac && (heic || tooBig || ((await longEdge(src)) ?? Infinity) > FULL_PX)) {
     result = { kind: 'image', path: await convertWithSips(src, FULL_PX, '') }
   } else {
-    if (/\.heic$/i.test(src)) throw new Error('HEIC images can only be converted on macOS.')
-    if ((await stat(src)).size > MAX_LOAD_BYTES) {
+    if (heic) throw new Error('HEIC images can only be converted on macOS.')
+    if (tooBig) {
       throw new Error(`That image is larger than ${MAX_LOAD_BYTES / 1024 / 1024} MB. Choose a smaller one.`)
     }
     const ext = path.extname(src).toLowerCase().replace('.jpeg', '.jpg')
