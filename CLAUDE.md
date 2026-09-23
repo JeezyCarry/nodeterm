@@ -3758,6 +3758,58 @@ or browser nodes means adding the draw and the set together, in one change.
   picker), so no new IPC was added and nothing is stubbed. **Mobile**: N/A for v1 — *nodeterm mobile*
   attaches to tmux sessions over the transport protocol and carries no per-node icon concept;
   surfacing one means extending that protocol (follow-up in the iOS repo).
+## Desktop wallpaper + glass terminals (Settings → Appearance)
+
+Two opt-in settings, both default OFF so an update changes nothing on screen:
+`settings.desktopWallpaper` (`none | {preset, id} | {image, path}`, read through
+`normalizeWallpaper` in `@shared/wallpaper` — hand-editable, unknown ⇒ `none`) and
+`settings.glassTerminals`.
+
+- **The wallpaper is painted on the React Flow ROOT** (`Canvas.tsx`), which is viewport-sized and
+  never transformed, so it stays put while the canvas pans and zooms; the dot grid is faded to 30%
+  over it, not removed, because snapping still aligns to it. The kanban overlay paints its own
+  background and is unaffected.
+- **`background-image` + longhands, never a `background` shorthand next to `var(--canvas-bg)`.**
+  MEASURED live: Chromium drops a var()-containing value once it passes ~2 MB, and a still's data:
+  URL is ~3 MB, so the shorthand resolved to nothing and the canvas stayed black. The class rule
+  supplies the colour underneath.
+- **Images reach the page as data: URLs from core** (`core/wallpaper.ts`, `wallpaper:*` channels,
+  registered by BOTH shells), so the CSP is untouched and no protocol was added. The renderer never
+  names a path to read: a macOS still is named by its `mac:` id and re-resolved against a fresh scan
+  of `/System/Library/Desktop Pictures` (read at runtime, NEVER bundled — they are Apple's), and an
+  imported image must be a hash-named DIRECT child of `<userData>/wallpapers/` (`cachedImagePath`,
+  the whole jail). Chromium cannot decode HEIC, so macOS converts with `/usr/bin/sips` to a JPEG
+  ≤ 3840px — and `sips -Z` also UPSCALES (measured: 320px → 3840px), so it is passed only when the
+  image is larger. Every macOS import goes through it; elsewhere an import over the 25 MB load cap is
+  refused at import time, where the picker shows the reason, rather than failing silently at load.
+- **The cache is pruned on a SAVED change and on import, never at boot.** `SettingsStore.init`
+  answers an unreadable settings.json with the defaults, and pruning against that would delete the
+  image the user chose. Only hash-named full-size files are candidates; thumbnails, temps and
+  foreign files are never touched, nor is a conversion in flight. A failed renderer load is not
+  cached (the file may appear).
+- **Glass is terminal nodes only.** The node fill is the terminal theme's background at an alpha
+  from `glassTintAlpha` (`renderer/lib/glassContrast.ts`): the smallest alpha at which the theme
+  foreground keeps 4.5:1 over ANY backdrop. Checking white and black suffices because composite
+  luminance is monotone in each backdrop channel — except when the text's luminance falls INSIDE
+  that range, which `worstContrast` fails explicitly; a grey-backdrop sweep pins it per theme. The
+  0.95 design ceiling yields to the guarantee: Solarized Dark gets 0.985, and Solarized Light — under
+  4.5:1 even opaque — gets 1. The tint is per node (project theme override included) and the glass
+  header takes the TERMINAL foreground for its text tokens, since it sits on the terminal's tint.
+  **ANSI palette colours are NOT protected** (only the foreground is): protecting all 16 at
+  min(3, own opaque contrast) forces alpha 1 on every built-in theme, because slots like `black` on
+  a dark theme sit at ~1.3:1 and any translucency moves some backdrop onto them. Open product call.
+- **xterm paints no background under glass**: the theme background keeps its RGB at alpha 0
+  (`glassTheme`, memoised per theme so `applyLiveOptions`' identity compare stays a no-op) plus
+  `allowTransparency`, so the WebGL atlas is rasterised without a baked-in background. Both toggle
+  LIVE through `applyLiveOptions` (the addon rebuilds its atlas on any option change); the card
+  modal and the settings preview never pass glass. Glass stands down while a shared glyph grid is
+  mounted (it paints text BELOW the nodes, so a tint would cover it), and the blur is dropped while
+  the camera moves (`.canvas-moving`, toggled by `onMoveStart`/`onMoveEnd` via classList so a pan
+  does not re-render Canvas) — the tint alone carries the contrast guarantee.
+- **Surfaces.** Desktop: full. Server Edition: gradients + glass; the stills list is empty (not
+  macOS) and "Choose image…" is hidden (a picker there browses the SERVER's disk). Relay tabs keep
+  a stub (no stills, import refused). Mobile: N/A (no canvas). Kanban: N/A (the board is opaque).
+
 ## Keybindings (registry, overrides, dispatch)
 
 Every user-facing chord is a registry command, and the whole engine is **one module**:
