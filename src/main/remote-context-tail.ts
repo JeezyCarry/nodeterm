@@ -25,7 +25,10 @@ const INITIAL_READ_CAP = 1024 * 1024 // 1 MB
 
 interface Tracked {
   ref: RemoteFileRef
-  offset: number
+  offset: number | null
+  failures: number
+  retryAt: number
+  suppressCarry: boolean
   used: number
   window: number
   model: string | null
@@ -58,8 +61,7 @@ export function createRemoteContextTail(
   // value wins, so it must not wait for a newline. Notifications scan COMPLETE lines only,
   // with the torn tail carried into the next read (see subagent-tail.ts), so a torn
   // <task-notification> is completed later instead of being lost.
-  const scan = (sessionId: string, t: Tracked, read: string): void => {
-    const buf = Buffer.from(read)
+  const scan = (sessionId: string, t: Tracked, buf: Buffer, historical: boolean): void => {
     const combined = t.carry?.length ? Buffer.concat([t.carry, buf]) : buf
     t.carry = splitCompleteLines(combined).carry
     // ONE split shared by all three scanners (mirrors the local tail): the last element is the
@@ -71,9 +73,13 @@ export function createRemoteContextTail(
       t.used = latest.used
       t.model = latest.model ?? t.model
     }
-    if (opts?.onToolResult && hasToolResult(completeLines)) opts.onToolResult(sessionId)
+    // A historical partial line may finish on a later poll; it still must not emit events.
+    const eventLines = historical ? [] : completeLines.slice(t.suppressCarry ? 1 : 0)
+    if (historical) t.suppressCarry = !!t.carry
+    else if (completeLines.length) t.suppressCarry = false
+    if (opts?.onToolResult && hasToolResult(eventLines)) opts.onToolResult(sessionId)
     if (opts?.onTaskNotification) {
-      for (const n of parseTaskNotifications(completeLines)) opts.onTaskNotification(sessionId, n)
+      for (const n of parseTaskNotifications(eventLines)) opts.onTaskNotification(sessionId, n)
     }
   }
 
@@ -91,23 +97,28 @@ export function createRemoteContextTail(
     win.webContents.send(IPC.contextUpdate, payload)
   }
 
-  // One async read+reconcile pass for a session. Fail-open: RemoteFile already returns empty on
-  // error, so a failed read keeps the last value. The `reading` flag skips overlapping ticks.
+  // One bounded read per tick; retain the last good meter through transport failures.
   const read = async (sessionId: string, t: Tracked): Promise<void> => {
-    if (t.reading) return
+    if (t.reading || Date.now() < t.retryAt) return
     t.reading = true
     try {
-      if (t.offset === 0) {
-        // First read: grab the tail of the (possibly huge) file in one shot. We can't stat the
-        // remote size, so advance the offset by the bytes we actually received.
-        const text = await remoteFile.readTail(t.ref, INITIAL_READ_CAP)
-        t.offset = Buffer.byteLength(text)
-        scan(sessionId, t, text)
-      } else {
-        const { text, newOffset } = await remoteFile.readFrom(t.ref, t.offset)
-        t.offset = newOffset
-        if (text) scan(sessionId, t, text)
+      const result = await remoteFile.readContextWindow(t.ref, t.offset, INITIAL_READ_CAP)
+      if (sessions.get(sessionId) !== t) return // detached/replaced while SSH was in flight
+      if (result.initial) {
+        t.carry = null
+        t.suppressCarry = false
       }
+      t.offset = result.newOffset
+      if (result.data.length) scan(sessionId, t, result.data, result.initial)
+      t.failures = 0
+      t.retryAt = 0
+    } catch {
+      if (sessions.get(sessionId) !== t) return
+      const delay = Math.min(60_000, 2000 * 2 ** Math.min(t.failures++, 5))
+      t.retryAt = Date.now() + delay
+      // Never log the remote command, path, transcript or transport error (may contain secrets).
+      console.warn(`[remote-context-tail] Read failed; retrying in ${delay}ms`)
+      return
     } finally {
       t.reading = false
     }
@@ -137,17 +148,15 @@ export function createRemoteContextTail(
     track(sessionId, ref) {
       if (!sessionId || !ref) return
       const existing = sessions.get(sessionId)
-      if (existing) {
-        if (existing.ref.path !== ref.path) {
-          existing.ref = ref
-          existing.offset = 0
-          existing.carry = null
-        }
-        return
-      }
+      if (existing && existing.ref.path === ref.path &&
+          existing.ref.controlPath === ref.controlPath &&
+          JSON.stringify(existing.ref.conn) === JSON.stringify(ref.conn)) return
       const t: Tracked = {
         ref,
-        offset: 0,
+        offset: null,
+        failures: 0,
+        retryAt: 0,
+        suppressCarry: false,
         used: 0,
         window: 0,
         model: null,
