@@ -77,7 +77,7 @@ it.skipIf(!existsSync(chrome)).each([1, 1.25, 1.5, 2])('at DPR %s fits complete 
         }, sessionId)
         const result = value.result.value
         expect(result).toMatch(/^PASS /)
-        writeFileSync(join(tmpdir(), `terminal-fit-layout-${dpr}.json`), result)
+        console.log(result)
       } finally {
         await call('Browser.close')
         // The CDP acknowledgement precedes profile flush/child shutdown. Wait for the process
