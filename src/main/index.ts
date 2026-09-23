@@ -160,6 +160,8 @@ import {
   onMirrorFlush,
   flush as flushAgentStatusMirror,
   recordAgentEvent,
+  recordQuestionResult,
+  ignoreQuestionHook,
   ackDone,
   recordRawToolEvent,
   recordContextUsage,
@@ -2331,24 +2333,15 @@ app.whenReady().then(async () => {
    * A tool RESULT landed in a tracked transcript. Only interesting while the node is still in
    * needs-you: an `AskUserQuestion` the user declined with Esc fires no PostToolUse and no Stop, so
    * nothing ever moved the node off NEEDS YOU — badge, notch capsule and phone card all stuck until
-   * the next prompt. The result proves the ask settled; `working` is the honest next state (Claude
+   * the next prompt. A matching session + tool-use ID proves the ask settled; `working` is the honest next state (Claude
    * carries on with "User declined to answer questions"), and any real event corrects it anyway.
    */
-  const onToolResult = (sessionId: string): void => {
+  const onToolResult = (sessionId: string, toolUseId: string): void => {
     let nodeId: string | undefined
     for (const [nid, sid] of nodeContextSession) if (sid === sessionId) nodeId = nid
     if (!nodeId) return
-    const st = nodeState(nodeId)
-    if (st !== 'blocked' && st !== 'waiting') return
-    const ev = {
-      nodeId,
-      agentId: 'claude',
-      sessionId,
-      kind: 'state',
-      state: 'working'
-    } satisfies NormalizedAgentEvent
-    sendToMain(IPC.agentStatus, ev)
-    recordAgentEvent(ev)
+    const ev = recordQuestionResult(nodeId, sessionId, toolUseId)
+    if (ev) sendToMain(IPC.agentStatus, ev)
   }
   const onTaskNotification = (sessionId: string, n: TaskNotification): void => {
     let nodeId: string | undefined
@@ -3143,6 +3136,7 @@ app.whenReady().then(async () => {
     // Runs BEFORE the local/remote split so it covers remote (SSH) nodes too — it needs only
     // tool_name/tool_input, never the transcript path the split routes on.
     recordRawToolEvent(nodeId, payload)
+    if (ignoreQuestionHook(nodeId, payload)) return
     const p = payload as {
       hook_event_name?: string
       session_id?: string

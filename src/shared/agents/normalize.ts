@@ -48,6 +48,9 @@ export interface NormalizedAgentEvent {
   // the node to a green "done" over a blocked session. Cleared by the next genuine turn, any
   // other tool activity, an interrupt, or a session boundary (see reduceEntry).
   awaitingInput?: boolean
+  /** Claude picker lifecycle, correlated with its transcript tool_result. */
+  questionId?: string
+  answeredQuestionId?: string
   // true only for a genuine new turn (Claude UserPromptSubmit), so the renderer can
   // clear per-turn fan-out without clearing on every mid-turn tool event.
   newTurn?: boolean
@@ -62,8 +65,8 @@ export interface NormalizedAgentEvent {
   // stash-priority reclassification (see agent-status-mirror.recordAgentEvent). 'question' = an
   // AskUserQuestion picker (its `pendingId` is stripped — approve/deny on a question is wrong UX);
   // 'approval' = a genuine permission request (its `pendingId`, if any, is kept). Absent on every
-  // non-needs-you event. This is the ENRICHED field the shells broadcast — it is not produced by
-  // the normalizers themselves. Present for future UI; the canvas already keys the approve/deny
+  // non-needs-you event. Claude also identifies non-picker PermissionRequest hooks here so a
+  // concurrent parent picker cannot hide their approval tickets. The canvas keys the approve/deny
   // buttons off `pendingId`, which is now absent on a question. */
   askKind?: 'question' | 'approval'
   // session
@@ -140,6 +143,7 @@ const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])
 const RECURRING_TOOLS = new Set(['Skill', 'CronCreate', 'ScheduleWakeup'])
 
 interface ClaudePayload {
+  agent_id?: string
   hook_event_name?: string
   session_id?: string
   /** Deterministic-approval ticket the managed hook script added to its POST body and the hook
@@ -187,6 +191,8 @@ export function isAsyncSubagentLaunch(r: { status?: string; isAsync?: boolean } 
 
 export function normalizeClaude(env: RawHookEnvelope): NormalizedAgentEvent | null {
   const p = env.payload as ClaudePayload
+  // Child tool activity cannot drive the parent, but permission requests still need a reply.
+  if (p.agent_id && ['PreToolUse', 'PostToolUse', 'PostToolUseFailure'].includes(p.hook_event_name ?? '')) return null
   const base = { nodeId: env.nodeId, agentId: env.agentId, sessionId: p.session_id }
   // Deterministic hook-reply "answered" signal (docs/hook-reply-approvals.md): the managed hook
   // fires this the instant it reads a valid allow/deny answer file — the agent is about to proceed
@@ -207,6 +213,11 @@ export function normalizeClaude(env: RawHookEnvelope): NormalizedAgentEvent | nu
   const tool = p.tool_name ?? ''
 
   if (ev === 'PreToolUse' || ev === 'PostToolUse') {
+    if (tool === 'AskUserQuestion' && p.tool_use_id) {
+      return ev === 'PreToolUse'
+        ? { ...base, kind: 'state', state: 'waiting', questionId: p.tool_use_id }
+        : { ...base, kind: 'state', state: 'working', answeredQuestionId: p.tool_use_id }
+    }
     if (SUBAGENT_TOOLS.has(tool)) {
       if (ev === 'PreToolUse') {
         return {
@@ -304,6 +315,7 @@ export function normalizeClaude(env: RawHookEnvelope): NormalizedAgentEvent | nu
       ...base,
       kind: 'state',
       state: 'blocked',
+      ...(tool && tool !== 'AskUserQuestion' ? { askKind: 'approval' as const } : {}),
       lastMessage: p.last_assistant_message,
       // Deterministic-approval ticket (present only when the wait-branch of the managed hook ran).
       ...(p.nodeterm_pending_id ? { pendingId: p.nodeterm_pending_id } : {})

@@ -105,7 +105,7 @@ describe.skipIf(process.platform === 'win32')('real POSIX shell transcript fixtu
     expect(h.onTaskNotification).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1000)
     expect(h.onTaskNotification).toHaveBeenCalledExactlyOnceWith('s', expect.objectContaining({ result: 'yeni é 🐈' }))
-    expect(h.onToolResult).toHaveBeenCalledExactlyOnceWith('s')
+    expect(h.onToolResult).toHaveBeenCalledExactlyOnceWith('s', 'tu')
     expect(h.send.mock.calls.at(-1)?.[1].usedTokens).toBe(200)
     expect(h.transfers.every(n => n < 1.6 * cap)).toBe(true)
     await vi.advanceTimersByTimeAsync(2000)
@@ -200,4 +200,21 @@ describe('session windows with bounded remote reads', () => {
       expect(send.mock.calls[0][1]).toMatchObject({ windowTokens: 64000, windowSource: 'session-env' })
     } finally { tail.untrack('s') }
   })
+})
+
+it('passes only live SSH result IDs to the correlated answer consumer', async () => {
+  const result = (id: string) => JSON.stringify({ type: 'user', message: { content: [
+    { type: 'tool_result', tool_use_id: id, content: 'User declined to answer questions' }
+  ] } }) + '\n'
+  const readContextWindow = vi.fn()
+    .mockResolvedValueOnce({ data: Buffer.from(result('historical')), start: 0, newOffset: 100, initial: true })
+    .mockResolvedValueOnce({ data: Buffer.from(result('other') + result('ask')), start: 100, newOffset: 300, initial: false })
+  const h = harness({ readContextWindow })
+  try {
+    h.tail.track('session', ref)
+    await flush()
+    expect(h.onToolResult).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(h.onToolResult.mock.calls).toEqual([['session', 'other'], ['session', 'ask']])
+  } finally { h.tail.untrack('session') }
 })

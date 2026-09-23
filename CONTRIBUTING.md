@@ -824,6 +824,13 @@ Two files, two audiences:
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
 
+An unanswered Claude `AskUserQuestion` is correlated by session and tool-use ID in the core
+mirror, independently of its short-lived display stash. Ordinary hooks, subagent activity and
+unrelated transcript results must not clear attention or archive its inbox card. Both shells
+use `recordQuestionResult` for transcript rescue (including Escape/decline), and broadcast the
+mirror's effective event. Keep result IDs through local and SSH tails; a boolean “some tool
+finished” is insufficient. Explicit new user turns, interrupts and session boundaries reset it.
+
 Remote Codex account safety (#736): managed SSH Codex sessions and agent-less login terminals
 require a known safe account id and a safe resolved remote home before spawning. The remote env
 builder supplies their private `CODEX_HOME`; never fall back to the system login when that scope
@@ -848,8 +855,25 @@ Managed Codex login terminals are agent-less: core identifies their provider fro
 account list. Before opening one, await `useSettings.getState().flush()` after adding the account.
 The normal 300 ms coalesced save is too late: an unknown id can launch against the system home.
 
+Claude child `PreToolUse`/`PostToolUse`/`PostToolUseFailure` hooks must not drive parent state.
+Child `PermissionRequest` and attention `Notification` hooks still reach needs-you and phone
+approvals, including the raw approval summary and deterministic reply ticket. Keep raw summary
+recording before the child transcript-association guard in both shells.
+
+A held parent question can overlap child permissions: retain its question card and waiting
+state while publishing each approval ticket separately. Approval replies resolve only their
+own ticket; the picker stays pending until its correlated answer or explicit reset.
+When the parent answers first, retain concurrent approval tickets and blocked attention until
+their own replies; ordinary tool activity cannot settle them. Explicit turn/session resets
+still cancel both kinds of pending attention.
+
 Optional hook ownership failures must never stop Desktop window creation or Server boot. Use the
 shared nonfatal startup path and surface its actionable diagnostic. A responding HTTP port is not
 nodeterm identity: verify bearer acceptance and rejection. Legacy SSH endpoint migration requires
 ownership proof, an unchanged-file check, and stdin-only credential transfer; a project name alone
 is not permission to replace another installation's advertisement.
+
+Held approval attention must not replace subagent, recurring or background-task events, or refresh
+state evidence from those lifecycle hooks. A parent may ask several questions while a child ticket
+is outstanding: track each new picker and preserve child approval cards independently, including
+when their display titles match. Answering either resolves only that question or ticket.

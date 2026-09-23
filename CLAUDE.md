@@ -4962,6 +4962,30 @@ sessions is a hazard whatever kills it; this removes the hazard, not a proven ca
   When a change is genuinely desktop-only (native menus, auto-update, Keychain), say so; the
   point is to make the call consciously, not to leave the other surfaces to rot.
 
+An unanswered Claude `AskUserQuestion` is correlated by session and tool-use ID in the core
+mirror, independently of its short-lived display stash. Ordinary hooks, subagent activity and
+unrelated transcript results must not clear attention or archive its inbox card. Both shells
+use `recordQuestionResult` for transcript rescue (including Escape/decline), and broadcast the
+mirror's effective event. Keep result IDs through local and SSH tails; a boolean “some tool
+finished” is insufficient. Explicit new user turns, interrupts and session boundaries reset it.
+
+Claude child `PreToolUse`/`PostToolUse`/`PostToolUseFailure` hooks must not drive parent state.
+Child `PermissionRequest` and attention `Notification` hooks still reach needs-you and phone
+approvals, including the raw approval summary and deterministic reply ticket. Keep raw summary
+recording before the child transcript-association guard in both shells.
+
+A held parent question can overlap child permissions: retain its question card and waiting
+state while publishing each approval ticket separately. Approval replies resolve only their
+own ticket; the picker stays pending until its correlated answer or explicit reset.
+When the parent answers first, retain concurrent approval tickets and blocked attention until
+their own replies; ordinary tool activity cannot settle them. Explicit turn/session resets
+still cancel both kinds of pending attention.
+
+Held approval attention must not replace subagent, recurring or background-task events, or refresh
+state evidence from those lifecycle hooks. A parent may ask several questions while a child ticket
+is outstanding: track each new picker and preserve child approval cards independently, including
+when their display titles match. Answering either resolves only that question or ticket.
+
 Remote Codex safety (#736): `spawnNew` requires managed SSH Codex accounts (including custom
 Codex harnesses and known agent-less login terminals) to have a safe id in the saved Codex account
 list and a safe resolved `remoteHome`. `remoteAccountScopeEnvArgs` then supplies the private
