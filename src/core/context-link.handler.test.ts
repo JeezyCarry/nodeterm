@@ -306,3 +306,23 @@ it.each(['sessionId', 'accountId', 'cwd', 'agentId', 'hook', 'remote', 'removed'
     } finally { release(undefined); await blocker }
   }
 )
+
+it('starts another remote read after an edit while the first remote read is still delayed', async () => {
+  let release!: (value: string) => void
+  const remoteBytes = new Promise<string>(resolve => { release = resolve })
+  const readRemoteFile = vi.fn(() => remoteBytes)
+  start({ isRemoteNode: id => id === 'delayed-remote', readRemoteFile })
+  setNodeTranscript('delayed-remote', 'remote-session', '/home/u/.claude/projects/x/delayed.jsonl')
+  const link = { id: 'delayed-remote', title: 'Before', agentId: 'claude', sessionId: 'remote-session' }
+  await setContextLinks({ reader: [link] })
+  const first = handleContextLinkRequest({ verb: 'transcript', nodeId: 'reader', args: {} })
+  const refresh = setContextLinks({ reader: [{ ...link, title: 'After' }] })
+  // Do not await refresh: this read must use the intermediate document's retained path.
+  const second = handleContextLinkRequest({ verb: 'transcript', nodeId: 'reader', args: {} })
+  try { expect(readRemoteFile).toHaveBeenCalledTimes(2) }
+  finally { release(CLAUDE_LINE) }
+  expect(await first).toContain('ship it')
+  expect(await second).toContain('After')
+  expect(await second).toContain('ship it')
+  await refresh
+})
