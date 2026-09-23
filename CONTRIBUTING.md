@@ -97,6 +97,13 @@ lane unaffected.
 
 ## House rules
 
+- **Branch labels describe a checkout on one core.** Share existing status reads through
+  `renderer/state/gitBranches.ts`; do not cache a branch forever by project id or copy a project
+  branch onto worktree nodes. Source, Sessions and worktree headers consume the same observations,
+  keyed by API identity, exact cwd and (for SSH) project identity. Never probe an SSH cwd locally
+  from a background header: only the active SSH project is git-routable. SSH headers observe
+  Source refreshes instead.
+
 - **Never call the user's machine a Mac in user-visible copy.** Use `thisMachine()` /
   `thisMachineCap()` / `machineNoun()` from `src/renderer/lib/machineName.ts` — "this Mac" on
   macOS, "this PC" on Windows, "this computer" elsewhere and in any Server Edition browser tab
@@ -680,6 +687,11 @@ pastes its path; Ctrl+V belongs to the foreground program. A node's configured a
 proof of foreground clipboard-image support. Keep shell/SSH/Server file routing and capture
 suppression of accompanying text; do not synthesize Ctrl+V or try both routes without a
 capability and receipt protocol. The shortcuts panel documents this distinction (#712).
+
+The titlebar's scroll viewport owns its `no-drag` region. Do not add `app-region: no-drag`
+to tabs or their descendants: Electron can subtract their off-screen rectangles from the
+wordmark's drag area. `scripts/tabbar-drag.test.ts` checks native hit testing with isolated
+Electron/Xvfb on Linux; macOS traffic lights and actual window movement still need device checks.
 
 `npm test` must pass, and `npm run typecheck` is the fastest gate.
 
