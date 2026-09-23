@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { Canvas } from './canvas/Canvas'
 import { PromptDialogHost } from './components/promptDialog'
@@ -88,12 +88,20 @@ export default function App() {
   const glassSlider = resolveGlassSlider(useSettings((s) => s.settings.glassTint))
   // Reduce Transparency / Increase Contrast outrank the slider (opaque / Tinted), like iOS.
   const glassA11y = useGlassA11y()
+  // Increase Contrast pins the WHOLE slider to Tinted — alpha, blur and refraction alike.
+  const glassT = glassA11y.moreContrast ? 1 : glassSlider
+  // The readable alpha depends only on the resolved theme, and computing it is ~16k contrast
+  // evaluations plus a style recalc; it is measured once per theme, never per slider input.
+  const [glassChrome, setGlassChrome] = useState<{
+    panel: string
+    rgb?: readonly number[]
+    readable: number | null
+  } | null>(null)
   useEffect(() => {
     const root = document.documentElement
     if (!liquidGlass) {
       delete root.dataset.ntGlass
-      root.style.removeProperty('--glass-chrome-bg')
-      root.style.removeProperty('--glass-t')
+      setGlassChrome(null)
       return
     }
     // Read the tokens with the glass overrides OFF: under them `--panel` IS the glass fill, and a
@@ -102,17 +110,26 @@ export default function App() {
     const css = getComputedStyle(root)
     const text = css.getPropertyValue('--text').trim()
     const panel = css.getPropertyValue('--panel').trim()
-    const readable = glassChromeAlpha(text, panel)
-    const rgb = parseCssColor(panel)?.rgb
+    setGlassChrome({ panel, rgb: parseCssColor(panel)?.rgb, readable: glassChromeAlpha(text, panel) })
+    root.dataset.ntGlass = 'on'
+  }, [liquidGlass, appTheme])
+  // The slider (and the accessibility overrides) only ever set custom properties.
+  useEffect(() => {
+    const root = document.documentElement
+    if (!glassChrome) {
+      root.style.removeProperty('--glass-chrome-bg')
+      root.style.removeProperty('--glass-t')
+      return
+    }
+    const { panel, rgb, readable } = glassChrome
     root.style.setProperty(
       '--glass-chrome-bg',
       readable !== null && rgb
         ? `rgba(${rgb.join(', ')}, ${glassSurfaceAlpha(glassSlider, readable, glassA11y).toFixed(3)})`
         : panel
     )
-    root.style.setProperty('--glass-t', glassSlider.toFixed(3))
-    root.dataset.ntGlass = 'on'
-  }, [liquidGlass, appTheme, glassSlider, glassA11y])
+    root.style.setProperty('--glass-t', glassT.toFixed(3))
+  }, [glassChrome, glassSlider, glassA11y, glassT])
 
   // Apply the UI scale as page zoom (issue #299 — 4K readability; the why-page-zoom write-up
   // lives in shared/ui-scale.ts). Gated on `hydrated` so boot doesn't flash-reset a scaled window
@@ -141,7 +158,7 @@ export default function App() {
         {/* The node-icon picker, opened from the node menu, a node header and the kanban card
             modal — one dialog for all three, driven by nodeIconDialog(). */}
         <NodeIconDialogHost />
-        {liquidGlass && !glassA11y.reduceTransparency && <GlassRefraction slider={glassSlider} />}
+        {liquidGlass && !glassA11y.reduceTransparency && <GlassRefraction slider={glassT} />}
       </ReactFlowProvider>
     </SessionProvider>
   )
