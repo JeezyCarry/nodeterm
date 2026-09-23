@@ -14,7 +14,7 @@ const initialOf = (name: string): string => (name.trim()[0] ?? '?').toUpperCase(
 export const PRIORITIES: Array<{ id: KanbanPriority; label: string; color: string }> = [
   { id: 'low', label: 'Low', color: 'var(--state-queued)' },
   { id: 'medium', label: 'Medium', color: 'var(--caution)' },
-  { id: 'high', label: 'High', color: 'var(--warn)' },
+  { id: 'high', label: 'High', color: 'var(--priority-high)' },
   { id: 'urgent', label: 'Urgent', color: 'var(--danger)' }
 ]
 

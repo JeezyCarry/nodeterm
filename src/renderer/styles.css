@@ -81,7 +81,11 @@
   /* Text-safe hues for the "needs you" LABEL, which an appearance re-maps with its role, and the
      readable orange Liquid Glass labels it with (dark: the system orange; light: darkened). */
   --attention-text: var(--danger);
-  --orange-text: #ff9f0a;
+  --orange-text: var(--sys-orange);
+  /* Kanban priority "High": orange in the default look; under Liquid Glass orange means only
+     "needs you", so High takes pink (--pink-text is its readable form per theme). */
+  --priority-high: var(--warn);
+  --pink-text: var(--sys-pink);
   /* Git file status, read by `lib/gitStatusColors.ts` (the ONE table both git panels draw). */
   --git-modified: var(--caution);
   --git-added: var(--success);
@@ -281,6 +285,7 @@
   --sys-brown: #a2845e;
   --sys-gray: #8e8e93;
   --orange-text: #a85c00;
+  --pink-text: #d30f45;
   /* The glows always drew the dark clay, in both themes. */
   --state-working: #d97757;
 
@@ -7558,7 +7563,7 @@ button.group-node__setup:disabled {
   animation: nt-pulse 1.1s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
 }
-.sessmem-row__dot--attention { background: var(--warn); }
+.sessmem-row__dot--attention { background: var(--state-attention); }
 .sessmem-row__dot--idle { background: rgba(var(--tint-rgb), 0.3); }
 /* Hollow = orphan: there is no node to have a state, and a filled neutral dot would read "idle". */
 .sessmem-row__dot--hollow {
@@ -10340,8 +10345,8 @@ button.group-node__setup:disabled {
   animation-play-state: var(--nt-anim-state);
 }
 .kanban-badge--needs {
-  color: var(--warn);
-  background: color-mix(in srgb, var(--state-warning) 12%, transparent);
+  color: var(--attention-text);
+  background: color-mix(in srgb, var(--state-attention) 12%, transparent);
 }
 /* Eco: the agent CLI was exited to reclaim RAM. Quiet — the session is fine. */
 .kanban-badge--sleeping {
@@ -13717,6 +13722,7 @@ body.focus-mode .dock:hover {
   --warn: var(--caution);
   --git-renamed: var(--accent-text);
   --git-conflict: var(--danger);
+  --priority-high: var(--pink-text);
 }
 
 /* Status labels on a glass header are ink, not coloured text: the hue tints the chip BEHIND the
@@ -13782,6 +13788,9 @@ body.focus-mode .dock:hover {
     --sys-pink: #d30f45;
     --sys-brown: #7f6545;
     --sys-gray: #6c6c70;
+    /* The readable orange/pink follow the contrast palette too. */
+    --orange-text: var(--sys-orange);
+    --pink-text: var(--sys-pink);
   }
   :root[data-nt-glass='on'] .term-node {
     border-width: 1.5px;

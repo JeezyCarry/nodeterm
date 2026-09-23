@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { SYSTEM_COLORS } from './lib/palette'
 import { gitStatusColor } from './lib/gitStatusColors'
+import { GLASS_CHIP_HUES } from './lib/glassContrast'
 
 // The semantic colour system (styles.css `--sys-*` palette + `--state-*` / `--git-*` roles): every
 // role resolves to a colour in every theme, the JS table and the CSS agree, and each meaning has
@@ -252,5 +253,31 @@ describe('glass rim light', () => {
     expect(r).toContain('pointer-events: none')
     expect(r).toContain('-webkit-mask-composite: xor')
     expect(CSS).not.toContain('--glass-sheen')
+  })
+})
+
+describe('needs-you and priorities under glass', () => {
+  it('every needs-you surface reads the attention role, never the warning one', () => {
+    for (const sel of ['.kanban-badge--needs {', '.term-node__status--attention {', '.sessmem-row__dot--attention {']) {
+      const r = CSS.slice(CSS.indexOf(sel))
+      const body = r.slice(0, r.indexOf('}'))
+      expect(body, sel).toMatch(/--(state-attention|attention-text)/)
+      expect(body, sel).not.toMatch(/--warn|--state-warning/)
+    }
+  })
+
+  it('kanban priorities: no two levels share a colour, with or without glass', () => {
+    const levels = ['--caution', '--priority-high', '--danger', '--state-queued']
+    for (const tokens of [DARK, LIGHT, GLASS_THEMES.dark, GLASS_THEMES.light]) {
+      expect(new Set(levels.map((l) => literal(l, tokens))).size).toBe(levels.length)
+    }
+    expect(literal('--priority-high', GLASS_THEMES.dark)).not.toBe(literal('--state-attention', GLASS_THEMES.dark))
+  })
+
+  it('the glass chip hues cover every badge token (lib/glassContrast GLASS_CHIP_HUES)', () => {
+    const badge = ['--success', '--agent-working', '--attention-text', '--danger', '--caution', '--state-queued', '--state-automation', '--state-unread']
+    for (const tokens of [GLASS_THEMES.dark, GLASS_THEMES.light]) {
+      for (const t of badge) expect(GLASS_CHIP_HUES, t).toContain(literal(t, tokens))
+    }
   })
 })
