@@ -1,3 +1,4 @@
+import { LINK_ENDPOINT_NOT_FOUND } from '../shared/canvas-link'
 // Pure core for agent canvas control: the verb model, request validation, and the standalone
 // CLI source. No electron imports, so this module + CONTROL_CLI_SCRIPT are unit-testable.
 // Electron/ipc/server wiring lives in canvas-control.ts + index.ts + hook-server.ts.
@@ -506,6 +507,8 @@ export function buildCanvasControlInstructions(shimPath: string): string {
     '  on demand (nodeterm linked-context CLI). `--from` defaults to you; nothing is pushed into the',
     '  linked sessions. Agent sessions you open, and the stations you name in `--after`, are already',
     '  linked — nothing to `link`. Use `link` only for nodes you did not open, or to link two OTHER nodes.',
+    `  Both endpoints must be in your project. A missing endpoint reports: ${LINK_ENDPOINT_NOT_FOUND}.`,
+    '  This does not reveal whether the id exists in another project.',
     '  On Server Edition the ownership rule is stricter: every endpoint must be a node you opened',
     '  during this server run.',
     '- `verify --node <id> [--lenses correctness,security,tests] [--focus "..."] [--synthesis off]` — open a',
@@ -998,6 +1001,8 @@ Verbs:
   Agent sessions you open (\`open-claude\`/\`open-agent\`/\`spawn-team\`) and the stations you name in
   \`--after\` are already linked — nothing to \`link\`. Use \`link\` only for nodes you did not open,
   or to link two OTHER nodes together.
+  Both endpoints must be in your project. A missing endpoint reports: ${LINK_ENDPOINT_NOT_FOUND}.
+  This does not reveal whether the id exists in another project.
   On Server Edition the ownership rule is stricter: every endpoint must be a node you opened
   during this server run.
 - \`verify --node <id> [--lenses correctness,security,tests] [--focus "..."] [--agent <id>] [--synthesis off] [--label L]\` —
