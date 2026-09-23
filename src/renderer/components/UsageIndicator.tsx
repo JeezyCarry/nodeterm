@@ -1,3 +1,4 @@
+import { usageDiagnosticText } from '../lib/usageDiagnostic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { UsageOrganization } from './UsageOrganization'
 import { IconReload } from './icons'
@@ -272,7 +273,12 @@ function ProviderBlock({ u, mode }: { u: ProviderUsage; mode: 'used' | 'remainin
       {u.limits.map((l) => (
         <LimitRow key={limitKey(l)} limit={l} mode={mode} />
       ))}
-      {u.limits.length === 0 && (
+      {u.diagnostics?.map((diagnostic, index) => (
+        <div className="usage-popover__empty" key={index}>
+          {usageDiagnosticText(label, diagnostic)}
+        </div>
+      ))}
+      {u.limits.length === 0 && !u.diagnostics?.length && (
         <div className="usage-popover__empty">
           {u.status === 'error' ? 'Could not read usage.' : 'No usage data.'}
         </div>
@@ -501,7 +507,9 @@ export function UsageIndicator({
   const status = claudeUsage?.status ?? visibleRemote[0]?.usage.status ?? 'unavailable'
   const hasData = limits.length > 0 || enabled.length > 0
   const fetching = refreshing
-  const isError = status === 'error'
+  const providerError = visibleProviders.some((p) => p.status === 'error')
+  const claudeError = status === 'error'
+  const isError = claudeError || providerError
   // The pill leads with whatever is closest to biting, so a scoped model cap that is nearly
   // exhausted can't hide behind a comfortable 5h window. Considers every enabled provider, not
   // just Claude, so an exhausted Codex window drives the bar too.
@@ -630,7 +638,7 @@ export function UsageIndicator({
                 <>
                   {/* Claude's rows are bare when it is the only provider; once others share the
                       panel they need a heading of their own to stay attributable. */}
-                  {enabled.length > 0 && (limits.length > 0 || isError) && (
+                  {enabled.length > 0 && (limits.length > 0 || claudeError) && (
                     <div className="usage-account__label">Claude</div>
                   )}
                   {limits.map((l) => (
@@ -638,9 +646,9 @@ export function UsageIndicator({
                   ))}
                   {/* Another provider's data must not hide a failed Claude read. Keep any
                       last-known Claude bars instead of replacing them with the empty state. */}
-                  {(!hasData || (isError && limits.length === 0)) && (
+                  {((!hasData && !providerError) || (claudeError && limits.length === 0)) && (
                     <div className="usage-popover__empty">
-                      {isError ? 'Could not read usage.' : 'No usage data.'}
+                      {claudeError ? 'Could not read usage.' : 'No usage data.'}
                     </div>
                   )}
                   {(claudeUsage?.email || claudeUsage?.organization) && (

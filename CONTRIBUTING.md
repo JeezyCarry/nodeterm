@@ -61,6 +61,14 @@ metadata even when credentials already include an email, and degrade to the emai
 metadata cannot be read. Managed usage must never fall back to an unscoped system Keychain token:
 that would label one account's limits with another account's organization.
 
+Windows installer safety (#829): `build/installer.nsh` overrides NSIS's process-killing check.
+A running app or session host blocks install/uninstall, and a failed process query blocks too.
+Never restore automatic host termination: quitting the app preserves those live sessions.
+Update preparation must keep saved canvas nodes: exit programs normally, quit, then have the user
+verify and stop any remaining host. Never recommend **End session** (it deletes nodes). Cold agent
+resume depends on supported, saved conversation history; it does not preserve running tasks.
+See `docs/windows-session-host.md` for the user-controlled preparation/recovery steps and limits.
+
 ## Three surfaces
 
 A feature is not done until you have decided how it behaves on each — even if the decision is "not
@@ -266,6 +274,12 @@ lane unaffected.
   the relay, so a key that works locks it onto a path that cannot work. CLAUDE.md, "Remote access",
   has the details.
 
+- **A relay channel that names a project needs a row in `relay-project-scope.ts`.** A relay guest
+  bound to one shared project must never reach another, and the jail is keyed on channel class:
+  anything named `githubIssues:*`, `board-log:*` or `projects.*` is refused on a scoped session
+  unless that table can read its projectId. Add the row in the same PR as the channel, or the verb
+  is refused for every scoped guest (and `relay-project-scope.test.ts` goes red telling you so).
+
 - **Normalize BOTH sides of a path comparison, through one function.** A marker normalized where
   it is built and matched raw where it is used is a no-op on the machine you wrote it on and a
   silent defect on Windows. That is issue #558: the managed-hook marker was folded to `/` while
@@ -318,6 +332,10 @@ lane unaffected.
 
 These are the ones that come up in review most often. Each exists because its absence caused a real
 bug.
+
+**A project-scoped lookup cannot prove a node does not exist elsewhere.** Link refusals must
+name the project boundary and explain that cross-project linking is unsupported; do not scan other
+projects just to improve a missing-endpoint diagnostic.
 
 **A failed read is never evidence of absence.** "Could not measure" and "there is nothing" are
 different facts and must stay distinguishable at every layer. Collapsing them is how a panel ends up
@@ -386,6 +404,13 @@ command string. `/proc/<pid>/cmdline` is mode 444 on a stock Linux, and a remote
 on the host too: we shipped the hook bearer that way and any other account on the machine could read
 it and open a terminal running an arbitrary command. Pass secrets by 0600 file or by **stdin**
 (`curl --config -`), and never add an argv fallback. See `docs/node-identity.md`.
+
+**A hook socket path is not ownership proof.** Never unlink a live listener to bind a hook
+socket, or overwrite an advertisement whose socket/TCP listener still answers. Local stale cleanup requires `ECONNREFUSED` and an unchanged socket inode; regular files,
+symlinks and uncertain probes are preserved. SSH setup allocates a fresh socket and publishes an
+installation-qualified endpoint only after bearer verification. A wrong bearer answers 421 before
+any handler runs; only that explicit wrong-owner response (or transport failure) permits endpoint
+failover. A node-identity 403 stays final. Test with disposable sockets, never a running user's tunnel.
 
 **Both raw listeners change together** — `src/main/index.ts` and `src/server/agent-status.ts`. A new
 field on a hook event that reaches only the desktop leaves the Server Edition quietly without the
@@ -634,6 +659,13 @@ examples). If the same effect also WRITES, latch its first run: otherwise switch
 mid-session applies stored state to whatever the user is doing right then, which is a different
 feature from the one they asked for.
 
+Maximize placement and refocusing must use the same measured usable rectangle
+(`measureMaximizeInsets`): pinned side panels plus persistent top controls and bottom dock.
+Do not hardcode chrome heights or add the outer margin twice; transient menus must not resize
+terminals. Ordinary focus and zone snap keep their own policies. Test the maximized-only
+focus decision through `viewportForNodeFocus`, the same helper Canvas calls, rather than
+passing preselected insets straight to the geometry function.
+
 **Usage readouts distinguish failed reads from empty data.** For Claude, show the failure when
 `status` is `error` and limits are empty, including beside other providers; preserve last-known
 bars when limits remain. Keep both single-account and multi-account views covered.
@@ -653,6 +685,8 @@ The strict-policy override and foreign-instance fallback cannot release this gat
 terminal opens keep their existing identity policy; Server Edition still requires verification
 for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
 command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
+
+Grok billing diagnostics must keep HTTP codes and safe failure categories per billing view. Never send raw error messages, URLs or response bodies to the UI; credentials remain read-only. A failed view is not proof that there is no quota, even when the other view responds.
 
 ## User-owned agent settings
 
@@ -779,3 +813,9 @@ who never saw it.
 Managed Codex login terminals are agent-less: core identifies their provider from the saved
 account list. Before opening one, await `useSettings.getState().flush()` after adding the account.
 The normal 300 ms coalesced save is too late: an unknown id can launch against the system home.
+
+Optional hook ownership failures must never stop Desktop window creation or Server boot. Use the
+shared nonfatal startup path and surface its actionable diagnostic. A responding HTTP port is not
+nodeterm identity: verify bearer acceptance and rejection. Legacy SSH endpoint migration requires
+ownership proof, an unchanged-file check, and stdin-only credential transfer; a project name alone
+is not permission to replace another installation's advertisement.
