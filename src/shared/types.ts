@@ -892,9 +892,12 @@ export const EMPTY_WORKSPACE: Workspace = {
 
 // ---- Contract for the API exposed to the renderer via preload ----
 
-/** Wire shape of pty:tmux-status — behind the "tmux not found" banner. */
+/** Local core backend discovery, not a runtime health check or a promise about existing sessions. */
 export interface TmuxStatus {
+  /** tmux discovery only; retained for older callers and install polling. */
   available: boolean
+  /** Absent on older peers; null when discovery could not be read. */
+  persistence?: { enabled: boolean; backend: 'tmux' | 'session-host' | null } | null
   /** One-shot install command for a terminal node; null = no known installer (text-only banner). */
   installCommand: string | null
   /** Button caption for installCommand (e.g. "Install Homebrew + tmux" when brew must come first). */

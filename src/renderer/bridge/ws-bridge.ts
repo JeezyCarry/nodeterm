@@ -260,11 +260,11 @@ export function buildRealApi(
       client.request(IPC.ptyReadScrollback, persistKey) as Promise<string>,
     sendText: (persistKey, text, opts) =>
       client.request(IPC.ptySendText, persistKey, text, opts?.enter) as Promise<boolean>,
-    // Fail-open: an errored status must not raise the banner in the browser.
+    // A failed read is unknown, never evidence that persistence is available.
     tmuxStatus: () =>
       client
         .request(IPC.ptyTmuxStatus)
-        .catch(() => ({ available: true, installCommand: null, installLabel: null, platform: null })) as Promise<TmuxStatus>,
+        .catch(() => ({ available: false, installCommand: null, installLabel: null, platform: null, persistence: null })) as Promise<TmuxStatus>,
     // Unknown on failure (null), never a rejection: the restart poller reads null as "not a
     // shell yet" and gives up on its own deadline.
     paneCommand: (persistKey) =>
