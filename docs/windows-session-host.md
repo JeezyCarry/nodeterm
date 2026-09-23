@@ -346,6 +346,45 @@ confirmed `{ok:true}` host responses, while a transport/request rejection remain
 propagated. That propagation is what lets the periodic snapshot keep its dirty bit for a retry and
 what prevents a delete from claiming a persistent process is gone when the host never confirmed it.
 
+## Windows updates and uninstalls
+
+A running host maps the installed Electron executable and its DLLs. Its separate hard-link name
+makes it identifiable; it does **not** make the install directory safe to replace. Closing the app
+alone deliberately leaves the host and its sessions running (#829).
+
+The NSIS install/uninstall preflight now refuses to proceed while the app or host is running from
+the target installation. It replaces electron-builder's automatic process termination, including
+its silent/`--updated` path. Cancel leaves sessions alone. Retry performs a fresh, read-only process
+query. A failed query (including an inaccessible nodeterm process with no executable path) blocks
+instead of guessing. Silent installation returns a nonzero exit code, without a dialog or kill.
+The query uses Windows PowerShell with a child-process-only execution policy; no persistent policy
+or trust setting is changed. Group Policy restrictions still cause a safe refusal.
+
+To update when you are ready to end sessions:
+
+1. Cancel the installer and reopen nodeterm if you already quit it. Save work in local terminals
+   and agents, including those in closed/other projects and sessions accessed from a phone.
+2. Use **End session** in the Sessions sidebar for each local session. This ends its process and
+   removes its node; do not mistake closing a project or quitting the app for ending a session.
+   Shells may also be exited normally once their work is saved.
+3. Quit nodeterm, wait at least 30 seconds after the last session ends, and run the installer again.
+   Do not reopen the app or start sessions while installation is in progress.
+4. If the host remains, keep the installer cancelled and inspect Windows Task Manager's Details
+   view. Verify the executable path belongs to this installation. Ending that exact host manually
+   is a last resort **only if you accept losing every terminal/agent process it owns**; never use
+   a machine-wide name-based kill. A host shared by another Windows user requires their decision.
+
+New installers run this check before invoking the previous version's uninstaller. Already shipped
+installers/uninstallers cannot be patched retroactively; use the same preparation steps for them.
+This is a safe refusal and manual recovery path, not live host migration: sessions cannot yet
+survive replacing the binaries they have mapped. A process could still start after the preflight;
+it is not an installation-wide launch lock.
+
+Server Edition has no NSIS updater and is unchanged. Mobile/relay clients must expect a disconnect
+when the user deliberately ends desktop sessions; they cannot authorize an update shutdown.
+Real Windows per-user/all-users upgrades, old uninstallers, PowerShell policy variations, and
+phone reconnection still require device verification (fixtures do not prove file-lock behavior).
+
 ## Lifetime
 
 Mirrors tmux's server lifetime rule as closely as a different OS allows:
