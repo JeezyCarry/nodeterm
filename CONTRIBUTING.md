@@ -657,6 +657,11 @@ coordinate nodeterm, not external editors, so do not claim a filesystem-wide com
 **Creating an agent node is not proof it started.** Control opens retain their launch command
 until delivery is acknowledged, and report `queued` while it is held. A successful terminal send
 proves delivery only; never describe it as a healthy/running agent without agent evidence.
+Desktop launches (automatic and Run now) use the echo-verified command writer, not `sendText`.
+Keep unsubmitted UI intent durable through shell settle/unmount. Warm attachments never auto-replay
+retained launch intent; Run now checks the shell and only confirmed submission clears it. Server
+marks attempts manual-only on disk before input, so failed delivery cannot retry on unrelated hooks.
+Held Desktop launches retain their attached transport, including when offscreen with tmux.
 
 ## Testing
 

@@ -1,3 +1,5 @@
+import { isLaunchShell } from '@shared/agents/pane'
+import { createLaunchWriter, launchCommand, registerLaunchWriter } from '../terminal/launch-command'
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { NODE_MIN_SIZES } from '../lib/nodeSizing'
 import {
@@ -1826,7 +1828,9 @@ export function TerminalNode({
   // ordinary case (still waiting on a dependency); the two states it can carry are the ones that
   // used to be invisible — see the store. Selected by id so an unarmed node never re-renders on
   // another node's delivery.
-  const launchDelivery = useLaunchDelivery((s) => s.byId[id])
+  const observedLaunchDelivery = useLaunchDelivery((s) => s.byId[id])
+  const launchDelivery = observedLaunchDelivery ?? (pendingLaunch?.manualOnly
+    ? { kind: 'failed' as const, attempts: 1, at: 0 } : undefined)
   const pendingWaitingOn = [
     ...(pendingLaunch?.after ?? []).map(
       (depId) => ((getNode(depId) as CanvasNode | undefined)?.data.title as string) || depId
@@ -3429,6 +3433,15 @@ export function TerminalNode({
             unsub()
           })
         }
+        const launchWriter = createLaunchWriter({
+          fresh: fresh && !freshUnverified,
+          io: { write: (d) => transport.write(sid, d), onData: (cb) => transport.onData(sid, cb) },
+          // A fresh shell is known at spawn; subsequent/manual deliveries must recheck the pane.
+          shellReady: async (manual) =>
+            (!manual && fresh && !sessionPersistent) || isLaunchShell(await queryPaneWithin(() => api.pty.paneCommand(id), RESTART_EXIT_TIMEOUT_MS)),
+          killLine: getTerminalKillLine(),
+          cleanup: (cancel) => cleanups.push(cancel)
+        })
         const writeWhenShellReady = (cmd: string): void => {
           whenShellSettled(() => {
             cleanups.push(
@@ -3457,7 +3470,10 @@ export function TerminalNode({
         // comes out mangled. Published unconditionally (not only for an armed node): whether this
         // node is armed is Canvas's question, it can change after the spawn resolves, and the
         // subscribers filter by id anyway.
-        whenShellSettled(() => setSessionReady(id, true))
+        whenShellSettled(() => {
+          cleanups.push(registerLaunchWriter(id, launchWriter))
+          setSessionReady(id, true)
+        })
         // Paused (see agentStatus.paused) is the ONE exception to the "a cold start always resumes"
         // rule below: it exists precisely to survive a cold restart, so it must NOT be dropped, and
         // the auto-resume branch must be skipped — only an explicit Resume (which reuses the same
@@ -3528,8 +3544,26 @@ export function TerminalNode({
         // Run a one-shot command on first open (e.g. "gh auth login" or the agent CLI), then
         // forget it.
         if (data.initialCommand) {
-          writeWhenShellReady(data.initialCommand)
-          updateNodeData(id, { initialCommand: undefined })
+          const command = data.initialCommand
+          // Publish durable intent before the asynchronous settle/echo work. The automatic
+          // Canvas loop leaves this manual-only record to this writer; an interrupted mount
+          // retains it for recovery instead of starting a second writer.
+          updateNodeData(id, { pendingLaunch: { after: [], command, manualOnly: true } })
+          whenShellSettled(() => {
+            void launchWriter(command, false).then((outcome) => {
+              if (outcome === 'submitted') {
+                updateNodeData(id, { initialCommand: undefined, pendingLaunch: undefined })
+              } else {
+                // Keep the exact brief and expose Run now, including an interrupted settle.
+                updateNodeData(id, {
+                  initialCommand: undefined,
+                  pendingLaunch: { after: [], command, manualOnly: true }
+                })
+                useLaunchDelivery.getState().markFailed(id, 1)
+                if (outcome === 'line-too-long') setCo(termKey, { launchTooLongBytes: lineBytes(command) })
+              }
+            })
+          })
         } else if (coldStart && canColdRestore) {
           // Cold restart of an agent node: the live agent is gone, so re-launch it. Resume the
           // prior conversation by its session id when we have one; otherwise start the agent
@@ -5513,17 +5547,17 @@ export function TerminalNode({
             {launchDelivery ? '⚠ ' : ''}QUEUED
             <button
               className="term-node__queued-run"
-              title="Run now without waiting"
+              title={pendingLaunch.manualOnly ? "Retry launch at a shell prompt" : "Run now without waiting"}
               onClick={(e) => {
                 e.stopPropagation()
                 // Disarm only on a delivery that actually landed. Dropping `pendingLaunch`
                 // unconditionally threw the command away whenever the session was not up yet —
                 // and "not up yet" is precisely the state a user reaches for this button in, so
                 // the one escape hatch could destroy the thing it exists to rescue.
-                void api.pty.sendText(id, pendingLaunch.command).then((ok) => {
-                  if (ok) {
+                void launchCommand(id, pendingLaunch.command, true).then((outcome) => {
+                  if (outcome === 'submitted') {
                     useLaunchDelivery.getState().clear(id)
-                    updateNodeData(id, { pendingLaunch: undefined })
+                    updateNodeData(id, { initialCommand: undefined, pendingLaunch: undefined })
                   } else {
                     useLaunchDelivery.getState().markFailed(id, 1)
                   }

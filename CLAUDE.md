@@ -569,14 +569,10 @@ Lifecycle, by intent:
   landed. The predicate is deliberately the narrowest one that closes it — a tmux-backed session is
   never protected (the kill costs a redraw), and neither is a plain terminal, a finished agent or
   an unknown state (nothing is running to lose). **A fifth lever owes the same gate.**
-  The fifth is the offscreen release of an ARMED node (`--after`, `shouldDeferReleaseForHeldLaunch`,
-  2026-09-02): the held launch is delivered by session NAME, so with tmux underneath the release is
-  harmless and the node stays `sessionReady` (the teardown keeps the flag for an offscreen release
-  of a tmux-backed session); on the plain-shell fallback the release would destroy the very pane
-  the launch is typed into, so it is deferred while armed. MEASURED before the fix: a released
-  QUEUED node held its launch through its dependency going `done`, the badge claimed the terminal
-  "has not started yet", and only a camera travel (revive) ever fired it — "the chain works when I
-  look at it" was this.
+  The fifth is the offscreen release of an ARMED node (`shouldDeferReleaseForHeldLaunch`):
+  held launches now require the attached transport for echo verification, on every backend.
+  Keep that transport until delivery or recovery; a blind paste by session name loses the
+  shell-init repair and canonical-line protections.
 - **Node unmount (project switch)** → the RENDERER **parks** the terminal (`TerminalNode.tsx`
   `parkedTerminals`): the xterm instance + its attached PTY stay alive with the `.xterm` element
   detached from the DOM, so a remount within `TERM_PARK_MS` (5 min) re-adopts them — instant, and
@@ -2575,14 +2571,17 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   (#827/#811). Even a visible node with no deps has not mounted its PTY when the open reply is
   sent. `queueControlLaunch` moves the command out of `initialCommand`; the PTY-ready gate below
   makes this safe. The open reply says `queued`, and project serialization retains the brief.
-  (4) Delivery is **exactly-once via `launchInFlight`** (an id stays in the set forever once
-  `sendText` resolved true — clearing `pendingLaunch` is a state update that can lag a re-render),
-  and a **refused** `sendText` retries (`launchRetryDelay`'s backoff) instead of vanishing.
-  (5) `pendingLaunch` **is persisted** (unlike `initialCommand`), but agent state is not — so after
-  a restart nothing will ever report `done` and the node carries a manual ▶ **run-now** escape in
-  its QUEUED badge (which disarms only on a delivery that LANDED — dropping it unconditionally
-  threw the command away in exactly the state the button exists to rescue). (6) Canvas subscribes
-  to `armedDepSig`, NOT `useAgentStatus(s => s.byId)` —
+  (4) Desktop automatic and manual launch delivery share `terminal/launch-command.ts`, which
+  uses `deliverCommand`: echo verification, bounded Ctrl-U repair, platform kill-line and overlong
+  line refusal. The PTY-lifetime writer coalesces concurrent requests and remembers submission
+  across parked views. A warm attach never automatically replays a retained launch: its clearing
+  autosave may have been lost after Enter. Explicit Run now rechecks the foreground shell and
+  clears any incomplete line; a refused/throwing/cancelled launch stays held, `manualOnly`.
+  (5) UI `initialCommand` stays until submission; serialization converts unsubmitted UI intent
+  into a manual-only `pendingLaunch`, including a project switch during shell settle. Server
+  saves `manualOnly` BEFORE sending and only clears the command after acknowledgment. Failed
+  independent/dependent launches are never retried by unrelated hooks. Boot remains inert.
+  (6) Canvas subscribes to `armedDepSig`, NOT `useAgentStatus(s => s.byId)` —
   the same discipline as `loopSig`; the full map re-renders the canvas on every hook event.
   Pure logic + refusal matrix in `renderer/lib/pendingLaunch.ts` (unit-tested);
   the dep→node edge is a **rope** (`ctrl-<dep>-<node>`, persisted in `project.ropes` like the
@@ -2613,15 +2612,15 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   an ADOPTED park (already typeable, and its create continuation ran on a previous mount) and, for
   a fresh spawn, at the SAME `whenShellSettled` moment `writeWhenShellReady` delivers an
   `initialCommand` — both write a CLI command line, and a line delivered across zsh's rc-file tty
-  flush comes out mangled. A **park keeps it** (a parked tmux session is still addressable by name);
-  only a real teardown clears it. The loop then WAITS instead of burning attempts, and the backoff
-  (`launchRetryDelay`, ~12 s over five attempts) covers only the residual race after readiness.
+  flush comes out mangled. A **park keeps the writer and transport**; a real teardown removes
+  the writer. The loop WAITS instead of burning attempts before readiness. Once attempted,
+  only the verified writer's bounded echo repair runs; further recovery is explicit.
   Because a wait with no end is the failure mode this replaces, both give-up states are **visible**
   in the transient `state/launchDelivery.ts` and rendered by the QUEUED badge's amber ⚠ + tooltip
   (`launchTooltip`, pure): `stalled` = gate open, no terminal yet, **still held** (raised by a
   `LAUNCH_STALL_MS` timer with a fire-time re-ask; the launch still fires whenever the session
-  finally comes up — an SSH host reconnecting takes this path) and `failed` = the session came up
-  and refused every attempt, so nothing will retry it. Neither is ever inferred from silence, and
+  finally comes up) and `failed` = submission is unconfirmed, so automatic retry is stopped.
+  A persisted `manualOnly` record carries that warning after reload too. Neither is ever inferred from silence, and
   the tooltip names no cause it did not measure (the node's own overlay owns the diagnosis).
   The open verbs' replies carry the same fact for callers OUTSIDE the app: `result.queued` +
   `result.queuedIds` on `open-terminal`/`open-claude`/`open-agent`, always true for the

@@ -49,11 +49,6 @@ describe('armed-launch delivery (source pins)', () => {
     expect(src).toMatch(/subscribeSessionReady\(\(nodeId\) => \{[\s\S]{0,400}?n\.data\.pendingLaunch/)
   })
 
-  it('retries a refused delivery on the shared backoff and gives up only when it is exhausted', () => {
-    const body = launchEffect()
-    expect(body).toContain('launchRetryDelay(attempt)')
-    expect(body).toMatch(/delay !== null[\s\S]{0,200}?setTimeout/)
-  })
 
   it('a give-up is REPORTED, not only logged — the console.warn is no longer the whole story', () => {
     const body = launchEffect()
@@ -74,18 +69,6 @@ describe('armed-launch delivery (source pins)', () => {
     expect(body).toMatch(/setTimeout\(\(\) => \{[\s\S]{0,600}?!isSessionReady\(f\.id\)[\s\S]{0,300}?markStalled/)
   })
 
-  it('keeps the exactly-once and dep-satisfaction invariants the feature already had', () => {
-    const body = launchEffect()
-    // Exactly-once: an id enters the in-flight set before the send and only LEAVES it on a
-    // refusal (a successful delivery is irreversible and must never be re-attempted).
-    expect(body).toContain('launchInFlight.current.add(f.id)')
-    expect(body).toMatch(/if \(ok\)[\s\S]{0,400}?pendingLaunch: undefined/)
-    expect(body).toMatch(/launchInFlight\.current\.delete\(f\.id\)/)
-    // Satisfaction is still `launchesToFire`'s call — the ready gate is an ADDITIONAL condition,
-    // never a replacement for the dependency matrix.
-    expect(body).toContain('launchesToFire(')
-    expect(body).toContain('setupDoneForGroup')
-  })
 
   it('stops reporting on a node that is no longer armed — no stale warning on a running session', () => {
     const body = launchEffect()

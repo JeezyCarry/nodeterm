@@ -124,7 +124,7 @@ export function launchesToFire(
   const out: LaunchToFire[] = []
   for (const n of nodes) {
     const p = n.data.pendingLaunch
-    if (!p || !p.command || p.executor === 'server') continue
+    if (!p || !p.command || p.manualOnly || p.executor === 'server') continue
     if (deliveries?.[n.id]?.kind === 'failed') continue
     if (p.awaitSetupGroup && !(setupDone?.(p.awaitSetupGroup) ?? true)) continue
     if (p.after.every((d) => depSatisfied(d, status, live))) out.push({ id: n.id, command: p.command })
@@ -142,33 +142,6 @@ export function unmetDeps(
   if (!p) return []
   return p.after.filter((d) => !depSatisfied(d, status, live))
 }
-
-/**
- * The backoff between delivery attempts, in milliseconds, indexed by the number of attempts
- * ALREADY made. `null` = the schedule is exhausted; the launch has failed for good.
- *
- * This replaces a flat 5 × 400 ms budget (2 s from the moment the canvas mounted the node) that
- * measured the wrong thing entirely: it started when the CANVAS decided the node was ready to
- * launch, and spent itself while the terminal was still being spawned. A cold project switch —
- * load the canvas, mount the node, spawn tmux, settle the shell — routinely costs more than two
- * seconds, so the launch was abandoned before the session it was meant for existed. That is
- * issue #569 item 1: a node that says QUEUED forever with no way to tell it apart from one that
- * is simply waiting on a dependency.
- *
- * The fix is mostly NOT here: delivery is now gated on the node reporting its session ready
- * (`isSessionReady`), so the schedule below only has to cover the residual race between "the
- * shell settled" and "tmux will accept a paste for this session". It is nevertheless generous
- * and bounded — roughly 12 s across five attempts — because the alternative to a bound is a
- * retry loop nobody can see the end of.
- */
-const LAUNCH_RETRY_SCHEDULE_MS = [400, 800, 1600, 3200, 6400] as const
-
-export function launchRetryDelay(attemptsMade: number): number | null {
-  return LAUNCH_RETRY_SCHEDULE_MS[attemptsMade - 1] ?? null
-}
-
-/** Total attempts a refused delivery gets before it is reported as failed. */
-export const LAUNCH_DELIVERY_ATTEMPTS = LAUNCH_RETRY_SCHEDULE_MS.length
 
 /**
  * How long an armed node whose gate is OPEN may sit with no terminal to deliver into before the
@@ -205,6 +178,11 @@ export function launchTooltip(
   erroredOn?: string
 ): string {
   const runs = `Runs:\n${command}`
+  if (delivery?.kind === 'failed')
+    return (
+      'Launch delivery is unconfirmed; automatic retry is stopped.\n' +
+      `Inspect the terminal, then press \u25b6 to retry at a shell prompt.\n${runs}`
+    )
   // Issue #521: an errored upstream is idle, so without this the tooltip would say "waiting for X
   // to finish" about a station that finished twenty minutes ago. Named first, because it is the
   // one case where waiting will not end on its own.
@@ -213,12 +191,6 @@ export function launchTooltip(
       `${erroredOn} ended its last turn on an error, so this is held rather than started on ` +
       'what it did not produce.\n' +
       `Retry or nudge it — a successful turn releases this — or press ▶ to run it now.\n${runs}`
-    )
-  if (delivery?.kind === 'failed')
-    return (
-      `This session did not accept its launch — ${delivery.attempts} ` +
-      `attempt${delivery.attempts === 1 ? ' was' : 's were'} refused, and nothing will retry it.\n` +
-      `Press \u25b6 to run it now.\n${runs}`
     )
   if (delivery?.kind === 'stalled')
     return (

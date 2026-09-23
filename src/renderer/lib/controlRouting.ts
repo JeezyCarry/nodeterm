@@ -176,7 +176,7 @@ export function storedNodeListing(
 ) {
   return nodes.map((n) => {
     const status = statuses[n.id]
-    const launchState = controlLaunchState(!!n.pendingLaunch, deliveries[n.id], status) ??
+    const launchState = controlLaunchState(!!n.pendingLaunch, deliveries[n.id] ?? ((n.pendingLaunch as { manualOnly?: boolean } | undefined)?.manualOnly ? { kind: 'failed', attempts: 1, at: 0 } : undefined), status) ??
       (n.agentId && !status?.state ? 'unconfirmed' as const : undefined)
     return {
       id: n.id, kind: n.kind ?? 'terminal', title: n.title ?? '',

@@ -41,6 +41,8 @@ class FakePty implements HeadlessPty {
     return { sessionId: `pty-${options.persistKey}`, fresh: true, persistent: true }
   }
 
+  async paneCommand(): Promise<string | null> { return 'bash' }
+
   async sessionExists(persistKey: string): Promise<boolean> {
     return this.live.has(persistKey)
   }
@@ -1038,7 +1040,48 @@ describe('HeadlessNodeFactory', () => {
     })
   })
 
-  it('reports a partial batch and recovers only the retained launch', async () => {
+  it.each(['vim', null])('refuses initial input when the pane is %s and never retries on hooks', async (pane) => {
+    vi.spyOn(pty, 'paneCommand').mockResolvedValue(pane)
+    const reply = await factory.openAgent('term-source', { agent: 'claude', prompt: 'brief' }, true)
+    expect(reply.ok).toBe(false)
+    expect(pty.sends).toEqual([])
+    await factory.refreshArmed({ nodeId: 'term-upstream', state: 'done' })
+    expect(pty.sends).toEqual([])
+  })
+
+  it('saves manual recovery intent before sending, including a successful send whose clearing save fails', async () => {
+    const save = vi.spyOn(store, 'save')
+    vi.spyOn(pty, 'sendText').mockImplementationOnce(async (id) => {
+      const durable = await store.load({ sideline: false })
+      expect(durable.projects[0].nodes.find((n) => n.id === id)?.pendingLaunch)
+        .toMatchObject({ command: "claude 'brief'", manualOnly: true })
+      save.mockRejectedValueOnce(new Error('disk unavailable after delivery'))
+      pty.sends.push({ nodeId: id, text: 'brief' })
+      return true
+    })
+    await expect(factory.openAgent('term-source', { agent: 'claude', prompt: 'brief' }, true))
+      .rejects.toThrow('disk unavailable')
+    await factory.refreshArmed({ nodeId: 'term-upstream', state: 'done' })
+    expect(pty.sends).toHaveLength(1)
+  })
+
+  it('a failed dependent launch is retained durably and not replayed after unrelated hooks', async () => {
+    states['term-upstream'] = 'working'
+    const reply = await factory.openAgent('term-source', {
+      agent: 'claude', prompt: 'brief', after: 'term-upstream'
+    }, true)
+    const id = (reply.result as { id: string }).id
+    const send = vi.spyOn(pty, 'sendText').mockResolvedValue(false)
+    await factory.refreshArmed({ nodeId: 'term-upstream', state: 'done' })
+    await factory.refreshArmed({ nodeId: 'term-source', state: 'done' })
+    await factory.refreshArmed()
+    expect(send).toHaveBeenCalledTimes(1)
+    const durable = await store.load({ sideline: false })
+    expect(durable.projects[0].nodes.find((n) => n.id === id)?.pendingLaunch)
+      .toMatchObject({ command: "claude 'brief'", manualOnly: true })
+  })
+
+  it('reports a partial batch and never retries the retained launch on unrelated hooks', async () => {
     vi.spyOn(pty, 'sendText').mockResolvedValueOnce(true).mockResolvedValueOnce(false)
     const reply = await factory.openAgent('term-source', { agent: 'codex', prompt: 'work', count: '2' }, true)
     const [delivered, failed] = (reply.result as { ids: string[] }).ids
@@ -1049,7 +1092,8 @@ describe('HeadlessNodeFactory', () => {
     pty.sends.length = 0
     await factory.refreshArmed()
     await factory.refreshArmed()
-    expect(pty.sends.map((send) => send.nodeId)).toEqual([failed])
+    expect(pty.sends).toEqual([])
+    expect(workspace.projects[0].nodes.find((node) => node.id === failed)?.pendingLaunch?.manualOnly).toBe(true)
   })
 
   it('persists --after without launching, then flushes exactly once on the idle state', async () => {

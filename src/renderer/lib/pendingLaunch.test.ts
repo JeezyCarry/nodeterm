@@ -3,10 +3,8 @@ import {
   launchesToFire,
   queueControlLaunch,
   controlLaunchState,
-  launchRetryDelay,
   launchTooltip,
   unmetDeps,
-  LAUNCH_DELIVERY_ATTEMPTS,
   LAUNCH_STALL_MS,
   type ArmedNode,
   type StatusById
@@ -176,26 +174,6 @@ describe('unmetDeps', () => {
  * dependency.
  */
 describe('launch delivery policy (#569 item 1)', () => {
-  it('the schedule backs off and is bounded — exhaustion is reachable, so "gave up" can be told', () => {
-    const delays: number[] = []
-    for (let attempt = 1; ; attempt++) {
-      const d = launchRetryDelay(attempt)
-      if (d === null) break
-      delays.push(d)
-      expect(attempt).toBeLessThan(20) // guard: a schedule that never ends is the bug, not a fix
-    }
-    expect(delays.length).toBe(LAUNCH_DELIVERY_ATTEMPTS)
-    // Strictly increasing: a flat schedule is what made the old budget a fixed 2 s wall.
-    for (let i = 1; i < delays.length; i++) expect(delays[i]).toBeGreaterThan(delays[i - 1])
-    // And the whole window is comfortably wider than the old one, measured from READINESS.
-    expect(delays.reduce((a, b) => a + b, 0)).toBeGreaterThan(10_000)
-  })
-
-  it('an attempt past the end has no delay — nothing silently retries forever', () => {
-    expect(launchRetryDelay(LAUNCH_DELIVERY_ATTEMPTS)).not.toBeNull()
-    expect(launchRetryDelay(LAUNCH_DELIVERY_ATTEMPTS + 1)).toBeNull()
-  })
-
   it('the stall warning waits longer than a cold project switch could plausibly take', () => {
     expect(LAUNCH_STALL_MS).toBeGreaterThanOrEqual(30_000)
   })
@@ -221,17 +199,17 @@ describe('launchTooltip — the QUEUED badge never goes silent (#569 item 1)', (
     expect(t.toLowerCase()).not.toMatch(/ssh|host is down|crash/)
   })
 
-  it('a failed launch reports the attempt count and that nothing will retry it', () => {
+  it('a failed launch reports uncertainty and requires explicit recovery', () => {
     const t = launchTooltip({ kind: 'failed', attempts: 5, at: 1 }, 'Builder', cmd)
-    expect(t).toContain('5 attempts')
-    expect(t).toContain('nothing will retry it')
+    expect(t).toContain('unconfirmed')
+    expect(t).toContain('automatic retry is stopped')
     expect(t).toContain('▶')
     expect(t).toContain(cmd)
   })
 
-  it('singularises one attempt (the manual ▶ reports exactly one refusal)', () => {
+  it('a manual refusal instructs the user to inspect the terminal', () => {
     expect(launchTooltip({ kind: 'failed', attempts: 1, at: 1 }, 'Builder', cmd)).toContain(
-      '1 attempt was refused'
+      'Inspect the terminal'
     )
   })
 
@@ -292,4 +270,18 @@ it('an exhausted delivery stays held on rerender; a stalled terminal may still b
   expect(launchesToFire([node], {}, live, undefined, { new: { kind: 'failed', attempts: 5, at: 1 } })).toEqual([])
   expect(node.data.pendingLaunch?.command).toBe('echo new')
   expect(launchesToFire([node], {}, live, undefined, { new: { kind: 'stalled', since: 1 } })).toEqual([{ id: 'new', command: 'echo new' }])
+})
+
+ it('a durable manual-only launch stays held after a reload and unrelated successful hooks', () => {
+  const node = armed('new', [])
+  node.data.pendingLaunch!.manualOnly = true
+  const restored = JSON.parse(JSON.stringify(node))
+  expect(launchesToFire([restored], { other: { state: 'done' } }, new Set(['new', 'other']))).toEqual([])
+  expect(restored.data.pendingLaunch.command).toBe('echo new')
+})
+
+it('manual recovery does not promise that retrying an errored dependency will automatically release it', () => {
+  const tooltip = launchTooltip({ kind: 'failed', attempts: 1, at: 0 }, 'upstream', 'claude brief', 'upstream')
+  expect(tooltip).toContain('automatic retry is stopped')
+  expect(tooltip).not.toContain('successful turn releases')
 })

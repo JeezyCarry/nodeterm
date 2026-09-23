@@ -1,3 +1,4 @@
+import { launchCommand } from '../terminal/launch-command'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { playSfx, primeSfx } from '@renderer/lib/sfx'
@@ -462,7 +463,6 @@ import {
 import { buildBackgroundLinkMaps, buildContextLinkNote, buildLinkMap, buildNotePushMessage, classifyLink, hiddenLinkIds, linkIdsCoveredByRopes, pairKey, planBridges, type LinkEndpoint } from '../lib/noteLink'
 import {
   launchesToFire,
-  launchRetryDelay,
   queueControlLaunch,
   LAUNCH_STALL_MS,
   type ArmedNode
@@ -1941,8 +1941,8 @@ export function Canvas() {
       launchInFlight.current.add(f.id)
       const attempt = (launchAttempts.current.get(f.id) ?? 0) + 1
       launchAttempts.current.set(f.id, attempt)
-      void api.pty.sendText(f.id, f.command).catch(() => false).then((ok) => {
-        if (ok) {
+      void launchCommand(f.id, f.command).then((outcome) => {
+        if (outcome === 'submitted') {
           setNodes((ns) =>
             ns.map((n) => (n.id === f.id ? { ...n, data: { ...n.data, pendingLaunch: undefined } } : n))
           )
@@ -1950,19 +1950,12 @@ export function Canvas() {
           markDirty()
           return
         }
-        // Refused although the session reported ready — a narrow residual race now, not the
-        // whole cold-start window. Let it back out of flight and re-run after the backoff; a
-        // launch that silently vanishes is worse than a late one.
-        launchInFlight.current.delete(f.id)
-        const delay = launchRetryDelay(attempt)
-        if (delay !== null) {
-          setTimeout(() => setLaunchNudge((v) => v + 1), delay)
-          return
-        }
-        // Out of attempts against a session that IS up. Nothing else will retry this, so it is
-        // reported where the person looking at the node can see it — the QUEUED badge turns into
-        // a warning pointing at the manual ▶. The log line stays for a bug report; it is no
-        // longer the only place the failure exists.
+        // The verified writer already exhausted its bounded echo repair. A failed launch
+        // needs an explicit retry; unrelated hooks and remounts must never inject it later.
+        setNodes((ns) => ns.map((n) => n.id === f.id && n.data.pendingLaunch
+          ? { ...n, data: { ...n.data, pendingLaunch: { ...n.data.pendingLaunch, manualOnly: true } } }
+          : n))
+        markDirty()
         useLaunchDelivery.getState().markFailed(f.id, attempt)
         console.warn('[pending-launch] gave up delivering held launch for', f.id)
       })
