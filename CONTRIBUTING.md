@@ -616,6 +616,13 @@ examples). If the same effect also WRITES, latch its first run: otherwise switch
 mid-session applies stored state to whatever the user is doing right then, which is a different
 feature from the one they asked for.
 
+**Command-bearing terminal opens (issue #653):** the shared hook-server route requires verified
+node identity whenever `open-terminal` carries `cmd`, including an empty value or a dry run.
+The strict-policy override and foreign-instance fallback cannot release this gate. Desktop plain
+terminal opens keep their existing identity policy; Server Edition still requires verification
+for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
+command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
+
 ## Testing
 
 `npm test` must pass, and `npm run typecheck` is the fastest gate.

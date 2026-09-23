@@ -1923,6 +1923,14 @@ else, and its context links must keep classifying across restarts).
   - The claude/gemini loop body became `installJsonAgentRemote`, with the same fail-open try/catch
     its three siblings already had. Its three steps stay strictly ordered inside: the merge reads
     the file the write then replaces.
+
+**Command-bearing terminal opens (issue #653):** the shared hook-server route requires verified
+node identity whenever `open-terminal` carries `cmd`, including an empty value or a dry run.
+The strict-policy override and foreign-instance fallback cannot release this gate. Desktop plain
+terminal opens keep their existing identity policy; Server Edition still requires verification
+for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
+command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
+
 - **Per-node hook identity** (`src/core/agents/node-auth-*.ts`, `node-token-*.ts`,
   `node-identity-policy.ts` — full write-up in **`docs/node-identity.md`**) — the shared bearer proves
   "a session on this machine", never *which* session, so every node also gets a capability derived
