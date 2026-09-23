@@ -453,6 +453,17 @@ export class SshProjectManager {
   /** Consecutive failed tunnel repairs per project, so a host that can never forward is not
    *  re-installed on every watchdog tick. See `tunnel-repair.ts` for why the first one is free. */
   private tunnelRepair = new Map<string, TunnelRepairState>()
+  private lostHookTunnels = new Set<string>()
+
+  private hookTunnelHealth(projectId: string, verified: boolean): void {
+    if (verified) {
+      if (!this.lostHookTunnels.delete(projectId)) return
+    } else {
+      if (this.lostHookTunnels.has(projectId)) return
+      this.lostHookTunnels.add(projectId)
+    }
+    this.emitStatus({ projectId, status: 'connected', hookTunnelVerified: verified })
+  }
 
   /**
    * Re-verify a REUSED master's reverse hook tunnel, and rebuild it if it stopped answering
@@ -480,10 +491,14 @@ export class SshProjectManager {
       const hook = this.r.getHook()
       // No hook server yet ⇒ nothing to point at, and `setup()` would refuse anyway.
       if (!hook?.port || !hook.token) return
-      if (await this.remoteHooks.tunnelAlive(projectId, existing.conn, existing.controlPath, hook.token)) {
+      const alive = await this.remoteHooks.tunnelAlive(projectId, existing.conn, existing.controlPath, hook.token)
+      if (this.conns.get(projectId) !== existing) return
+      if (alive) {
         this.tunnelRepair.delete(projectId)
+        this.hookTunnelHealth(projectId, true)
         return
       }
+      this.hookTunnelHealth(projectId, false)
       const now = Date.now()
       if (!shouldAttemptTunnelRepair(this.tunnelRepair.get(projectId), now)) return
       const res = await this.remoteHooks.setup(projectId, existing.conn, existing.controlPath, hook)
@@ -495,6 +510,7 @@ export class SshProjectManager {
       // point sessions at a socket belonging to a connection nobody holds.
       if (this.conns.get(projectId) !== existing) return
       existing.hookEndpointPath = res.endpointPath
+      this.hookTunnelHealth(projectId, true)
       // Same contract as the establish path: hook events lost while the tunnel was down are gone
       // for good, so the working agents need a resync. Fire-and-forget behind a catch — a repair
       // job must never surface to the user as a dead SSH project.
@@ -968,6 +984,7 @@ export class SshProjectManager {
           entry.codexRelayRuntimePath = codexRuntime?.runtime
           entry.codexCliPath = codexRuntime?.codex
           this.emitStatus({ projectId, status: 'connected' })
+          if (hookEndpointPath) this.hookTunnelHealth(projectId, true)
           // The tunnel is live again on a master we just established (the reuse branch returned long
           // before this line), so this is exactly the moment the hook events lost while it was down
           // can be reconstructed from the host.

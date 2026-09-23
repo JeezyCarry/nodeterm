@@ -763,8 +763,8 @@ nt_control_post() {
       --data-urlencode "nodeId=\${NODETERM_NODE_ID}" "$@" 2>/dev/null)
   fi
 }
-# An answer from the server — any HTTP code — is authoritative; only a dead transport fails over.
-nt_reached() { [ -n "$nt_code" ] && [ "$nt_code" != "000" ]; }
+# Only a dead transport or an explicit wrong-owner (421) answer permits failover; 403 stays final.
+nt_reached() { [ -n "$nt_code" ] && [ "$nt_code" != "000" ] && [ "$nt_code" != "421" ]; }
 
 nt_had_transport=""
 nt_control_post "$@"
@@ -775,8 +775,9 @@ nt_control_post "$@"
 # to it. Before this walk the hook script healed itself and this shim died on the SAME stale file —
 # "control endpoint unreachable" with the requested verb silently dropped. Skipped under a codex
 # sandbox: there the sandbox denies EVERY connect (issue #367), so each candidate would burn a
-# doomed curl and the sandbox hint below is already the right diagnosis.
-if ! nt_reached && [ -z "$CODEX_SANDBOX_NETWORK_DISABLED" ]; then
+# doomed curl and the sandbox hint below is already the right diagnosis. A 421 is different:
+# it proves the transport worked and the wrong owner rejected this request before dispatch.
+if ! nt_reached && { [ "$nt_code" = "421" ] || [ -z "$CODEX_SANDBOX_NETWORK_DISABLED" ]; }; then
   nt_list=$(nt_candidates "$NODETERM_HOOK_ENDPOINT")
   if [ -n "$nt_list" ]; then
     nt_n=0

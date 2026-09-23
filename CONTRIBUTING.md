@@ -56,6 +56,15 @@ handler needs something only Electron has (an SSH ControlMaster, a native dialog
 **injected dep** whose absence is a documented degrade — see `registerTranscriptIpc` /
 `registerContextEnsureIpc` — rather than a reason to keep the whole handler in `src/main`.
 
+Context-link maps authorize reads. Publish changes to edges, linked metadata, and background
+projects independently of canvas geometry updates; a debounce reset by every node render can
+starve publication indefinitely. Only merge projects owned by the same core, and use the rendered
+canvas's project epoch during tab switches. Core must revoke removed links before asynchronous
+transcript discovery or debug-file writes finish; an older write must never restore that access.
+Coalesce renderer updates before building the workspace map, without resetting the scheduled task.
+Intermediate publications retain resolved transcript paths only for unchanged identities; changing
+a session/account/location/hook path or removing the target invalidates that cache immediately.
+
 Windows installer safety (#829): `build/installer.nsh` overrides NSIS's process-killing check.
 A running app or session host blocks install/uninstall, and a failed process query blocks too.
 Never restore automatic host termination: quitting the app preserves those live sessions.
@@ -400,6 +409,13 @@ on the host too: we shipped the hook bearer that way and any other account on th
 it and open a terminal running an arbitrary command. Pass secrets by 0600 file or by **stdin**
 (`curl --config -`), and never add an argv fallback. See `docs/node-identity.md`.
 
+**A hook socket path is not ownership proof.** Never unlink a live listener to bind a hook
+socket, or overwrite an advertisement whose socket/TCP listener still answers. Local stale cleanup requires `ECONNREFUSED` and an unchanged socket inode; regular files,
+symlinks and uncertain probes are preserved. SSH setup allocates a fresh socket and publishes an
+installation-qualified endpoint only after bearer verification. A wrong bearer answers 421 before
+any handler runs; only that explicit wrong-owner response (or transport failure) permits endpoint
+failover. A node-identity 403 stays final. Test with disposable sockets, never a running user's tunnel.
+
 **Both raw listeners change together** — `src/main/index.ts` and `src/server/agent-status.ts`. A new
 field on a hook event that reaches only the desktop leaves the Server Edition quietly without the
 feature, and the boundary tests can only tell you an import is wrong, never that a field is missing.
@@ -674,6 +690,8 @@ terminal opens keep their existing identity policy; Server Edition still require
 for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
 command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
 
+Grok billing diagnostics must keep HTTP codes and safe failure categories per billing view. Never send raw error messages, URLs or response bodies to the UI; credentials remain read-only. A failed view is not proof that there is no quota, even when the other view responds.
+
 ## User-owned agent settings
 
 Claude/Gemini settings must go through the guarded transactions in
@@ -801,6 +819,19 @@ who never saw it.
 - Subagent reload replay is display-only and current-host-only. Never replay status/permission
   events or treat a replayed card as verified process ownership; subscribe before taking its snapshot.
 
+**Phone consent belongs to the verified handshake, not the browse socket.** A standing phone's
+SAS request survives transport closure only until its 120-second deadline; approval requires the
+issued id and displayed box key together. Keep request/reply outcomes distinct (stale request,
+failed pin save, missing IPC response, saved-but-disconnected). All production pin/revoke writers
+must use `updateApprovedDevices` for the whole read/modify/write, so concurrent updates cannot
+lose approvals or resurrect revoked keys. Server Edition does not host this legacy relay path.
+
 Managed Codex login terminals are agent-less: core identifies their provider from the saved
 account list. Before opening one, await `useSettings.getState().flush()` after adding the account.
 The normal 300 ms coalesced save is too late: an unknown id can launch against the system home.
+
+Optional hook ownership failures must never stop Desktop window creation or Server boot. Use the
+shared nonfatal startup path and surface its actionable diagnostic. A responding HTTP port is not
+nodeterm identity: verify bearer acceptance and rejection. Legacy SSH endpoint migration requires
+ownership proof, an unchanged-file check, and stdin-only credential transfer; a project name alone
+is not permission to replace another installation's advertisement.

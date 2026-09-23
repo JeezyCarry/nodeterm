@@ -49,7 +49,7 @@ function subscribe<A extends unknown[] = []>(channel: string) {
 const subscribeMutation = subscribe<[CanvasMutation]>(IPC.remoteHostApplyMutation)
 // Fan-out subscriber for the connection-approval prompt (main → host renderer when a client
 // finishes the handshake; carries the SAS to show in the approval dialog).
-const subscribePeerPending = subscribe<[{ sas: string | null; id: string; pub?: string | null }]>(
+const subscribePeerPending = subscribe<[{ sas: string | null; id: string; pub?: string | null; standing?: boolean }]>(
   IPC.remoteHostPeerPending
 )
 const subscribePeerPendingCleared = subscribe<[{ id: string | null; pub?: string | null }]>(
@@ -603,6 +603,7 @@ const api: NodeTerminalApi = {
     onApplyMutation: subscribeMutation,
     onPeerPending: subscribePeerPending,
     onPeerPendingCleared: subscribePeerPendingCleared,
+    approvePhone: (id, pub) => ipcRenderer.invoke(IPC.remotePhoneApprove, { id, pub }),
     approve: (id: string, pub?: string) => ipcRenderer.send(IPC.remoteHostApprove, { id, pub }),
     reject: (id: string, pub?: string) => ipcRenderer.send(IPC.remoteHostReject, { id, pub }),
     setPhoneAccess: (enabled) => ipcRenderer.send(IPC.remoteStandingHostSet, enabled)
