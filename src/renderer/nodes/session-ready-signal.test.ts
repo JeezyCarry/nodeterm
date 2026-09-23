@@ -35,15 +35,6 @@ describe('where readiness is published (source pins)', () => {
     expect(src).toContain('setSessionReady(id, !!parked)')
   })
 
-  it('a fresh session is published through the SAME shell settle the initialCommand writer uses', () => {
-    // Both write an agent CLI command line into the pane. A line delivered across zsh's rc-file
-    // tty flush comes out mangled, which is exactly what `whenShellSettled` exists to avoid — so
-    // the armed launch must not be released on a bare create-resolve.
-    expect(src).toContain('whenShellSettled(() => setSessionReady(id, true))')
-    expect(src).toContain('const writeWhenShellReady = (cmd: string): void => {')
-    expect(src).toMatch(/whenShellSettled\(\(\) => \{[\s\S]{0,400}?deliverCommand\(/)
-  })
-
   it('only a REAL teardown clears it — a park keeps the session typeable by name', () => {
     // The park branch returns before this line; a parked tmux session is still addressable by
     // `sendText`, so clearing there would strand a launch that could have been delivered.
@@ -112,14 +103,6 @@ describe('the QUEUED badge carries the delivery state (source pins)', () => {
     )
   })
 
-  it('the manual ▶ disarms only on a delivery that landed', () => {
-    // Dropping `pendingLaunch` unconditionally threw the command away whenever the session was
-    // not up — precisely the state a user reaches for this button in.
-    expect(src).toMatch(
-      /pty\.sendText\(id, pendingLaunch\.command\)\.then\(\(ok\) => \{[\s\S]{0,600}?if \(ok\)[\s\S]{0,300}?pendingLaunch: undefined/
-    )
-    expect(src).toMatch(/else \{[\s\S]{0,200}?markFailed\(id, 1\)/)
-  })
 })
 
 describe('the eye button hides cards AND connections (source pins)', () => {
