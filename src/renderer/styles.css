@@ -1491,6 +1491,13 @@ body,
 .term-node--glass .term-node__body {
   background: transparent;
 }
+/* The blur is re-rasterised for every glass node on every frame of a pan/zoom (their backdrop
+   moves under them). Canvas marks the flow wrapper while the camera moves; the tint stays, and the
+   tint alone is what keeps text at 4.5:1, so only the frosting pauses. */
+.canvas-moving .term-node.term-node--glass {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 
 .term-node.selected {
   border-color: var(--accent);

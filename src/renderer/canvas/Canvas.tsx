@@ -1520,6 +1520,13 @@ export function Canvas() {
   const browserPopupSpawnsRef = useRef<{ url: string; source: string; t: number }[]>([])
   const loadingRef = useRef(false)
   const flowWrapRef = useRef<HTMLDivElement>(null)
+  // Glass terminals: while the camera moves, every glass node's backdrop changes each frame and
+  // the 28px blur is re-rasterised for all of them. The class drops the blur (the tint stays, and
+  // the tint alone is what the contrast guarantee rests on) until the move settles. A classList
+  // toggle rather than state, so a pan does not re-render this component twice.
+  const setCanvasMoving = useCallback((moving: boolean) => {
+    flowWrapRef.current?.classList.toggle('canvas-moving', moving)
+  }, [])
   // Undo/redo history (snapshots of the nodes array; arrays are immutable per change).
   const pastRef = useRef<CanvasNode[][]>([])
   const futureRef = useRef<CanvasNode[][]>([])
@@ -14825,6 +14832,8 @@ export function Canvas() {
           onConnect={onConnect}
           onEdgeDoubleClick={onEdgeDoubleClick}
           onMove={onMove}
+          onMoveStart={() => setCanvasMoving(true)}
+          onMoveEnd={() => setCanvasMoving(false)}
           onNodeDragStart={() => (draggingRef.current = true)}
           onNodeDragStop={() => {
             draggingRef.current = false
