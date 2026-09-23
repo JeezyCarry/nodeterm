@@ -146,9 +146,9 @@ describe.skipIf(process.platform === 'win32')('remote link aliases', () => {
     const run: SettingsRunner = (cmd, input) => shell(`readlink() { [ "$#" -eq 1 ] || return 1; command readlink "$1"; }
 ${cmd}`, input)
     expect(await updateRemoteSettingsFile(file, run, merge)).toBe(true)
+    expect(JSON.parse(readFileSync(file, 'utf8')).model).toBe('keep')
     expect(lstatSync(file).isSymbolicLink()).toBe(true)
     expect(lstatSync(path.join(real, 'middle')).isSymbolicLink()).toBe(true)
-    expect(JSON.parse(readFileSync(file, 'utf8')).model).toBe('keep')
   })
 
   it('refuses a failed readlink and a newline target without replacing the link', async () => {
