@@ -3600,7 +3600,13 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   right-click; nothing running is interrupted), restart-agent
   (single agent node — the in-place CLI restart above; absent for a CLI we cannot quit + resume,
   disabled with a hint while the session is busy or has no id yet), delete. Actions live
-  in `Canvas.tsx`, operate on `targetIds`. The non-destructive rows are user-hideable from
+  in `Canvas.tsx`, operate on `targetIds`. **Conversation actions are grouped** so an agent node's
+  menu fits on screen: **Transfer conversation ▸** holds one row per target (a model-capable target
+  nests its gateway models one level further), and **Restart ▸** holds every quit-and-resume
+  variant — restart, restart + fresh shell, restart on subscription, then Reopen as / Switch model /
+  Switch account. `ContextMenu` renders submenus to any depth (`MenuRows` is recursive); a flyout
+  that hosts a submenu drops its scroll (`.ctx-submenu--host` — `overflow: auto` would clip the
+  nested flyout) and `useSubmenuFlip` lifts a flyout that would run off the bottom. The non-destructive rows are user-hideable from
   **Settings → Appearance** ("Node menu items" / "Terminal header buttons"), stored as HIDDEN
   lists in `settings.hiddenNodeMenuItems` / `settings.hiddenHeaderButtons` (empty = everything
   shows). `lib/ui-visibility.ts` owns the two inventories and `isHidden`, which only answers for

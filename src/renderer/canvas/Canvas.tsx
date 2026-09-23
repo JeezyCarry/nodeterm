@@ -8244,28 +8244,6 @@ export function Canvas() {
             }
           ] as MenuItem[])
         : []),
-      ...(ids.length === 1 && (() => {
-        const a = agentIdOf(ids[0])
-        return !!a && canBranch(a)
-      })()
-        ? ([
-            {
-              label: 'Branch conversation',
-              icon: <IconBranch />,
-              onClick: () => void branchClaude(ids[0], { at })
-            }
-          ] as MenuItem[])
-        : []),
-      ...(ids.length === 1
-        ? transferConversationItems(ids[0], at, {
-            sourceAgentId: agentIdOf(ids[0]),
-            sessionId: useAgentStatus.getState().byId[ids[0]]?.sessionId,
-            disabledAgents: useSettings.getState().settings.disabledAgents,
-            customAgents: useSettings.getState().settings.customAgents,
-            gatewayModels,
-            relaySession: session.source === 'relay'
-          }, transferConversation)
-        : []),
       ...(isHidden('collapse', hidden)
         ? []
         : ([
@@ -8297,6 +8275,32 @@ export function Canvas() {
                   }
                 ])
           ] as MenuItem[])
+        : []),
+      // Conversation actions — Branch, Transfer ▸ (targets, then models), Restart ▸, Pause — sit
+      // together below the view actions, each ONE row: the per-target Transfer list and the six-odd
+      // restart variants used to be spliced in flat, which made an agent node's menu run off screen.
+      { type: 'separator' },
+      ...(ids.length === 1 && (() => {
+        const a = agentIdOf(ids[0])
+        return !!a && canBranch(a)
+      })()
+        ? ([
+            {
+              label: 'Branch conversation',
+              icon: <IconBranch />,
+              onClick: () => void branchClaude(ids[0], { at })
+            }
+          ] as MenuItem[])
+        : []),
+      ...(ids.length === 1
+        ? transferConversationItems(ids[0], at, {
+            sourceAgentId: agentIdOf(ids[0]),
+            sessionId: useAgentStatus.getState().byId[ids[0]]?.sessionId,
+            disabledAgents: useSettings.getState().settings.disabledAgents,
+            customAgents: useSettings.getState().settings.customAgents,
+            gatewayModels,
+            relaySession: session.source === 'relay'
+          }, transferConversation)
         : []),
       // Restart the agent CLI itself (single selection): quit it and relaunch with `--resume`, so a
       // newly released model appears in its model list with the conversation intact. Unlike "Reload
@@ -8353,7 +8357,7 @@ export function Canvas() {
                 ? 'This session is busy — try again once its turn (or permission prompt) is done.'
                 : 'Nothing to resume yet — this session has not reported an id.'
               : undefined
-            return [
+            const restartRows: MenuItem[] = [
               {
                 label: 'Restart agent',
                 icon: <IconPower />,
@@ -8420,6 +8424,8 @@ export function Canvas() {
                     }
                   ]
                 : []),
+              // Below the plain restarts: the variants that restart INTO something else.
+              { type: 'separator' },
               ...(variants.length
                 ? ([
                     {
@@ -8578,6 +8584,16 @@ export function Canvas() {
                     ] as MenuItem[]
                   })()
                 : []),
+            ]
+            return [
+              // Every quit-and-resume action — plain restart, fresh shell, subscription, reopen as
+              // another agent, switch model / account — behind ONE row.
+              {
+                type: 'submenu',
+                label: 'Restart',
+                icon: <IconPower />,
+                children: tidySeparators(restartRows)
+              },
               // Pause session: quit the CLI (and, for the deeper choice, also end the tmux
               // session) so it does NOT auto-resume on the next reveal or reopen — only an
               // explicit Resume brings it back. Same eligibility as Restart above (`why`): a node
@@ -12867,8 +12883,8 @@ export function Canvas() {
       ]
       // For the ACTIVE project, reuse the SAME single-node menu the canvas right-click builds —
       // full parity (Color, Group, Duplicate, Branch, Collapse, Markdown view, Refresh terminal,
-      // Restart agent, Restart agent and shell, Reopen session as, Switch model, Transfer with its
-      // nested model submenus) so the two surfaces can't drift. `selectionItems` reads the live
+      // Transfer ▸ with its nested model submenus, Restart ▸ with every restart variant) so the two
+      // surfaces can't drift. `selectionItems` reads the live
       // node from `nodesRef.current` (active-project only), which is exactly why this is gated.
       // `at` is undefined: the row has no flow position, so spawned nodes (Duplicate/Branch/
       // Transfer) place beside the source — the same as the row's existing Transfer behavior.
