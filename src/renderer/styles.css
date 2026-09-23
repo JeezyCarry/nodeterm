@@ -3645,6 +3645,9 @@ body,
 .editor-node__monaco {
   position: absolute;
   inset: 0;
+  /* Keep Monaco's internal layers below the sibling markdown preview without unmounting
+     the editor (and losing its selection, scroll position or undo history). */
+  isolation: isolate;
 }
 
 .editor-node__toggle {
@@ -6846,7 +6849,9 @@ button.group-node__setup:disabled {
 }
 
 /* ---- Minimap ---- */
-.minimap {
+.react-flow__minimap.minimap {
+  /* Monaco also mounts a .minimap even when disabled. Styling that zero-width element
+     adds a vertical border through the editor and, without isolation, its preview (#834). */
   /* React Flow places its panels with a 15px margin; the app's overlays all sit one --float-gap
      from their edge, and the minimap and the controls are the two the library positions. */
   margin: var(--float-gap) !important;
