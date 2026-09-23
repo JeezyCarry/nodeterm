@@ -1523,10 +1523,28 @@ export function Canvas() {
   // Glass terminals: while the camera moves, every glass node's backdrop changes each frame and
   // the 28px blur is re-rasterised for all of them. The class drops the blur (the tint stays, and
   // the tint alone is what the contrast guarantee rests on) until the move settles. A classList
-  // toggle rather than state, so a pan does not re-render this component twice.
-  const setCanvasMoving = useCallback((moving: boolean) => {
-    flowWrapRef.current?.classList.toggle('canvas-moving', moving)
+  // toggle rather than state, so a pan does not re-render this component twice. The REMOVAL is
+  // debounced: a wheel zoom driven through setViewport ends a "move" on every packet, and toggling
+  // the blur back on between packets would re-rasterise it anyway.
+  const movingClearRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onCanvasMoveStart = useCallback(() => {
+    if (movingClearRef.current) clearTimeout(movingClearRef.current)
+    movingClearRef.current = null
+    flowWrapRef.current?.classList.add('canvas-moving')
   }, [])
+  const onCanvasMoveEnd = useCallback(() => {
+    if (movingClearRef.current) clearTimeout(movingClearRef.current)
+    movingClearRef.current = setTimeout(() => {
+      movingClearRef.current = null
+      flowWrapRef.current?.classList.remove('canvas-moving')
+    }, 150)
+  }, [])
+  useEffect(
+    () => () => {
+      if (movingClearRef.current) clearTimeout(movingClearRef.current)
+    },
+    []
+  )
   // Undo/redo history (snapshots of the nodes array; arrays are immutable per change).
   const pastRef = useRef<CanvasNode[][]>([])
   const futureRef = useRef<CanvasNode[][]>([])
@@ -14832,8 +14850,8 @@ export function Canvas() {
           onConnect={onConnect}
           onEdgeDoubleClick={onEdgeDoubleClick}
           onMove={onMove}
-          onMoveStart={() => setCanvasMoving(true)}
-          onMoveEnd={() => setCanvasMoving(false)}
+          onMoveStart={onCanvasMoveStart}
+          onMoveEnd={onCanvasMoveEnd}
           onNodeDragStart={() => (draggingRef.current = true)}
           onNodeDragStop={() => {
             draggingRef.current = false

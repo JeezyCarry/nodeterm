@@ -33,8 +33,8 @@ function load(w: DesktopWallpaper): Promise<string | null> {
       .then((url) => (url ? `url("${url}")` : null))
       .catch(() => null)
     loaded.set(key, p)
-    // A miss is not remembered: the file may appear (a still converting, an import finishing), and
-    // a cached null would pin the plain canvas until the app restarts.
+    // A miss is not remembered, so the NEXT selection of this wallpaper asks core again instead of
+    // getting the cached null for the rest of the app run. Nothing retries on its own.
     void p.then((bg) => {
       if (bg === null && loaded.get(key) === p) loaded.delete(key)
     })
