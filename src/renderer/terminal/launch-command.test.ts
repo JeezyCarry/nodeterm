@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createLaunchWriter, launchCommand, registerLaunchWriter } from './launch-command'
+import { createLaunchWriter, deliverInitialLaunch, launchCommand, registerLaunchWriter } from './launch-command'
 import { KILL_LINE, WINDOWS_KILL_LINE, VERIFY_TIMEOUT_MS, DELIVERY_ATTEMPTS } from './command-delivery'
 
 function fixture(fresh = true, killLine = KILL_LINE) {
@@ -121,5 +121,36 @@ describe('durable launch delivery', () => {
     expect(await launchCommand('node', 'cmd')).toBe('submitted')
     second()
     expect(await launchCommand('node', 'cmd', true)).toBe('cancelled')
+  })
+})
+
+describe('UI initial-command lifecycle', () => {
+  it.each(['submitted', 'cancelled', 'line-too-long'] as const)('retains intent through settle and only discards it on submitted (%s)', async (outcome) => {
+    let ready!: () => void
+    let settle!: (outcome: 'submitted' | 'cancelled' | 'line-too-long') => void
+    const state: { initialCommand?: string; pendingLaunch?: { command: string } } = { initialCommand: 'claude original-brief' }
+    const write = vi.fn(() => new Promise<'submitted' | 'cancelled' | 'line-too-long'>((resolve) => { settle = resolve }))
+    const onFailure = vi.fn()
+    deliverInitialLaunch(state.initialCommand!, {
+      whenReady: (run) => { ready = run }, write,
+      update: (patch) => { Object.assign(state, patch) }, onFailure
+    })
+    // Teardown/park before ready cannot lose the brief: both live and durable intent remain.
+    expect(write).not.toHaveBeenCalled()
+    expect(state.initialCommand).toBe('claude original-brief')
+    expect(state.pendingLaunch).toEqual({ after: [], command: 'claude original-brief', manualOnly: true })
+    ready()
+    expect(write).toHaveBeenCalledWith('claude original-brief', false)
+    expect(state.initialCommand).toBe('claude original-brief')
+    settle(outcome)
+    await Promise.resolve()
+    expect(state.initialCommand).toBeUndefined()
+    if (outcome === 'submitted') {
+      expect(state.pendingLaunch).toBeUndefined()
+      expect(onFailure).not.toHaveBeenCalled()
+    } else {
+      expect(state.pendingLaunch?.command).toBe('claude original-brief')
+      expect(onFailure).toHaveBeenCalledWith(outcome)
+    }
   })
 })

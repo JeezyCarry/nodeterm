@@ -47,3 +47,26 @@ export function createLaunchWriter(opts: {
     return inFlight
   }
 }
+
+/** Keep UI launch intent through the asynchronous shell settle and submission boundary. */
+export function deliverInitialLaunch(command: string, opts: {
+  whenReady(run: () => void): void
+  write: Writer
+  update(patch: {
+    initialCommand?: undefined
+    pendingLaunch?: { after: string[]; command: string; manualOnly: true }
+  }): void
+  onFailure(outcome: DeliveryOutcome): void
+}): void {
+  const pendingLaunch = { after: [], command, manualOnly: true as const }
+  // Do not discard the live initialCommand before settle. The durable pending record also
+  // prevents the Canvas loop from racing this writer and survives a project switch.
+  opts.update({ pendingLaunch })
+  opts.whenReady(() => {
+    void opts.write(command, false).then((outcome) => {
+      opts.update({ initialCommand: undefined,
+        pendingLaunch: outcome === 'submitted' ? undefined : pendingLaunch })
+      if (outcome !== 'submitted') opts.onFailure(outcome)
+    })
+  })
+}

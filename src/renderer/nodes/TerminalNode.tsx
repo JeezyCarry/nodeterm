@@ -1,5 +1,5 @@
 import { isLaunchShell } from '@shared/agents/pane'
-import { createLaunchWriter, launchCommand, registerLaunchWriter } from '../terminal/launch-command'
+import { createLaunchWriter, deliverInitialLaunch, launchCommand, registerLaunchWriter } from '../terminal/launch-command'
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { NODE_MIN_SIZES } from '../lib/nodeSizing'
 import {
@@ -3545,24 +3545,14 @@ export function TerminalNode({
         // forget it.
         if (data.initialCommand) {
           const command = data.initialCommand
-          // Publish durable intent before the asynchronous settle/echo work. The automatic
-          // Canvas loop leaves this manual-only record to this writer; an interrupted mount
-          // retains it for recovery instead of starting a second writer.
-          updateNodeData(id, { pendingLaunch: { after: [], command, manualOnly: true } })
-          whenShellSettled(() => {
-            void launchWriter(command, false).then((outcome) => {
-              if (outcome === 'submitted') {
-                updateNodeData(id, { initialCommand: undefined, pendingLaunch: undefined })
-              } else {
-                // Keep the exact brief and expose Run now, including an interrupted settle.
-                updateNodeData(id, {
-                  initialCommand: undefined,
-                  pendingLaunch: { after: [], command, manualOnly: true }
-                })
-                useLaunchDelivery.getState().markFailed(id, 1)
-                if (outcome === 'line-too-long') setCo(termKey, { launchTooLongBytes: lineBytes(command) })
-              }
-            })
+          deliverInitialLaunch(command, {
+            whenReady: whenShellSettled,
+            write: launchWriter,
+            update: (patch) => updateNodeData(id, patch),
+            onFailure: (outcome) => {
+              useLaunchDelivery.getState().markFailed(id, 1)
+              if (outcome === 'line-too-long') setCo(termKey, { launchTooLongBytes: lineBytes(command) })
+            }
           })
         } else if (coldStart && canColdRestore) {
           // Cold restart of an agent node: the live agent is gone, so re-launch it. Resume the
