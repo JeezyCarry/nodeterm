@@ -2783,7 +2783,26 @@ export interface ClaudeAccountsApi {
    * (the account's `skills/` resolves to the system one) and `failed` (an EPERM, a vanished skill).
    */
   setSkillSharing(id: string, enabled: boolean): Promise<ClaudeSkillShareResult>
+  /**
+   * Copy a conversation's transcript from one LOCAL account's config dir into another's (`undefined`
+   * = the system `~/.claude`), so a node switched onto the target account resumes the SAME
+   * conversation there with no `/login`. Called only after the CLI has exited. Never overwrites a
+   * diverged copy (`diverged`); never throws — every refusal is a reason.
+   */
+  copySession(
+    sessionId: string,
+    sourceAccountId: string | undefined,
+    targetAccountId: string | undefined
+  ): Promise<ClaudeSessionCopyResult>
 }
+
+/** What `claudeAccounts.copySession` did. `copied: false` = the target already held this exact copy. */
+export type ClaudeSessionCopyResult =
+  | { ok: true; copied: boolean }
+  | {
+      ok: false
+      reason: 'bad-request' | 'unknown-account' | 'no-transcript' | 'diverged' | 'failed'
+    }
 
 /** What one `setSkillSharing` / launch reconcile did. Counts, never an exception. */
 export interface ClaudeSkillShareResult {
