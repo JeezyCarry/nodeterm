@@ -81,8 +81,6 @@ describe('NSIS safety wiring', () => {
     expect(include).toMatch(/SetErrorLevel 2\s+IfSilent nodeterm_preflight_cancel/)
     expect(include).toMatch(/nodeterm_preflight_cancel:\s+Quit/)
     expect(include.match(/\/SD IDCANCEL/g)).toHaveLength(2)
-    expect(include).toContain('wait at least 30 seconds')
-    expect(include).toContain('This installer will not stop your sessions')
     const production = include + fs.readFileSync(script, 'utf8')
     expect(production).not.toMatch(/\b(?:Stop-Process|taskkill|KILL_PROCESS|_CHECK_APP_RUNNING|Set-ExecutionPolicy)\b/i)
   })

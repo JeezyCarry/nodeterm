@@ -381,20 +381,34 @@ path prefix without a directory boundary. Another installation (even a sibling d
 name begins with this installation's name) can therefore block an update. The new preflight must
 cover those legacy targets before invoking the old executable; it never stops them on your behalf.
 
-To update when you are ready to end sessions:
+To update while keeping your saved canvas:
 
-1. Cancel the installer and reopen nodeterm if you already quit it. Save work in local terminals
-   and agents, including those in closed/other projects and sessions accessed from a phone.
-2. Use **End session** in the Sessions sidebar for each local session. This ends its process and
-   removes its node; do not mistake closing a project or quitting the app for ending a session.
-   Shells may also be exited normally once their work is saved.
-3. Quit nodeterm, wait at least 30 seconds after the last session ends, and run the installer again
-   from Downloads, outside the installation directory. Other installations/users must finish their
-   sessions too. Do not reopen the app or start sessions while installation is in progress.
-4. If the host remains, keep the installer cancelled and inspect Windows Task Manager's Details
-   view. Verify the executable path belongs to this installation. Ending that exact host manually
-   is a last resort **only if you accept losing every terminal/agent process it owns**; never use
-   a machine-wide name-based kill. A host shared by another Windows user requires their decision.
+1. Cancel the installer and reopen nodeterm if you already quit it. Save work in every local
+   terminal and agent, including closed/other projects and sessions accessed from a phone.
+   Let active tasks finish, then use each program's normal exit command and exit its shell.
+   Leave the canvas nodes in place. **Do not use Sessions → End session or delete nodes to prepare
+   for an update**: those actions remove nodes, rather than just stopping their processes.
+2. Quit nodeterm normally so workspace changes are saved and it cannot start replacement sessions.
+   Wait at least 30 seconds after the last shell exits for the empty host to shut down naturally.
+   Quitting the app alone does not empty the host; a host with sessions will remain running.
+3. If the host remains, keep the installer cancelled. In Windows Task Manager's **Details** view,
+   verify the user and executable path of `nodeterm-session-host.exe` for this installation.
+   After saving work and accepting that **every terminal/agent process owned by that host will
+   stop**, end only that verified host. This is a manual process shutdown, not a graceful agent
+   exit, so complete step 1 first. Do not use a machine-wide name-based kill. If the host uses
+   the fallback name `nodeterm.exe`, verify its identity/path rather than guessing which process
+   to end. Another Windows user's host requires that user's decision.
+4. Run the installer from Downloads, outside the installation directory, or Retry its preflight.
+   Other nodeterm installations/users must prepare their own sessions too if they block the check.
+   Do not reopen the app or start sessions while installation is in progress.
+
+Stopping the host after quitting leaves saved node metadata (positions, groups, agent/session
+identities) and existing closed-session history in place; it does not call the node-deletion path
+or add deletion entries to `closedSessions`. Reopen nodeterm after installation to use those nodes.
+This is **cold recovery**, not preservation of live processes: shell jobs and unsaved terminal state
+are lost. An agent can resume only when its harness supports resume, nodeterm has saved a valid
+conversation id, and the matching account's conversation history is still available. A saved node
+alone does not guarantee resume, restore an in-flight task, or recover unsaved work.
 
 New installers run this check before invoking the previous version's uninstaller. Already shipped
 installers/uninstallers cannot be patched retroactively; use the same preparation steps for them.
