@@ -256,3 +256,32 @@ describe('createContextTail — `wholeFile` (grok: a document rewritten, not app
     expect(JSON.stringify(pushes)).not.toContain('222222')
   }, 8000)
 })
+
+describe('session-scoped context configuration (#818)', () => {
+  it('overrides even a sonnet guess, isolates equal model ids, and invalidates changed/removed env', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'context-env-'))
+    const file = path.join(dir, 'session.jsonl')
+    fs.writeFileSync(file, JSON.stringify({ type: 'assistant', message: { model: 'vendor-sonnet', usage: { input_tokens: 16000 } } }) + '\n')
+    const send = vi.fn()
+    const tail = createContextTail(send)
+    try {
+      tail.track('small', file, 32000)
+      tail.track('large', file, 1048576)
+      await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2))
+      expect(send.mock.calls.map(([p]) => p)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ sessionId: 'small', windowTokens: 32000, usedPercent: 50, windowSource: 'session-env' }),
+        expect.objectContaining({ sessionId: 'large', windowTokens: 1048576, windowSource: 'session-env' })
+      ]))
+      send.mockClear()
+      tail.track('small', file) // renderer reload: replay while preserving observed env
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({ windowTokens: 32000, windowSource: 'session-env' }))
+      tail.track('small', file, 64000)
+      await vi.waitFor(() => expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: 'small', windowTokens: 64000 })), { timeout: 1800 })
+      tail.track('small', file, null)
+      await vi.waitFor(() => expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: 'small', windowSource: 'estimate' })), { timeout: 1800 })
+    } finally {
+      tail.untrack('small'); tail.untrack('large')
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

@@ -7,7 +7,7 @@
 import { type BrowserWindow } from 'electron'
 import { IPC } from '../shared/ipc'
 import type { ContextWindowUsage } from '../shared/types'
-import { cachedWindowFor, resolveModelWindow } from '../core/model-window'
+import { cachedWindowFor } from '../core/model-window'
 import {
   parseLatestUsage,
   parseTaskNotifications,
@@ -35,12 +35,13 @@ interface Tracked {
   lastUsed: number
   lastModel: string | null
   lastWindow: number
+  sessionWindow: number | null
   /** Partial trailing line held back until the next read completes it (see subagent-tail.ts). */
   carry: Buffer | null
 }
 
 export interface RemoteContextTail {
-  track(sessionId: string | undefined, ref: RemoteFileRef | undefined): void
+  track(sessionId: string | undefined, ref: RemoteFileRef | undefined, sessionWindow?: number | null): void
   untrack(sessionId: string | undefined): void
   /** The transcript path currently tracked for a session, if any. */
   pathFor(sessionId: string | undefined): string | undefined
@@ -86,6 +87,7 @@ export function createRemoteContextTail(
       windowTokens: t.window,
       usedPercent,
       model: t.model,
+      windowSource: t.sessionWindow === null ? 'estimate' : 'session-env',
       updatedAt: Date.now()
     }
     win.webContents.send(IPC.contextUpdate, payload)
@@ -113,9 +115,9 @@ export function createRemoteContextTail(
     }
 
     // Reconcile the window every pass, same resolution as the local tail.
-    if (t.model) void resolveModelWindow(t.model)
-    const window = cachedWindowFor(t.model)
+    const window = t.sessionWindow ?? cachedWindowFor(t.model)
 
+    if (sessions.get(sessionId) !== t) return
     if (t.used > 0 && (t.used !== t.lastUsed || t.model !== t.lastModel || window !== t.lastWindow)) {
       t.window = window
       push(sessionId, t)
@@ -134,14 +136,17 @@ export function createRemoteContextTail(
   }
 
   return {
-    track(sessionId, ref) {
+    track(sessionId, ref, sessionWindow) {
       if (!sessionId || !ref) return
       const existing = sessions.get(sessionId)
-      if (existing) {
-        if (existing.ref.path !== ref.path) {
-          existing.ref = ref
-          existing.offset = 0
-          existing.carry = null
+      if (existing && existing.ref.path === ref.path && existing.ref.controlPath === ref.controlPath) {
+        if (sessionWindow !== undefined && sessionWindow !== existing.sessionWindow) {
+          existing.sessionWindow = sessionWindow
+          existing.lastWindow = 0 // publish even if only provenance changed
+          void read(sessionId, existing)
+        } else if (existing.used > 0 && existing.lastWindow > 0) {
+          // A remounted renderer has no persisted snapshot; context.ensure must replay it.
+          push(sessionId, existing)
         }
         return
       }
@@ -155,6 +160,7 @@ export function createRemoteContextTail(
         lastUsed: 0,
         lastModel: null,
         lastWindow: 0,
+        sessionWindow: sessionWindow ?? null,
         carry: null
       }
       sessions.set(sessionId, t)

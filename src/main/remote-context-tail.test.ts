@@ -100,3 +100,40 @@ describe('createRemoteContextTail', () => {
     tail.untrack('sess3')
   })
 })
+
+it('uses the remote session env and clears a removed override without new transcript bytes', async () => {
+  const { win, send } = fakeWin()
+  const remoteFile = {
+    readTail: vi.fn(async () => line(16000, 'vendor-sonnet')),
+    readFrom: vi.fn(async (_r: RemoteFileRef, o: number) => ({ text: '', newOffset: o }))
+  }
+  const tail = createRemoteContextTail(win, remoteFile as never)
+  try {
+    tail.track('env', ref, 32000)
+    await vi.waitFor(() => expect(send).toHaveBeenCalled())
+    expect(send.mock.calls.at(-1)![1]).toMatchObject({ windowTokens: 32000, usedPercent: 50, windowSource: 'session-env' })
+    tail.track('env', ref, null)
+    await vi.waitFor(() => expect(send.mock.calls.at(-1)![1]).toMatchObject({ windowSource: 'estimate' }), { timeout: 1800 })
+  } finally { tail.untrack('env') }
+})
+
+it('does not publish a stale async read after replacing the tracked transcript', async () => {
+  const { win, send } = fakeWin()
+  let finishOld!: (text: string) => void
+  const remoteFile = {
+    readTail: vi.fn((r: RemoteFileRef) => r.path === ref.path
+      ? new Promise<string>(resolve => { finishOld = resolve })
+      : Promise.resolve(line(16000, 'new-model'))),
+    readFrom: vi.fn(async (_r: RemoteFileRef, o: number) => ({ text: '', newOffset: o }))
+  }
+  const tail = createRemoteContextTail(win, remoteFile as never)
+  try {
+    tail.track('replaced', ref, 32000)
+    tail.track('replaced', { ...ref, path: '/abs/new.jsonl' })
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    expect(send.mock.calls[0][1]).toMatchObject({ model: 'new-model', windowSource: 'estimate' })
+    finishOld(line(1, 'old-model'))
+    await tick()
+    expect(send).toHaveBeenCalledTimes(1)
+  } finally { tail.untrack('replaced') }
+})

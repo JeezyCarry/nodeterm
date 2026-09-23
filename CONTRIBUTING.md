@@ -611,6 +611,12 @@ examples). If the same effect also WRITES, latch its first run: otherwise switch
 mid-session applies stored state to whatever the user is doing right then, which is a different
 feature from the one they asked for.
 
+**A context capacity needs session provenance.** Claude's effective `CLAUDE_CODE_MAX_CONTEXT_TOKENS`
+is reported by its managed hook, accepted only with verified node identity, and validated as a
+positive decimal safe integer. Never read the app's global env for another session or let a
+model-family guess enlarge an observed limit. Unobserved Claude windows are labelled estimates.
+The renderer rehydrates through `context.ensure`; it does not restore Claude denominators from storage. Other agents retain transcript-window persistence.
+
 ## Testing
 
 `npm test` must pass, and `npm run typecheck` is the fastest gate.

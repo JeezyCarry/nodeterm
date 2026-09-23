@@ -2608,6 +2608,8 @@ export interface UsageApi {
 
 /** A Claude session's context-window fill, pushed per sessionId from the transcript tailer. */
 export interface ContextWindowUsage {
+  /** Missing on older hosts; only session-env is an observed Claude configuration. */
+  windowSource?: 'session-env' | 'transcript' | 'estimate'
   sessionId: string
   /** input + cache_read + cache_creation tokens of the latest assistant message. */
   usedTokens: number
