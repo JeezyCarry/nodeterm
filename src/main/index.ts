@@ -76,6 +76,7 @@ import type { TranscriptPresence } from '../shared/types'
 import { boardLogRemotePath } from '../core/board-log'
 import { PtyManager } from '../core/pty-manager'
 import { WorkspaceStore } from '../core/workspace-store'
+import type { CardLabelEdit } from '../core/project-kanban-write'
 import { WorkspaceWatcher } from '../core/workspace-watcher'
 import { SettingsStore } from '../core/settings-store'
 import { registerAgentEnvIpc } from '../core/agent-env-ipc'
@@ -3907,7 +3908,11 @@ app.whenReady().then(async () => {
     kanban: {
       ensureBoard: (projectId: string) => workspaceStore.ensureRemoteBoard(projectId),
       setCardColumn: (projectId: string, nodeId: string, columnId: string | null) =>
-        workspaceStore.setRemoteCardColumn(projectId, nodeId, columnId)
+        workspaceStore.setRemoteCardColumn(projectId, nodeId, columnId),
+      // The phone's long-press label sheet. Same store read-modify-write + renderer announce as the
+      // card move, so a label added on the phone lands on the canvas node and the kanban card live.
+      editCardLabels: (projectId: string, nodeId: string, edit: CardLabelEdit) =>
+        workspaceStore.editRemoteCardLabels(projectId, nodeId, edit)
     },
     // "End session" from the phone (`pty.destroy`): the SAME two steps the desktop × performs —
     // kill the tmux session on every socket it could live on (the sweep may have seen it on either
