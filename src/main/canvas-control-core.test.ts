@@ -972,3 +972,12 @@ describe('the --project clause tells the truth about travel (review #363 I-1 + M
     for (const v of answered) expect(offScreenDisposition(v).kind, v).not.toBe('refuse')
   })
 })
+
+describe('link project boundary guidance', () => {
+  it('explains the scoped refusal in both generated agent instructions', () => {
+    for (const body of [buildCanvasControlInstructions('/shim'), buildCanvasSkillBody('/shim')]) {
+      expect(body).toContain('node not found in this project; cross-project linking is not supported')
+      expect(body).toContain('This does not reveal whether the id exists in another project.')
+    }
+  })
+})

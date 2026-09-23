@@ -2498,6 +2498,8 @@ else, and its context links must keep classifying across restarts).
   would inject a prompt into every session an agent just spawned — the exact intrusion that push
   was reverted for. Links are pull-based, so nothing is lost. The refusal matrix is the pure
   `planBridges` (`renderer/lib/noteLink.ts`, unit-tested); Canvas only wraps it in setState.
+  A missing endpoint is only absent from the calling project: report that scope and the
+  unsupported cross-project boundary, without probing other projects or exposing their metadata.
   Callers that create and link nodes **in the same tick** must pass their own `lookup` — `setNodes`
   is async, so resolving fresh nodes off `nodesRef` would skip every one as "no such node".
   **Dependency edges (`--after`, 2026-07):** `open-terminal`/`open-claude`/`open-agent` accept

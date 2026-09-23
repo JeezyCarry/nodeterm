@@ -3,7 +3,12 @@ import path from 'node:path'
 
 import { publishCanvasMutation } from '../core/canvas-sync'
 import { gateProjectTarget, GRANT_CAP } from '../core/project-grants'
-import { planBridges, type LinkEndpoint } from '../shared/canvas-link'
+import {
+  LINK_ENDPOINT_NOT_FOUND,
+  LINK_PROJECT_ONLY,
+  planBridges,
+  type LinkEndpoint
+} from '../shared/canvas-link'
 import {
   invalidNodeColorMessage,
   resolveNodeColor,
@@ -881,7 +886,7 @@ export class HeadlessNodeFactory {
         if (projects.length && (projects.length !== 1 || projects[0].id !== source.project.id)) {
           return {
             ok: false,
-            error: `link-project-refused: ${id} is not exclusively in the caller's project`
+            error: `link-project-refused: ${id} is not exclusively in the caller's project; ${LINK_PROJECT_ONLY}`
           }
         }
       }
@@ -890,7 +895,7 @@ export class HeadlessNodeFactory {
 
       const byId = new Map(source.project.nodes.map((node) => [node.id, node]))
       if (!byId.has(from)) {
-        return { ok: false, error: `link: --from names no existing node (${from})` }
+        return { ok: false, error: `link: --from ${from}: ${LINK_ENDPOINT_NOT_FOUND}` }
       }
       const existing = [...(source.project.bridges ?? [])]
       const plan = planBridges(

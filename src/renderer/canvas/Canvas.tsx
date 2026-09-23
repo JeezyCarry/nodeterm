@@ -1,3 +1,4 @@
+import { LINK_ENDPOINT_NOT_FOUND } from '@shared/canvas-link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { playSfx, primeSfx } from '@renderer/lib/sfx'
@@ -11203,7 +11204,7 @@ export function Canvas() {
               return
             }
             if (!ctlLinkEndpointOf(from)) {
-              reply({ ok: false, error: `link: --from names no existing node (${from})` })
+              reply({ ok: false, error: `link: --from ${from}: ${LINK_ENDPOINT_NOT_FOUND}` })
               return
             }
             const { linked, skipped } = bridgeTo(from, targets)
