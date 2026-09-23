@@ -56,6 +56,15 @@ handler needs something only Electron has (an SSH ControlMaster, a native dialog
 **injected dep** whose absence is a documented degrade — see `registerTranscriptIpc` /
 `registerContextEnsureIpc` — rather than a reason to keep the whole handler in `src/main`.
 
+Context-link maps authorize reads. Publish changes to edges, linked metadata, and background
+projects independently of canvas geometry updates; a debounce reset by every node render can
+starve publication indefinitely. Only merge projects owned by the same core, and use the rendered
+canvas's project epoch during tab switches. Core must revoke removed links before asynchronous
+transcript discovery or debug-file writes finish; an older write must never restore that access.
+Coalesce renderer updates before building the workspace map, without resetting the scheduled task.
+Intermediate publications retain resolved transcript paths only for unchanged identities; changing
+a session/account/location/hook path or removing the target invalidates that cache immediately.
+
 Windows installer safety (#829): `build/installer.nsh` overrides NSIS's process-killing check.
 A running app or session host blocks install/uninstall, and a failed process query blocks too.
 Never restore automatic host termination: quitting the app preserves those live sessions.
