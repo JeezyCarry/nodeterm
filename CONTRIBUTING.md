@@ -625,6 +625,12 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
 
 ## Testing
 
+**Screenshot paste has one route per gesture.** On macOS, Cmd+V saves/uploads a file and
+pastes its path; Ctrl+V belongs to the foreground program. A node's configured agent is not
+proof of foreground clipboard-image support. Keep shell/SSH/Server file routing and capture
+suppression of accompanying text; do not synthesize Ctrl+V or try both routes without a
+capability and receipt protocol. The shortcuts panel documents this distinction (#712).
+
 `npm test` must pass, and `npm run typecheck` is the fastest gate.
 
 Beyond that, one habit is worth more than any other here:

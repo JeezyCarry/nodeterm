@@ -1173,8 +1173,8 @@ session.
   fall through would reach the pty as `\x03` (SIGINT). Ctrl+Insert exists because Chromium reserves
   Ctrl+Shift+C for the inspector and a page cannot `preventDefault()` it — which is where Server
   Edition users land. Plain **Ctrl+C** is never intercepted.
-  **PASTE is the platform's, never ours** (`isPasteShortcut` → the `'native'` action): we own no
-  paste path — ⌘V on mac reaches the Edit menu's `{role:'paste'}`, whose `paste` event xterm frames
+  **Text paste uses the platform event** (`isPasteShortcut` → the `'native'` action): ⌘V on
+  mac reaches the Edit menu's `{role:'paste'}`, whose `paste` event xterm frames
   as a bracketed paste. All the terminal does is stop CANCELLING the chord, and that is a
   **Windows-only** claim: xterm's keymap turns Ctrl+V into `\x16` with `cancel`, which suppressed
   Chromium's paste command *and* the Ctrl+V accelerator behind it, so Ctrl+V pasted nothing at all
@@ -1184,6 +1184,13 @@ session.
   key nor a cancel for them, so the platform already pastes. To select in **xterm** instead of tmux
   (or inside an app that grabs the mouse, like vim/htop), hold **Option** (mac —
   xterm's `macOptionClickForcesSelection`) or **Shift** (Linux/Windows) while dragging.
+  **Screenshot paste (#712):** the capture handler in both TerminalNode and ModalTerminal
+  owns files/images: save/upload, then paste the path, suppressing accompanying text. A
+  macOS Ctrl+V may instead let a local foreground agent read its own system clipboard.
+  Configured agent identity proves neither foreground state nor clipboard support, and a
+  PTY write has no image receipt. Never synthesize that key or fall back between routes.
+  The macOS shortcuts reference explains both keys; its Server Edition copy explicitly
+  says Ctrl+V cannot transfer the viewer's clipboard to the host. SSH keeps remote uploads.
   **Copying now says so**: the OSC 52 handler floats a transient `Copied N lines` pill over the
   terminal's BOTTOM-RIGHT corner (`.term-copy-pill`, the same class on the canvas node and the
   kanban card modal — one session seen twice must not speak in two voices; bottom-right because
