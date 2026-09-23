@@ -2664,7 +2664,10 @@ app.whenReady().then(async () => {
       // wrong-machine read, which is what falling through would produce.
       if (agentId && agentId !== 'claude') return 'unresolved'
       // Already tracked (a hook event landed, or an earlier mount resolved it) — nothing to ask.
-      if (remoteContextTail.pathFor(sessionId)) return 'tracked'
+      if (remoteContextTail.pathFor(sessionId)) {
+        remoteContextTail.replay(sessionId)
+        return 'tracked'
+      }
       // Asks the HOST where the transcript is, jails the answer, and caches a HIT under the session
       // id (shared with the ⌘M read path, which is the locator's first consumer). A clean miss and
       // a failed ssh call both come back `undefined` and cache NOTHING — so a momentarily dead

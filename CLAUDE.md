@@ -218,8 +218,8 @@ reads as disarmed until armed on this machine). A node's `data`
 carries `title, color, group, tags, collapsed, expandedHeight, shell, cwd, text,
 initialCommand, filePath, diffStaged`, `icon` (a user-chosen emoji or picture — see **Node icons**
 below), `agentId` (which agent CLI a terminal node runs —
-persisted), and `accountId` (which managed Claude account a terminal node runs under — immutable,
-resolved at creation, persisted; see **Managed Claude accounts**). `nodeStatesToFlow` defaults a
+persisted), and `accountId` (which managed Claude account a terminal node runs under — resolved
+at creation, changed ONLY by the explicit account-switch actions, persisted; see **Managed Claude accounts**). `nodeStatesToFlow` defaults a
 missing `kind` to `terminal` for backward compat and migrates the legacy `tags:['claude']` marker
 to `data.agentId = 'claude'`. The SDK **chat node** was removed (2026-07); `nodeStatesToFlow` also
 migrates a persisted `chat` node into a **sticky tombstone** in place, reading its legacy
@@ -1627,10 +1627,25 @@ else, and its context links must keep classifying across restarts).
   not loaded from localStorage: `context.ensure` rehydrates usage, and until another verified hook
   observes the session env an idle Claude session has only an estimated window. No arbitrary
   endpoint fields, credentials, config-file reads or CLI commands are involved. A changed transcript
-  starts fresh tracked state; async reads from replaced/untracked entries cannot publish.
+  starts fresh tracked state; unchanged hook observations never replay usage. Only `context.ensure`
+  explicitly replays the live snapshot for a remounted consumer. Async reads from replaced/untracked
+  entries cannot publish.
   Desktop and Server share validation; the SSH tail receives the remote hook's own env. Canvas and
   kanban share ContextMeter. Mobile's separate implementation needs the same provenance distinction.
   Gateway catalogue/accepted-launch work remains in #723/#725; this does not replace those PRs.
+- **SSH context polling is a bounded byte protocol** (issue #816). The initial snapshot reads
+  only the last 1 MiB and records the absolute end offset; subsequent polls process at most
+  1 MiB. `core/remote-ssh/transcript-window.ts` measures size and uses block-aligned POSIX `dd`
+  with base64, transferring less than 1.6 MiB including alignment/framing; idle replies contain
+  only the size/range header. The encoded dd exit status must survive the shell pipeline:
+  pipeline success alone can hide a failed read. Short/malformed replies and SSH failures throw,
+  retain the cursor, and back off from 2s to 60s with payload-free diagnostics. Bootstrap and
+  detected truncation restore usage without replaying historical task notifications/tool results,
+  including a historical partial line completed later. A changed remote reference replaces its
+  tracking generation so stale in-flight replies cannot publish. Server Edition uses the local
+  core tail on its host (no SSH-project manager); mobile has its own direct-SSH implementation,
+  so this desktop fix makes no claim about that separate path. Real `/bin/sh` fixtures cover
+  >20 MiB idle files and a new notification split inside UTF-8; BSD/macOS SSH remains a device check.
 - **Context-meter rehydration (`context:ensure`)** — the meter is fed by hook events, and a tmux
   session outlives the app, so a continuing session that is idle after a restart emits nothing and
   its meter stays blank until the user's next prompt. The mount-time read that exists to close that
@@ -2734,7 +2749,8 @@ else, and its context links must keep classifying across restarts).
   --version`, `isSupportedClaudeVersion`).
   - **`data.accountId` (terminal nodes)** — resolved **once at node creation**
     (`resolveNewNodeAccount`: explicit submenu pick → `project.defaultAccountId` → system default
-    `~/.claude`), then **immutable** and **persisted** (serializers). `undefined` = system default
+    `~/.claude`), then **persisted** (serializers) and changed ONLY by an explicit **account switch**
+    (below). `undefined` = system default
     = **bit-for-bit legacy behavior** (no env touched). Inherited by **Branch** (the
     terminal→chat fork it also fed is gone — the SDK chat node was removed 2026-07). Two #419
     rules inside the resolver: the submenu's **System row passes `null`** (an EXPLICIT system
@@ -2742,6 +2758,21 @@ else, and its context links must keep classifying across restarts).
     the project-default account), and validation runs against `accountsForProject`, not the raw
     list, so a **pending** account or one **pinned to another machine's host** is never stamped
     onto a node it cannot run on (both used to reach the missing-dir fallback at spawn).
+  - **Switch Claude account (running node, local only)** — node right-click → *Switch Claude
+    account ▸* moves the conversation onto another account **already logged in** on this machine,
+    with no `/login` in the pane. It works because a transcript carries **no account identity**
+    (measured on 2.1.280: under a config dir lacking the file `--resume` says "No conversation found";
+    with the file copied into `<configDir>/projects/<encoded cwd>/<id>.jsonl` only the login is
+    missing). Choreography = "Restart agent and shell" with a `beforeRecycle` step
+    (`agent-restart.ts`): exit the CLI (refused while working/blocked) → core
+    `claudeAccounts.copySession` (`core/claude-session-copy.ts`) → rebind `accountId` → recycle, whose
+    respawn gets the new `CLAUDE_CONFIG_DIR` and whose cold restore resumes the same id. Two rules:
+    the copy runs **after** the exit, so the source is final and a target that is a byte-**prefix**
+    of it is just an older copy (A→B→A) and may be replaced, while a **diverged** target is never
+    overwritten; and the rebind is **returned** by `beforeRecycle` and merged into the closure's own
+    `updateNodeData`, never set by a separate Canvas `setNodes` in the same tick (React Flow's update
+    queue rebuilds the node from the store's copy and can drop it). Builtin `claude` only (the
+    `boundAccountId` rule below). SSH / relay: shown disabled — the host-side copy is a follow-up.
   - **`boundAccountId(accountId, agentId)` (`shared/agents/account-binding.ts`) is the ONE rule for
     whether a node is account-bound at all**, and it feeds `data.accountId` *and* the account color
     from a single decision — split them and a node carries an account it is not painted for, or is

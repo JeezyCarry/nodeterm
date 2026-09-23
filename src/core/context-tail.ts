@@ -198,6 +198,8 @@ interface Tracked {
 
 export interface ContextTail {
   track(sessionId: string | undefined, transcriptPath: string | undefined, sessionWindow?: number | null): void
+  /** Replay a live snapshot only when a consumer explicitly asks to rehydrate. */
+  replay(sessionId: string): void
   untrack(sessionId: string | undefined): void
   /** The transcript path currently tracked for a session, if any. */
   pathFor(sessionId: string | undefined): string | undefined
@@ -332,9 +334,6 @@ export function createContextTail(
           existing.sessionWindow = sessionWindow
           existing.lastWindow = 0 // publish even if only provenance changed
           void read(sessionId, existing)
-        } else if (existing.used > 0 && existing.lastWindow > 0) {
-          // A remounted renderer has no persisted snapshot; context.ensure must replay it.
-          push(sessionId, existing)
         }
         return
       }
@@ -355,6 +354,10 @@ export function createContextTail(
       sessions.set(sessionId, t)
       void read(sessionId, t) // immediate first value (resumed sessions already have content)
       if (!timer) timer = setInterval(tick, POLL_MS)
+    },
+    replay(sessionId) {
+      const t = sessions.get(sessionId)
+      if (t && t.used > 0 && t.lastWindow > 0) push(sessionId, t)
     },
     untrack(sessionId) {
       if (!sessionId) return

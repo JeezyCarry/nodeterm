@@ -273,7 +273,10 @@ describe('session-scoped context configuration (#818)', () => {
         expect.objectContaining({ sessionId: 'large', windowTokens: 1048576, windowSource: 'session-env' })
       ]))
       send.mockClear()
-      tail.track('small', file) // renderer reload: replay while preserving observed env
+      tail.track('small', file, 32000)
+      tail.track('small', file) // legacy hook, no new observation
+      expect(send).not.toHaveBeenCalled()
+      tail.replay('small') // renderer reload: preserve observed env
       expect(send).toHaveBeenCalledWith(expect.objectContaining({ windowTokens: 32000, windowSource: 'session-env' }))
       tail.track('small', file, 64000)
       await vi.waitFor(() => expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: 'small', windowTokens: 64000 })), { timeout: 1800 })

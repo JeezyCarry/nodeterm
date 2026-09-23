@@ -1,3 +1,4 @@
+import { persistenceDescription, usePersistenceStatus } from '../../usePersistenceStatus'
 import { useSettings } from '../../../state/settings'
 import { SettingsSection } from '../SettingsSection'
 import { SearchableRow } from '../SearchableRow'
@@ -12,8 +13,8 @@ import {
 
 const ROWS = {
   enabled: {
-    title: 'Persistent sessions (tmux)',
-    keywords: ['tmux', 'persistent', 'session', 'continuity']
+    title: 'Persistent sessions',
+    keywords: ['tmux', 'persistent', 'session', 'continuity', 'protection', 'host']
   },
   scrollback: { title: 'Scrollback lines', keywords: ['tmux', 'scrollback', 'history', 'lines'] },
   leadPane: {
@@ -28,19 +29,21 @@ const ROWS = {
 const ENTRIES = Object.values(ROWS)
 
 export function TmuxSection({ isActive }: { isActive: boolean }): React.JSX.Element {
+  const status = usePersistenceStatus()
   const settings = useSettings((s) => s.settings)
   const update = useSettings((s) => s.update)
   return (
     <SettingsSection
       id="tmux"
-      title="tmux"
+      title="Session protection"
       description="Applies to new terminals / next launch."
       isActive={isActive}
       searchEntries={ENTRIES}
     >
       <SearchableRow {...ROWS.enabled}>
         <FieldRow
-          label="Persistent sessions (tmux)"
+          label="Persistent sessions"
+          description={persistenceDescription(status)}
           control={
             <Switch
               checked={settings.tmuxEnabled}

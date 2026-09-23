@@ -3771,7 +3771,7 @@ export function TerminalNode({
     }
     const unregisterRestart = registerAgentRestart(
       id,
-      guardConcurrentRestart(id, async (targetAgentId?: AgentId, targetModel?: string, restartShell?: boolean, clearEnv?: boolean) => {
+      guardConcurrentRestart(id, async (targetAgentId?: AgentId, targetModel?: string, restartShell?: boolean, clearEnv?: boolean, beforeRecycle?: () => Promise<Record<string, unknown> | void>) => {
         const st = useAgentStatus.getState().byId[id]
         const currentNode = getNode(id)
         const agentSessionId = restartSessionId(st?.sessionId, currentNode?.data.agentSessionId)
@@ -3877,8 +3877,12 @@ export function TerminalNode({
             isLive: restartTarget
           })
           if (exited !== 'exited') return exited
+          // Swallowed: a failed step must not strand the pane at a bare shell — the recycle below
+          // still brings the conversation back (on whatever account the node is bound to).
+          const patch = beforeRecycle ? await beforeRecycle().catch(() => undefined) : undefined
           transport.recycle(id)
           updateNodeData(id, (node) => ({
+            ...(patch ?? {}),
             agentId: target,
             respawnNonce: ((node.data.respawnNonce as number | undefined) ?? 0) + 1
           }))

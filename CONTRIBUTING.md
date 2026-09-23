@@ -350,6 +350,11 @@ come from git-shared JSON and can end up interpolated into a shell command line.
 `/bin/sh` against a fixture tree. A composed fixture will not tell you that `echo ##MEM` prints an
 empty line because `#` starts a comment.
 
+**Remote context polling must bound bytes before SSH transports them.** Bootstrap from the
+file's measured end, keep offsets in raw bytes, and distinguish an idle read from failure so
+the poller can back off. Bootstrap history restores usage only, never task/result events.
+`core/remote-ssh/transcript-window.ts` and the real-shell remote-context tests pin this contract.
+
 **A shared agent daemon is live-session infrastructure.** Codex's app-server control socket is
 shared by every `--remote` TUI in an account scope, so stopping or replacing one daemon disconnects
 every attached canvas node. A managed launcher must keep the already-bound thread under a bounded
@@ -615,7 +620,10 @@ feature from the one they asked for.
 is reported by its managed hook, accepted only with verified node identity, and validated as a
 positive decimal safe integer. Never read the app's global env for another session or let a
 model-family guess enlarge an observed limit. Unobserved Claude windows are labelled estimates.
-The renderer rehydrates through `context.ensure`; it does not restore Claude denominators from storage. Other agents retain transcript-window persistence.
+The renderer rehydrates through `context.ensure`; it does not restore Claude denominators from
+storage. Other agents retain transcript-window persistence.
+Only an explicit ensure replays an unchanged live snapshot; repeated hook observations must not
+broadcast it again. Remote path, ControlMaster or connection changes replace the tracked generation.
 
 ## Testing
 
@@ -696,3 +704,7 @@ Two files, two audiences:
 **If you change or discover something other contributors must know, update this file too.** An
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
+
+Managed Codex login terminals are agent-less: core identifies their provider from the saved
+account list. Before opening one, await `useSettings.getState().flush()` after adding the account.
+The normal 300 ms coalesced save is too late: an unknown id can launch against the system home.
