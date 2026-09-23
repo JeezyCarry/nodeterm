@@ -616,6 +616,15 @@ examples). If the same effect also WRITES, latch its first run: otherwise switch
 mid-session applies stored state to whatever the user is doing right then, which is a different
 feature from the one they asked for.
 
+**A context capacity needs session provenance.** Claude's effective `CLAUDE_CODE_MAX_CONTEXT_TOKENS`
+is reported by its managed hook, accepted only with verified node identity, and validated as a
+positive decimal safe integer. Never read the app's global env for another session or let a
+model-family guess enlarge an observed limit. Unobserved Claude windows are labelled estimates.
+The renderer rehydrates through `context.ensure`; it does not restore Claude denominators from
+storage. Other agents retain transcript-window persistence.
+Only an explicit ensure replays an unchanged live snapshot; repeated hook observations must not
+broadcast it again. Remote path, ControlMaster or connection changes replace the tracked generation.
+
 **Command-bearing terminal opens (issue #653):** the shared hook-server route requires verified
 node identity whenever `open-terminal` carries `cmd`, including an empty value or a dry run.
 The strict-policy override and foreign-instance fallback cannot release this gate. Desktop plain

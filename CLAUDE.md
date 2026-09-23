@@ -1623,6 +1623,23 @@ else, and its context links must keep classifying across restarts).
     because `/quit --delete` exits *and permanently deletes* the session history, i.e. exactly what the
     restart exists to resume (pinned by its own test).
   Full picture, measurements, gaps and a device checklist: **`docs/gemini-agent.md`**.
+- **Claude session context capacity (#818)** — the managed hook reports only
+  `CLAUDE_CODE_MAX_CONTEXT_TOKENS` from the effective Claude process environment (including
+  `--settings` env), never the GUI/server process environment. HookServer validates decimal safe
+  integers and verified node identity before passing optional `contextWindow` metadata to BOTH
+  shells. Missing metadata means an older/unverified hook; explicit null means the current hook
+  observed no valid override and clears the old observation. Local and SSH tails apply the exact
+  per-session limit before the family estimate, including SMALLER limits; equal model ids do not
+  share configuration. The renderer labels family fallbacks as estimates. Claude observations are
+  not loaded from localStorage: `context.ensure` rehydrates usage, and until another verified hook
+  observes the session env an idle Claude session has only an estimated window. No arbitrary
+  endpoint fields, credentials, config-file reads or CLI commands are involved. A changed transcript
+  starts fresh tracked state; unchanged hook observations never replay usage. Only `context.ensure`
+  explicitly replays the live snapshot for a remounted consumer. Async reads from replaced/untracked
+  entries cannot publish.
+  Desktop and Server share validation; the SSH tail receives the remote hook's own env. Canvas and
+  kanban share ContextMeter. Mobile's separate implementation needs the same provenance distinction.
+  Gateway catalogue/accepted-launch work remains in #723/#725; this does not replace those PRs.
 - **SSH context polling is a bounded byte protocol** (issue #816). The initial snapshot reads
   only the last 1 MiB and records the absolute end offset; subsequent polls process at most
   1 MiB. `core/remote-ssh/transcript-window.ts` measures size and uses block-aligned POSIX `dd`

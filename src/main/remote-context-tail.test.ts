@@ -128,3 +128,76 @@ describe.skipIf(process.platform === 'win32')('real POSIX shell transcript fixtu
     h.tail.untrack('s')
   })
 })
+
+describe('session windows with bounded remote reads', () => {
+  it('updates and removes the override without new bytes, replaying only on request', async () => {
+    const readContextWindow = vi.fn()
+      .mockResolvedValue({ data: Buffer.alloc(0), newOffset: 200, initial: false })
+      .mockResolvedValueOnce({ data: Buffer.from(usage(16000)), newOffset: 200, initial: true })
+    const { tail, send } = harness({ readContextWindow })
+    try {
+      tail.track('env', ref, 32000)
+      await flush()
+      expect(send.mock.calls.at(-1)![1]).toMatchObject({ windowTokens: 32000, usedPercent: 50, windowSource: 'session-env' })
+      tail.track('env', { ...ref, conn: { ...ref.conn } }, 32000)
+      tail.track('env', ref)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(send).toHaveBeenCalledTimes(1)
+      tail.replay('env')
+      expect(send).toHaveBeenCalledTimes(2)
+      expect(send.mock.calls.at(-1)![1]).toMatchObject({ windowTokens: 32000, windowSource: 'session-env' })
+      tail.track('env', ref, 64000)
+      await flush()
+      expect(send.mock.calls.at(-1)![1]).toMatchObject({ windowTokens: 64000, usedPercent: 25, windowSource: 'session-env' })
+      tail.track('env', ref, null)
+      await flush()
+      const estimate = send.mock.calls.at(-1)![1].windowTokens
+      expect(send.mock.calls.at(-1)![1]).toMatchObject({ windowSource: 'estimate' })
+      // Even when the denominator is unchanged, the observation's provenance must update.
+      tail.track('env', ref, estimate)
+      await flush()
+      expect(send.mock.calls.at(-1)![1]).toMatchObject({ windowTokens: estimate, windowSource: 'session-env' })
+      expect(readContextWindow.mock.calls.slice(1).every(c => c[1] === 200)).toBe(true)
+    } finally { tail.untrack('env') }
+  })
+
+  it.each([
+    { ...ref, path: '/abs/new.jsonl' },
+    { ...ref, controlPath: '/new-owner' },
+    { ...ref, conn: { ...ref.conn, host: 'new-host' } }
+  ])('replaces the generation for changed reference %j, rejecting stale reads', async replacement => {
+    let finishOld!: (value: unknown) => void
+    const readContextWindow = vi.fn()
+      .mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve }))
+      .mockResolvedValue({ data: Buffer.from(usage(16000)), newOffset: 200, initial: true })
+    const { tail, send } = harness({ readContextWindow })
+    try {
+      tail.track('replaced', ref, 32000)
+      tail.track('replaced', replacement)
+      await flush()
+      expect(readContextWindow).toHaveBeenLastCalledWith(replacement, null, cap)
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(send.mock.calls[0][1]).toMatchObject({ usedTokens: 16000, windowSource: 'estimate' })
+      finishOld({ data: Buffer.from(usage(1)), newOffset: 100, initial: true })
+      await flush()
+      tail.replay('replaced')
+      expect(send).toHaveBeenCalledTimes(2)
+      expect(send.mock.calls.at(-1)![1]).toMatchObject({ usedTokens: 16000, windowSource: 'estimate' })
+    } finally { tail.untrack('replaced') }
+  })
+
+  it('applies the latest window when an existing read completes', async () => {
+    let finish!: (value: unknown) => void
+    const readContextWindow = vi.fn(() => new Promise(resolve => { finish = resolve }))
+    const { tail, send } = harness({ readContextWindow } as never)
+    try {
+      tail.track('s', ref, 32000)
+      tail.track('s', ref, 64000)
+      expect(readContextWindow).toHaveBeenCalledTimes(1)
+      finish({ data: Buffer.from(usage(16000)), newOffset: 200, initial: true })
+      await flush()
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(send.mock.calls[0][1]).toMatchObject({ windowTokens: 64000, windowSource: 'session-env' })
+    } finally { tail.untrack('s') }
+  })
+})
