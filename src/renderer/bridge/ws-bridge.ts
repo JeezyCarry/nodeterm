@@ -29,6 +29,7 @@ import {
   type GrokApi,
   type GrokCliCaps,
   type ClaudeSkillShareResult,
+  type ClaudeSessionCopyResult,
   type CodexApi,
   type CodexIdentityCaps,
   UNKNOWN_CODEX_IDENTITY_CAPS,
@@ -995,7 +996,16 @@ export function buildClaudeAccountsApi(client: RpcClient): Pick<NodeTerminalApi,
           IPC.claudeAccountsSetSkillSharing,
           id,
           enabled
-        ) as Promise<ClaudeSkillShareResult>
+        ) as Promise<ClaudeSkillShareResult>,
+      // Real: the copy is core, on the machine the browser is served from — the same machine whose
+      // account dirs the Server Edition's panes run under.
+      copySession: (sessionId, sourceAccountId, targetAccountId) =>
+        client.request(
+          IPC.claudeAccountsCopySession,
+          sessionId,
+          sourceAccountId,
+          targetAccountId
+        ) as Promise<ClaudeSessionCopyResult>
     }
   }
 }
