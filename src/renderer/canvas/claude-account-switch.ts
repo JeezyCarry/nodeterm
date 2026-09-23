@@ -100,3 +100,105 @@ export function claudeSwitchHostKey(
   const ssh = n?.data.ssh as SshServer | undefined
   return ssh ? sshHostKey(ssh) : undefined
 }
+
+/**
+ * What one switch did — returned rather than announced, so the single switch (one notice) and the
+ * bulk move (one summary for N nodes) share the choreography and differ only in what they say.
+ */
+export type ClaudeSwitchOutcome =
+  | { kind: 'switched' }
+  | { kind: 'same-account' }
+  | {
+      kind: 'refused'
+      reason: 'not-claude' | 'remote' | 'no-session' | 'unavailable' | 'no-connection' | 'not-attached'
+    }
+  /** The CLI never quit (busy / not eligible at call time, or it did not exit in time). */
+  | { kind: 'not-restarted'; outcome: 'exit-timeout' | 'not-eligible' }
+  /** Quit and came back — on its ORIGINAL account, because the copy was refused. */
+  | { kind: 'copy-failed'; reason: string }
+
+/** The single-switch notice (null = say nothing: a no-op same-account pick). */
+export function switchOutcomeNotice(
+  o: ClaudeSwitchOutcome,
+  targetLabel: string
+): { kind: 'info' | 'error'; text: string } | null {
+  switch (o.kind) {
+    case 'switched':
+      return { kind: 'info', text: `Switched to ${targetLabel} — resuming the same conversation.` }
+    case 'same-account':
+      return null
+    case 'copy-failed':
+      return { kind: 'error', text: copyRefusalText(o.reason, targetLabel) }
+    case 'not-restarted':
+      return {
+        kind: 'error',
+        text:
+          o.outcome === 'not-eligible'
+            ? 'Switch skipped: this session is busy or not attached — try again once its turn is done.'
+            : 'Switch skipped: the agent did not quit in time. Nothing was changed.'
+      }
+    case 'refused':
+      return {
+        kind: 'error',
+        text:
+          o.reason === 'no-session'
+            ? 'This session has no resumable conversation id yet — nothing to switch.'
+            : o.reason === 'remote' || o.reason === 'not-claude'
+              ? 'Switching accounts is not available for this session.'
+              : o.reason === 'no-connection'
+                ? 'This host is not connected — reconnect the project, then switch. Nothing was changed.'
+                : o.reason === 'not-attached'
+                  ? 'Switch skipped: this terminal is not attached right now.'
+                  : `${targetLabel} is no longer available. Nothing was changed.`
+      }
+  }
+}
+
+/** A live canvas node, as the bulk move needs to see it. */
+export interface BulkSwitchNode {
+  id: string
+  agentId?: string
+  /** `data.accountId` (undefined = the system account). */
+  accountId?: string
+  /** `claudeSwitchHostKey` — the machine the pane runs on (undefined = this one). */
+  hostKey?: string
+  /** The live agent state: a `working`/`blocked` session is skipped, never interrupted. */
+  busy: boolean
+}
+
+/**
+ * The Claude sessions on `from` (undefined = the system account) that live on the scoped machine
+ * — the set "Move N sessions" counts and the bulk move walks, in canvas order. `busy` ones are
+ * listed separately: they are counted (so the number the user saw is the number accounted for) but
+ * never switched, because a switch types `/exit`, which a permission prompt would take as an answer.
+ */
+export function bulkSwitchCandidates(
+  nodes: readonly BulkSwitchNode[],
+  from: string | undefined,
+  scopeHostKey: string | undefined
+): { ready: BulkSwitchNode[]; busy: BulkSwitchNode[] } {
+  const on = nodes.filter(
+    (n) =>
+      n.agentId === 'claude' &&
+      (n.accountId || undefined) === (from || undefined) &&
+      (n.hostKey || undefined) === (scopeHostKey || undefined)
+  )
+  return { ready: on.filter((n) => !n.busy), busy: on.filter((n) => n.busy) }
+}
+
+/** One line for a bulk move: what moved, what came back on its old account, what was skipped. */
+export function summarizeBulkSwitch(
+  outcomes: readonly ClaudeSwitchOutcome[],
+  busySkipped: number,
+  targetLabel: string
+): { kind: 'info' | 'error'; text: string } {
+  const moved = outcomes.filter((o) => o.kind === 'switched').length
+  const stayed = outcomes.filter((o) => o.kind === 'copy-failed').length
+  const skipped =
+    busySkipped + outcomes.filter((o) => o.kind === 'not-restarted' || o.kind === 'refused').length
+  const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
+  const parts = [`Moved ${plural(moved, 'session', 'sessions')} to ${targetLabel}`]
+  if (stayed) parts.push(`${stayed} resumed on their old account (the conversation could not be copied)`)
+  if (skipped) parts.push(`${skipped} skipped (busy, not attached or without a conversation yet)`)
+  return { kind: stayed || skipped ? 'error' : 'info', text: `${parts.join(' · ')}.` }
+}

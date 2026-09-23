@@ -7320,6 +7320,16 @@ button.group-node__setup:disabled {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
+/* The bulk "Move N sessions" control: the picked targets wrap onto their own line under the label. */
+.usage-account__move-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  margin-top: 3px;
+}
+.usage-account__move-targets .usage-account__use {
+  margin-left: 0;
+}
 
 /* Popover-footer action (issue #420): opens the system-scoped `claude /login` terminal. A quiet
    full-width row, styled with the same tint/accent tokens as `.usage-account__use` so it reads
