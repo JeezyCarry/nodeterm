@@ -404,6 +404,8 @@ export function buildStubApi(): Omit<
       onApplyMutation: noopUnsub,
       onPeerPending: noopUnsub,
       onPeerPendingCleared: noopUnsub,
+      // Standing phone hosting is Desktop-only; never pretend that a browser pinned a phone.
+      approvePhone: U('remoteHost.approvePhone'),
       approve: (_id: string) => {},
       reject: (_id: string) => {},
       setPhoneAccess: noop

@@ -292,7 +292,7 @@ import { initStandingHost } from './remote/standing-host'
 import { killRelayHostsByPeerKey } from './remote/relay-host'
 import { initRelayHost } from './remote/relay-host-service'
 import { createRevoker } from './remote/revocation'
-import { loadApprovedDevices, saveApprovedDevices } from './remote/approved-devices'
+import { loadApprovedDevices, saveApprovedDevices, updateApprovedDevices } from './remote/approved-devices'
 import { publicKeyToB64 } from './remote/e2ee'
 import { connectRelayClient, type RelayClientSession } from './remote/relay-client'
 import { decodeOffer } from './remote/pairing'
@@ -1674,6 +1674,7 @@ app.whenReady().then(async () => {
   const peerRevoker = createRevoker({
     load: loadApprovedDevices,
     save: saveApprovedDevices,
+    update: updateApprovedDevices,
     onRevoke: (peerKeyB64) => killRelayHostsByPeerKey(peerKeyB64)
   })
   ipcMain.handle(IPC.remoteRevokePeer, (_e, peerKeyB64: string) =>

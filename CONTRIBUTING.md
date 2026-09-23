@@ -690,3 +690,10 @@ Two files, two audiences:
 **If you change or discover something other contributors must know, update this file too.** An
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
+
+**Phone consent belongs to the verified handshake, not the browse socket.** A standing phone's
+SAS request survives transport closure only until its 120-second deadline; approval requires the
+issued id and displayed box key together. Keep request/reply outcomes distinct (stale request,
+failed pin save, missing IPC response, saved-but-disconnected). All production pin/revoke writers
+must use `updateApprovedDevices` for the whole read/modify/write, so concurrent updates cannot
+lose approvals or resurrect revoked keys. Server Edition does not host this legacy relay path.
