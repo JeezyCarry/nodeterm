@@ -698,7 +698,7 @@ export function UsageIndicator({
                 window.dispatchEvent(new CustomEvent('nodeterm:switch-system-account'))
               }}
             >
-              ⇄ Switch account…
+              ⇄ Switch Claude account…
             </button>
           )}
         </div>
