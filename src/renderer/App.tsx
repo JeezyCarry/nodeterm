@@ -19,6 +19,8 @@ import { resolveUiScale } from '../shared/ui-scale'
 import { resolveTabBarHeight } from '../shared/window-chrome-metrics'
 import { useAppTheme } from './state/useAppTheme'
 import { installWindowActivityOnDocument } from './lib/windowActivity'
+import { glassChromeAlpha, parseCssColor } from './lib/glassContrast'
+import { isLiquidGlass } from './lib/appTheme'
 
 export default function App() {
   // Apply the terminal-rendering setting to the two GPU coordinators, live. 'auto' is
@@ -71,6 +73,32 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = appTheme
   }, [appTheme])
+
+  // Liquid Glass (Settings → Appearance). `data-nt-glass` switches the chrome rules in styles.css
+  // on, and `--glass-chrome-bg` is the ONE fill every glass chrome surface uses: the resolved
+  // `--panel` at the alpha that keeps the resolved `--text` at 4.5:1 over any backdrop
+  // (`glassChromeAlpha`). Read from the computed tokens rather than re-typed here, so the palette
+  // stays the one source of truth; declared after the data-theme effect, so it reads the tokens
+  // of the theme that effect just applied. An unparseable token leaves the chrome opaque.
+  const liquidGlass = isLiquidGlass(useSettings((s) => s.settings.appTheme))
+  useEffect(() => {
+    const root = document.documentElement
+    if (!liquidGlass) {
+      delete root.dataset.ntGlass
+      root.style.removeProperty('--glass-chrome-bg')
+      return
+    }
+    const css = getComputedStyle(root)
+    const text = css.getPropertyValue('--text').trim()
+    const panel = css.getPropertyValue('--panel').trim()
+    const alpha = glassChromeAlpha(text, panel)
+    const rgb = parseCssColor(panel)?.rgb
+    root.style.setProperty(
+      '--glass-chrome-bg',
+      alpha !== null && rgb ? `rgba(${rgb.join(', ')}, ${alpha.toFixed(3)})` : panel
+    )
+    root.dataset.ntGlass = 'on'
+  }, [liquidGlass, appTheme])
 
   // Apply the UI scale as page zoom (issue #299 — 4K readability; the why-page-zoom write-up
   // lives in shared/ui-scale.ts). Gated on `hydrated` so boot doesn't flash-reset a scaled window

@@ -1397,8 +1397,12 @@ export interface Settings {
   cursorBlink: boolean
   /** Appearance of the APP chrome (tab bar, panels, node headers, menus). `auto` (the default)
    *  takes it from the terminal colour theme, so picking a light terminal theme doesn't leave a
-   *  black window framing it; `dark`/`light` pin it. See renderer/lib/appTheme.ts. */
-  appTheme: 'auto' | 'dark' | 'light'
+   *  black window framing it; `dark`/`light` pin it. `liquid-glass` follows the terminal theme like
+   *  `auto` AND turns the Liquid Glass appearance on: every canvas node and the app chrome go
+   *  translucent + blurred over the wallpaper, and terminal windows drop their per-node accent
+   *  colour; tint opacities keep the primary text at WCAG 4.5:1 over any backdrop
+   *  (renderer/lib/glassContrast.ts). See renderer/lib/appTheme.ts. */
+  appTheme: 'auto' | 'dark' | 'light' | 'liquid-glass'
   /** Scale factor for the whole application UI (1 = 100%; issue #299, 4K readability). Applied as
    *  PAGE ZOOM (`webFrame.setZoomFactor`) on desktop, so menus, node headers, dialogs — and
    *  terminal glyphs — all scale together: the terminal font-size setting stays in CSS px, so its
@@ -1421,10 +1425,6 @@ export interface Settings {
   /** Desktop wallpaper behind the canvas (Liquid Glass appearance). Opt-in; `none` draws the
    *  canvas exactly as before. Hand-editable: read through `normalizeWallpaper` (shared/wallpaper). */
   desktopWallpaper: import('./wallpaper').DesktopWallpaper
-  /** Frosted-glass terminal nodes: translucent tint + backdrop blur, with the tint's opacity
-   *  computed per terminal theme so text keeps WCAG 4.5:1 over any backdrop
-   *  (renderer/lib/glassContrast.ts). Terminal nodes only. Opt-in. */
-  glassTerminals: boolean
   /** Weight for normal text. xterm's own default is `normal` (400). */
   fontWeight: number
   /** Weight for BOLD text. xterm's own default is `bold` (700). Lowering it is how you keep bold
@@ -1859,7 +1859,6 @@ export const DEFAULT_SETTINGS: Settings = {
   windowTitleActiveSession: false,
   terminalTheme: 'nodeterm-dark',
   desktopWallpaper: { kind: 'none' },
-  glassTerminals: false,
   fontWeight: 400,
   fontWeightBold: 700,
   drawBoldTextInBrightColors: true,

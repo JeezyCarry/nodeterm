@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useSettings } from '../../../state/settings'
+import { isLiquidGlass } from '@renderer/lib/appTheme'
 import {
+  defaultWallpaper,
   GRADIENT_WALLPAPERS,
   NO_WALLPAPER,
   normalizeWallpaper,
@@ -37,7 +39,7 @@ import { APPEARANCE_RESET_KEYS } from '@renderer/lib/settingsReset'
 const ROWS = {
   appTheme: {
     title: 'Appearance',
-    keywords: ['appearance', 'theme', 'light', 'dark', 'mode', 'colour', 'color', 'chrome']
+    keywords: ['appearance', 'theme', 'light', 'dark', 'mode', 'colour', 'color', 'chrome', 'liquid', 'glass', 'blur', 'translucent', 'frosted']
   },
   uiScale: {
     title: 'UI scale',
@@ -51,10 +53,6 @@ const ROWS = {
   wallpaper: {
     title: 'Desktop wallpaper',
     keywords: ['wallpaper', 'background', 'desktop', 'image', 'picture', 'gradient', 'sonoma', 'canvas']
-  },
-  glassTerminals: {
-    title: 'Glass terminals',
-    keywords: ['glass', 'liquid', 'blur', 'translucent', 'transparent', 'frosted', 'terminal']
   },
   windowTitle: {
     title: 'Window title',
@@ -334,8 +332,19 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
   const hiddenHeaderButtons = useSettings((s) => s.settings.hiddenHeaderButtons)
   const showResumeCard = useSettings((s) => s.settings.showResumeCard)
   const windowTitleActiveSession = useSettings((s) => s.settings.windowTitleActiveSession)
-  const glassTerminals = useSettings((s) => s.settings.glassTerminals)
   const update = useSettings((s) => s.update)
+  // Glass over plain black reads as a dark theme with smudges, so choosing Liquid Glass with no
+  // wallpaper also picks one. Only when there is none: a wallpaper the user chose is never
+  // replaced, and re-checked after the (possibly slow, first-run thumbnail) stills listing.
+  const chooseAppTheme = async (v: typeof appTheme): Promise<void> => {
+    update({ appTheme: v })
+    if (!isLiquidGlass(v)) return
+    const hasWallpaper = () =>
+      normalizeWallpaper(useSettings.getState().settings.desktopWallpaper).kind !== 'none'
+    if (hasWallpaper()) return
+    const stills = await window.nodeTerminal.wallpaper.listStills().catch(() => [])
+    if (!hasWallpaper()) update({ desktopWallpaper: defaultWallpaper(stills) })
+  }
   return (
     <SettingsSection
       id="appearance"
@@ -346,16 +355,21 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
       <SearchableRow {...ROWS.appTheme}>
         <FieldRow
           label="Appearance"
-          description="Follow terminal theme uses the colour theme you picked in Settings → Terminal, so a light terminal isn't framed by a dark window."
+          description={
+            "Follow terminal uses the colour theme you picked in Settings → Terminal, so a light terminal isn't framed by a dark window. " +
+            'Liquid Glass follows it too, and turns nodes, the tab bar, dock, menus, sidebar, dialogs and this page into frosted glass over the desktop wallpaper (one is picked for you if none is set); terminal windows drop their colour accents. ' +
+            'Tints keep regular text at 4.5:1 contrast whatever is behind it (a Solarized Light terminal is already below that and stays opaque); secondary text and coloured output such as red or blue can fade over bright parts of the wallpaper.'
+          }
           control={
             <SegmentedPill
               value={appTheme}
               options={[
                 { value: 'auto', label: 'Follow terminal' },
                 { value: 'dark', label: 'Dark' },
-                { value: 'light', label: 'Light' }
+                { value: 'light', label: 'Light' },
+                { value: 'liquid-glass', label: 'Liquid Glass' }
               ]}
-              onChange={(v) => update({ appTheme: v })}
+              onChange={(v) => void chooseAppTheme(v)}
               ariaLabel="Appearance"
             />
           }
@@ -394,19 +408,6 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
       </SearchableRow>
       <SearchableRow {...ROWS.wallpaper}>
         <WallpaperPicker />
-      </SearchableRow>
-      <SearchableRow {...ROWS.glassTerminals}>
-        <FieldRow
-          label="Glass terminals"
-          description="Terminal nodes become frosted glass over the wallpaper or canvas. Their tint is set per terminal theme so regular text keeps at least 4.5:1 contrast whatever is behind it (Solarized Light is already below that and stays opaque). Coloured output such as red or blue can fade over bright parts of the wallpaper. Terminal nodes only."
-          control={
-            <Switch
-              checked={glassTerminals === true}
-              onChange={(v) => update({ glassTerminals: v })}
-              ariaLabel="Glass terminals"
-            />
-          }
-        />
       </SearchableRow>
       <SearchableRow {...ROWS.windowTitle}>
         <FieldRow

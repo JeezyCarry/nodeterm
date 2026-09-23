@@ -127,3 +127,62 @@ export function glassTint(theme: { background?: string; foreground?: string }): 
     foreground
   }
 }
+
+/* ------------------------------------------------------------------------------------------- *
+ * Liquid Glass CHROME (tab bar, dock, menus, sidebar, dialogs, Settings, non-terminal nodes).
+ *
+ * Same guarantee, one difference that matters: the app's `--text` is itself TRANSLUCENT
+ * (`rgba(var(--tint-rgb), 0.85)`), so the ink a user sees is the text colour blended over the
+ * surface it sits on — and that surface is now a blend over an unknown backdrop. The foreground
+ * therefore moves WITH the backdrop, which breaks the white/black endpoint argument above (it
+ * assumes a fixed fg). So this one samples: a 6×6×6 grid of backdrop colours (every channel at
+ * 0, 51, …, 255) plus a grey ramp at step 5. `glassContrast.test.ts` re-checks the answer on a
+ * finer grey sweep for both app themes.
+ * ------------------------------------------------------------------------------------------- */
+
+/** `#hex`, `rgb(r, g, b)` or `rgba(r, g, b, a)` → channels + alpha; null when unparseable. */
+export function parseCssColor(css: string): { rgb: Rgb; alpha: number } | null {
+  const hex = parseHex(css)
+  if (hex) return { rgb: hex, alpha: 1 }
+  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(css.trim())
+  if (!m) return null
+  return { rgb: [Number(m[1]), Number(m[2]), Number(m[3])], alpha: m[4] === undefined ? 1 : Number(m[4]) }
+}
+
+const CHROME_BACKDROPS: Rgb[] = (() => {
+  const out: Rgb[] = []
+  for (let r = 0; r <= 255; r += 51)
+    for (let g = 0; g <= 255; g += 51) for (let b = 0; b <= 255; b += 51) out.push([r, g, b])
+  for (let v = 0; v <= 255; v += 5) out.push([v, v, v])
+  return out
+})()
+
+/** Contrast of (possibly translucent) text on `panel`@`alpha` over one backdrop pixel. */
+export function chromeContrast(
+  text: { rgb: Rgb; alpha: number },
+  panel: Rgb,
+  alpha: number,
+  backdrop: Rgb
+): number {
+  const surface = composite(panel, backdrop, alpha)
+  return contrastRatio(composite(text.rgb, surface, text.alpha), surface)
+}
+
+/**
+ * The smallest alpha (floored at 0.55) for a chrome surface of colour `panel` that keeps `text`
+ * at `minRatio` over every sampled backdrop; 1 when even opaque does not reach it; null when a
+ * colour cannot be parsed (the caller then leaves the chrome opaque).
+ */
+export function glassChromeAlpha(text: string, panel: string, minRatio = 4.5): number | null {
+  const t = parseCssColor(text)
+  const p = parseCssColor(panel)
+  if (!t || !p) return null
+  let lowest = Infinity
+  for (let i = Math.round(1 / STEP); i >= 0; i--) {
+    const a = i * STEP
+    if (!CHROME_BACKDROPS.every((b) => chromeContrast(t, p.rgb, a, b) >= minRatio)) break
+    lowest = a
+  }
+  if (lowest === Infinity) return 1
+  return Math.max(GLASS_ALPHA_MIN, lowest)
+}

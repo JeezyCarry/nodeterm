@@ -101,6 +101,15 @@ export function normalizeWallpaper(v: unknown): DesktopWallpaper {
   return NO_WALLPAPER
 }
 
+/**
+ * What Liquid Glass picks when it is chosen with no wallpaper, so glass never sits over plain
+ * black: the first macOS still (the scan already orders Sonoma Horizon first), else the first
+ * gradient — the answer on Linux, Windows and the Server Edition, where the list is empty.
+ */
+export function defaultWallpaper(stills: readonly { id: string }[]): DesktopWallpaper {
+  return stills[0] ? { kind: 'preset', id: stills[0].id } : { kind: 'preset', id: GRADIENT_WALLPAPERS[0].id }
+}
+
 export function sameWallpaper(a: DesktopWallpaper, b: DesktopWallpaper): boolean {
   if (a.kind !== b.kind) return false
   if (a.kind === 'preset') return a.id === (b as { id: string }).id

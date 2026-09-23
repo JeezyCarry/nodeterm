@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { TERMINAL_THEMES } from '../terminal/themes'
 import {
@@ -6,6 +8,9 @@ import {
   composite,
   contrastRatio,
   glassTintAlpha,
+  chromeContrast,
+  glassChromeAlpha,
+  parseCssColor,
   parseHex,
   worstContrast
 } from './glassContrast'
@@ -83,5 +88,48 @@ describe('glassTintAlpha', () => {
     expect(glassTintAlpha('#ffffff', '#000000', 1.5)).toBe(GLASS_ALPHA_MIN)
     expect(glassTintAlpha('#777777', '#808080')).toBe(1)
     expect(glassTintAlpha('nope', '#000000')).toBe(GLASS_ALPHA_MAX)
+  })
+})
+
+describe('glassChromeAlpha (Liquid Glass chrome, both app themes)', () => {
+  // Read the real tokens, so a palette change re-proves the guarantee instead of drifting past it.
+  const CSS = readFileSync(join(__dirname, '../styles.css'), 'utf8').replace(/\r\n/g, '\n')
+  function block(selector: string): string {
+    const start = CSS.indexOf(`${selector} {`)
+    return CSS.slice(start, CSS.indexOf('\n}', start))
+  }
+  function token(body: string, name: string): string | undefined {
+    return new RegExp(`\\n\\s*${name}:\\s*([^;]+);`).exec(body)?.[1].trim()
+  }
+  const dark = block(':root')
+  const light = block(":root[data-theme='light']")
+  const resolve = (theme: string, name: string): string => {
+    const raw = token(theme, name) ?? token(dark, name)!
+    const tint = token(theme, '--tint-rgb') ?? token(dark, '--tint-rgb')!
+    return raw.replace('var(--tint-rgb)', tint)
+  }
+
+  it.each([
+    ['dark', dark],
+    ['light', light]
+  ])('%s: --text on the glass --panel keeps 4.5:1 over a fine grey sweep, below opaque', (_n, theme) => {
+    const text = parseCssColor(resolve(theme, '--text'))!
+    const panel = parseCssColor(resolve(theme, '--panel'))!.rgb
+    const a = glassChromeAlpha(resolve(theme, '--text'), resolve(theme, '--panel'))!
+    expect(a).toBeGreaterThanOrEqual(GLASS_ALPHA_MIN)
+    expect(a).toBeLessThan(1)
+    for (let v = 0; v <= 255; v++) {
+      expect(chromeContrast(text, panel, a, [v, v, v])).toBeGreaterThanOrEqual(4.5)
+    }
+    for (const b of [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0], [0, 255, 255], [255, 0, 255]] as const) {
+      expect(chromeContrast(text, panel, a, b)).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('parses the colour forms the tokens use', () => {
+    expect(parseCssColor('rgba(58, 48, 38, 0.85)')).toEqual({ rgb: [58, 48, 38], alpha: 0.85 })
+    expect(parseCssColor('#282828')).toEqual({ rgb: [40, 40, 40], alpha: 1 })
+    expect(parseCssColor('rgb(1,2,3)')).toEqual({ rgb: [1, 2, 3], alpha: 1 })
+    expect(glassChromeAlpha('nope', '#000')).toBeNull()
   })
 })
