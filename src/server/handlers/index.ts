@@ -10,6 +10,7 @@ import { claudeCliCaps, registerClaudeCliIpc } from '../../core/claude-cli'
 import { registerGrokCliIpc } from '../../core/grok-cli'
 import { registerCodexIdentityIpc } from '../../core/codex-identity-caps'
 import { registerCodexCliIpc } from '../../core/codex-cli'
+import { registerWallpaperIpc } from '../../core/wallpaper'
 import { startUsageService } from '../../core/usage/usage-service'
 import { registerClaudeAccountsIpc } from '../../core/claude-accounts-service'
 import { codexUsageAccounts } from '../../core/codex-accounts-core'
@@ -83,6 +84,7 @@ export function registerCoreHandlers(
   // hand a later codex a value it removed: exactly the "a stub compiles fine while doing nothing"
   // failure the three-surfaces rule warns about.
   registerCodexCliIpc()
+  registerWallpaperIpc()
   void claudeCliCaps()
 
   // The answer is populated after server node identity is armed. Early browser callers wait for

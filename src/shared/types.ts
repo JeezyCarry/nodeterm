@@ -3548,6 +3548,7 @@ export interface NodeTerminalApi {
   githubControl: import('./github-issues').GitHubControlApi
   usage: UsageApi
   sessionMemory: SessionMemoryApi
+  wallpaper: import('./wallpaper').WallpaperApi
   triggers: TriggersApi
   context: ContextApi
   canvas: CanvasApi

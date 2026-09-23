@@ -491,6 +491,11 @@ const api: NodeTerminalApi = {
     read: (q?: SessionMemoryQuery) => ipcRenderer.invoke(IPC.sessionMemory, q),
     host: (q?: SessionMemoryQuery) => ipcRenderer.invoke(IPC.sessionMemoryHost, q)
   },
+  wallpaper: {
+    listStills: () => ipcRenderer.invoke(IPC.wallpaperListStills),
+    load: (w) => ipcRenderer.invoke(IPC.wallpaperLoad, w),
+    importImage: (p) => ipcRenderer.invoke(IPC.wallpaperImport, p)
+  },
   triggers: {
     arm: (projectId, nodeId, spec) => ipcRenderer.invoke(IPC.triggersArm, { projectId, nodeId, spec }),
     disarm: (projectId, nodeId) => ipcRenderer.invoke(IPC.triggersDisarm, { projectId, nodeId }),

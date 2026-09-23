@@ -1,5 +1,6 @@
 import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
 import { subscribeAgentReplay } from '../../shared/agent-replay-subscription'
+import type { DesktopWallpaper, WallpaperStill } from '../../shared/wallpaper'
 // WebSocket bridge that reconstructs `window.nodeTerminal` in the browser (Server Edition).
 //
 // Under Electron the preload already defines `window.nodeTerminal`; this module only runs when
@@ -852,6 +853,16 @@ export function buildSessionMemoryApi(client: RpcClient): Pick<NodeTerminalApi, 
   }
 }
 
+export function buildWallpaperApi(client: RpcClient): Pick<NodeTerminalApi, 'wallpaper'> {
+  return {
+    wallpaper: {
+      listStills: () => client.request(IPC.wallpaperListStills) as Promise<WallpaperStill[]>,
+      load: (w: DesktopWallpaper) => client.request(IPC.wallpaperLoad, w) as Promise<string | null>,
+      importImage: (p: string) => client.request(IPC.wallpaperImport, p) as Promise<DesktopWallpaper>
+    }
+  }
+}
+
 /**
  * Build the `claude` namespace over an RpcClient. `cliCaps` is a REAL handler on the server
  * (`registerClaudeCliIpc` runs in the server shell too), so the browser resolves the very same
@@ -1133,6 +1144,7 @@ export async function installWsBridge(): Promise<boolean> {
     ...buildSpeechApi(client),
     ...buildUsageApi(client),
     ...buildSessionMemoryApi(client),
+    ...buildWallpaperApi(client),
     ...buildTriggersApi(client),
     ...buildGitHubApi(client),
     ...buildClaudeAccountsApi(client),
