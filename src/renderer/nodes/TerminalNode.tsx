@@ -180,6 +180,7 @@ import { ContextMeter } from '../components/ContextMeter'
 import { isZoomModifierHeld } from '../lib/zoomModifier'
 import { isHidden } from '../lib/ui-visibility'
 import { glassTint, resolveGlassSlider } from '../lib/glassContrast'
+import { useGlassA11y } from '../lib/useGlassA11y'
 import { isLiquidGlass } from '../lib/appTheme'
 import { resolveTerminalTheme } from '../terminal/themes'
 import { readsClaudeTranscript } from '../lib/transcriptGates'
@@ -1250,9 +1251,10 @@ export function TerminalNode({
   // that keeps its foreground at 4.5:1 over any backdrop (lib/glassContrast.ts).
   const glass = isLiquidGlass(useSettings((s) => s.settings.appTheme))
   const glassSlider = resolveGlassSlider(useSettings((s) => s.settings.glassTint))
+  const glassA11y = useGlassA11y()
   const glassVars = useMemo(() => {
     if (!glass) return null
-    const tint = glassTint(resolveTerminalTheme(visual.terminalTheme).theme, glassSlider)
+    const tint = glassTint(resolveTerminalTheme(visual.terminalTheme).theme, glassSlider, glassA11y)
     return tint
       ? ({
           '--term-glass-bg': tint.background,
@@ -1260,7 +1262,7 @@ export function TerminalNode({
           '--term-glass-fg': tint.foreground
         } as React.CSSProperties)
       : null
-  }, [glass, glassSlider, visual.terminalTheme])
+  }, [glass, glassSlider, glassA11y, visual.terminalTheme])
   // The account list, for the chip and for the READERS below: a config dir the user links while
   // this pane sits quiet must resolve to its new account immediately, not at the next hook event.
   const claudeAccounts = useSettings((s) => s.settings.claudeAccounts)

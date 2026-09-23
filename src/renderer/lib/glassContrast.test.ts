@@ -20,7 +20,8 @@ import {
   glassSheen,
   glassSliderAlpha,
   glassTint,
-  resolveGlassSlider
+  resolveGlassSlider,
+  glassSurfaceAlpha
 } from './glassContrast'
 
 const WHITE = [255, 255, 255] as const
@@ -196,5 +197,13 @@ describe('Glass slider (Clear ↔ Tinted)', () => {
     expect(at(0)).toBeLessThan(at(GLASS_READABLE_TICK))
     expect(at(GLASS_READABLE_TICK)).toBeCloseTo(glassTintAlpha(t.theme.foreground!, t.theme.background!), 3)
     expect(at(1)).toBeGreaterThanOrEqual(at(GLASS_READABLE_TICK))
+  })
+})
+
+describe('accessibility outranks the Glass slider', () => {
+  it('Reduce Transparency is opaque; Increase Contrast pins to Tinted', () => {
+    expect(glassSurfaceAlpha(0, 0.7, { reduceTransparency: true, moreContrast: false })).toBe(1)
+    expect(glassSurfaceAlpha(0, 0.7, { reduceTransparency: false, moreContrast: true })).toBe(glassSliderAlpha(1, 0.7))
+    expect(glassSurfaceAlpha(0.3, 0.7)).toBe(glassSliderAlpha(0.3, 0.7))
   })
 })

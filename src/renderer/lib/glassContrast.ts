@@ -118,12 +118,13 @@ export interface GlassTint {
  *  its background is not a colour we can parse. */
 export function glassTint(
   theme: { background?: string; foreground?: string },
-  slider: number = GLASS_READABLE_TICK
+  slider: number = GLASS_READABLE_TICK,
+  a11y: GlassA11y = NO_GLASS_A11Y
 ): GlassTint | null {
   const bg = theme.background ? parseHex(theme.background) : null
   if (!bg) return null
   const foreground = theme.foreground ?? '#ffffff'
-  const alpha = glassSliderAlpha(slider, glassTintAlpha(foreground, theme.background!))
+  const alpha = glassSurfaceAlpha(slider, glassTintAlpha(foreground, theme.background!), a11y)
   const rgb = bg.join(', ')
   return {
     background: `rgba(${rgb}, ${alpha.toFixed(3)})`,
@@ -240,4 +241,19 @@ export function glassSheen(t: number): number {
 export const GLASS_REFRACT_MAX = 0.06
 export function glassRefraction(t: number): number {
   return GLASS_REFRACT_MAX * (1 - t)
+}
+
+/** The system accessibility settings that outrank the Glass slider, like iOS. */
+export interface GlassA11y {
+  /** Reduce Transparency: glass becomes opaque (and loses blur, refraction and sheen in CSS). */
+  reduceTransparency: boolean
+  /** Increase Contrast: the slider pins to the Tinted end. */
+  moreContrast: boolean
+}
+export const NO_GLASS_A11Y: GlassA11y = { reduceTransparency: false, moreContrast: false }
+
+/** The tint alpha a surface actually gets: the slider's, unless an accessibility setting wins. */
+export function glassSurfaceAlpha(t: number, readable: number, a11y: GlassA11y = NO_GLASS_A11Y): number {
+  if (a11y.reduceTransparency) return 1
+  return glassSliderAlpha(a11y.moreContrast ? 1 : t, readable)
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSettings } from '../../../state/settings'
 import { isLiquidGlass } from '@renderer/lib/appTheme'
 import { GLASS_READABLE_TICK, resolveGlassSlider } from '@renderer/lib/glassContrast'
+import { useGlassA11y } from '@renderer/lib/useGlassA11y'
 import { showCanvasDots } from '@renderer/lib/canvasDots'
 import {
   defaultWallpaper,
@@ -343,6 +344,8 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
   const showResumeCard = useSettings((s) => s.settings.showResumeCard)
   const canvasDots = useSettings((s) => s.settings.canvasDots)
   const glassSlider = resolveGlassSlider(useSettings((s) => s.settings.glassTint))
+  const glassA11y = useGlassA11y()
+  const glassLocked = glassA11y.reduceTransparency || glassA11y.moreContrast
   const windowTitleActiveSession = useSettings((s) => s.settings.windowTitleActiveSession)
   const update = useSettings((s) => s.update)
   // Glass over plain black reads as a dark theme with smudges, so choosing Liquid Glass with no
@@ -393,18 +396,23 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
           <FieldRow
             label="Glass"
             description={
-              glassSlider < GLASS_READABLE_TICK
+              glassA11y.reduceTransparency
+                ? 'Reduce Transparency is on in your system settings, so glass is opaque. Turn it off there to use this slider.'
+                : glassA11y.moreContrast
+                ? 'Increase Contrast is on in your system settings, so glass stays at Tinted with stronger edges.'
+                : glassSlider < GLASS_READABLE_TICK
                 ? 'Clearer than Readable: the wallpaper shows through more, and text contrast is no longer guaranteed.'
                 : 'From Readable to Tinted, regular text keeps 4.5:1 contrast over any wallpaper.'
             }
             control={
-              <div className="flex w-56 flex-col gap-1">
+              <div className={cn('flex w-56 flex-col gap-1', glassLocked && 'pointer-events-none opacity-40')}>
                 <input
                   type="range"
                   min={0}
                   max={1}
                   step={0.01}
                   list="nt-glass-ticks"
+                  disabled={glassLocked}
                   value={glassSlider}
                   aria-label="Glass, from Clear to Tinted"
                   aria-valuetext={

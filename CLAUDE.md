@@ -3902,6 +3902,16 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   moves (`.canvas-moving`); chrome keeps both. MEASURED on the live dev build (CDP computed style):
   Chromium keeps `url("#nt-refract") blur(…) saturate(…)` on the tab bar, dock, sessions sidebar,
   minimap, zoom controls and terminal nodes.
+- **Accessibility outranks the slider** (HIG liquid-glass.md, like iOS). `lib/useGlassA11y.ts`
+  reads `prefers-reduced-transparency` and `prefers-contrast: more` (one subscription, Electron and
+  browser alike) and `glassSurfaceAlpha` applies them to every tint alpha: **Reduce Transparency**
+  = alpha 1, no blur, no refraction filter in the DOM, no sheen, and the slider row is disabled
+  with the reason; **Increase Contrast** = the slider pins to Tinted, `--glass-edge` goes to 0.5,
+  terminal borders thicken and the `--sys-*` palette takes HIG's increased-contrast columns
+  (`SYSTEM_COLORS.darkContrast|lightContrast`, pinned to the CSS). The alpha half lives in JS
+  because the fills are INLINE custom properties a media query cannot override. **Reduce Motion**
+  holds the three state glows static-lit (the idle gate's values) and stops the minimap and badge
+  pulses, in every appearance — the state still reads, nothing breathes.
 - **Surfaces.** Desktop: full. Server Edition: gradients + glass; the stills list is empty (not
   macOS) and "Choose image…" is hidden (a picker there browses the SERVER's disk). Relay tabs keep
   a stub (no stills, import refused). Mobile: N/A (no canvas). Kanban: N/A (the board is opaque).

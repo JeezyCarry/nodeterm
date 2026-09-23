@@ -13706,3 +13706,83 @@ body.focus-mode .dock:hover {
   padding: 1px 6px;
   border-radius: 999px;
 }
+
+/* ---- Liquid Glass accessibility (HIG liquid-glass.md: Reduce Transparency, Increase Contrast,
+   Reduce Motion). The system settings outrank the Glass slider, as on iOS. App.tsx and the
+   terminal nodes read the same two media queries (lib/useGlassA11y.ts) for the tint ALPHA, which
+   lives in inline custom properties CSS cannot override; everything else is here. */
+
+/* Reduce Transparency: opaque surfaces (the alpha is 1 from JS), and no blur, refraction or
+   sheen — nothing of the wallpaper shows through. */
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-nt-glass='on'] {
+    --glass-blur: none;
+    --glass-sheen: 0;
+    --glass-sheen-image: none;
+  }
+}
+
+/* Increase Contrast: the slider pins to Tinted (from JS), edges get stronger and the palette takes
+   HIG's increased-contrast values (lib/palette.ts, pinned by styles.palette.test.ts). */
+@media (prefers-contrast: more) {
+  :root[data-nt-glass='on'] {
+    --glass-edge: rgba(var(--tint-rgb), 0.5);
+    --sys-red: #ff6961;
+    --sys-orange: #ffb340;
+    --sys-yellow: #ffd426;
+    --sys-green: #30db5b;
+    --sys-mint: #66d4cf;
+    --sys-teal: #5de6ff;
+    --sys-cyan: #70d7ff;
+    --sys-blue: #409cff;
+    --sys-indigo: #7d7aff;
+    --sys-purple: #da8fff;
+    --sys-pink: #ff6482;
+    --sys-brown: #b59469;
+    --sys-gray: #aeaeb2;
+  }
+  :root[data-nt-glass='on'][data-theme='light'] {
+    --sys-red: #d70015;
+    --sys-orange: #c93400;
+    --sys-yellow: #b25000;
+    --sys-green: #248a3d;
+    --sys-mint: #0c817b;
+    --sys-teal: #008299;
+    --sys-cyan: #0071a4;
+    --sys-blue: #0040dd;
+    --sys-indigo: #3634a3;
+    --sys-purple: #8944ab;
+    --sys-pink: #d30f45;
+    --sys-brown: #7f6545;
+    --sys-gray: #6c6c70;
+  }
+  :root[data-nt-glass='on'] .term-node {
+    border-width: 1.5px;
+  }
+}
+
+/* Reduce Motion (every appearance): the state glows stop pulsing and hold lit, the same static
+   values the idle-window gate uses, and the minimap strokes stop beating. The state still reads. */
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__node:has(.term-node.unread)::after {
+    animation: none;
+    opacity: 0.85;
+    will-change: auto;
+  }
+  .react-flow__node:has(.term-node.working)::after {
+    animation: none;
+    opacity: 0.7;
+    will-change: auto;
+  }
+  .react-flow__node:has(.term-node.attention)::after {
+    animation: none;
+    opacity: 0.8;
+    will-change: auto;
+  }
+  .term-node__status-dot,
+  .minimap .mm-working,
+  .minimap .mm-attention,
+  .minimap .mm-unread {
+    animation: none;
+  }
+}

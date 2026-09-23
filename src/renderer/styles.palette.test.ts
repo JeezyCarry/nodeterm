@@ -89,6 +89,7 @@ describe('palette tokens', () => {
     // Claude-identity surfaces (subagent node, usage pill) and the onboarding decoration.
     const rules = CSS.slice(CSS.indexOf('\n}\n', CSS.search(/^:root\[data-theme='light'\]/m)))
       .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*--sys-[a-z]+:.*$/gm, '') // palette declarations (the Increase Contrast block)
     const hits = rules.match(
       /rgba?\(\s*(255,\s*69,\s*58|10,\s*132,\s*255|48,\s*209,\s*88|255,\s*159,\s*10|191,\s*122,\s*240|217,\s*119,\s*87)|#(ff453a|30d158|32d74b|ff9f0a|bf7af0|ffb340|f85149|8e8e93)\b/gi
     )
@@ -157,8 +158,47 @@ describe('minimap status strokes match the node glows', () => {
       expect(canvas).toContain(stroke)
       const glow = CSS.slice(CSS.indexOf(`.react-flow__node:has(.term-node.${state})::after {`))
       expect(glow.slice(0, glow.indexOf('}'))).toContain(`var(--state-${state})`)
-      const mm = CSS.slice(CSS.lastIndexOf(`.minimap .mm-${state} {`))
+      const mm = CSS.slice(CSS.indexOf(`\n.minimap .mm-${state} {\n  filter`))
       expect(mm.slice(0, mm.indexOf('}'))).toContain(`var(--state-${state})`)
     })
   }
+})
+
+describe('Liquid Glass accessibility fallbacks', () => {
+  /** Body of the first `@media <query> {` block (balanced braces). */
+  const media = (query: string): string => {
+    const start = CSS.indexOf(`@media ${query} {`)
+    expect(start, query).toBeGreaterThanOrEqual(0)
+    let depth = 0
+    for (let i = CSS.indexOf('{', start); i < CSS.length; i++) {
+      if (CSS[i] === '{') depth++
+      else if (CSS[i] === '}' && --depth === 0) return CSS.slice(start, i + 1)
+    }
+    return ''
+  }
+
+  it('Reduce Transparency drops blur, refraction and sheen on glass', () => {
+    const m = media('(prefers-reduced-transparency: reduce)')
+    expect(m).toContain(":root[data-nt-glass='on']")
+    expect(m).toMatch(/--glass-blur:\s*none/)
+    expect(m).toMatch(/--glass-sheen-image:\s*none/)
+  })
+
+  it('Increase Contrast strengthens edges and takes the HIG increased-contrast palette', () => {
+    const m = media('(prefers-contrast: more)')
+    expect(m).toMatch(/--glass-edge:\s*rgba\(var\(--tint-rgb\), 0\.5\)/)
+    const light = m.slice(m.indexOf("[data-theme='light']"))
+    const dark = m.slice(0, m.indexOf("[data-theme='light']"))
+    for (const [name, hex] of Object.entries(SYSTEM_COLORS.darkContrast)) expect(dark).toContain(`--sys-${name}: ${hex};`)
+    for (const [name, hex] of Object.entries(SYSTEM_COLORS.lightContrast)) expect(light).toContain(`--sys-${name}: ${hex};`)
+  })
+
+  it('Reduce Motion holds every state glow still', () => {
+    const all = CSS.split('@media (prefers-reduced-motion: reduce) {').slice(1).join('')
+    for (const state of ['unread', 'working', 'attention']) {
+      const rule = all.slice(all.indexOf(`.react-flow__node:has(.term-node.${state})::after {`))
+      expect(rule.slice(0, rule.indexOf('}')), state).toContain('animation: none')
+    }
+    expect(all).toMatch(/\.minimap \.mm-unread \{\s*animation: none/)
+  })
 })

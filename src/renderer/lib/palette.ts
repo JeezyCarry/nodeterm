@@ -19,7 +19,10 @@ export type SystemColor =
   | 'brown'
   | 'gray'
 
-export const SYSTEM_COLORS: Record<'dark' | 'light', Record<SystemColor, string>> = {
+export const SYSTEM_COLORS: Record<
+  'dark' | 'light' | 'darkContrast' | 'lightContrast',
+  Record<SystemColor, string>
+> = {
   dark: {
     red: '#ff453a',
     orange: '#ff9f0a',
@@ -49,6 +52,38 @@ export const SYSTEM_COLORS: Record<'dark' | 'light', Record<SystemColor, string>
     pink: '#ff2d55',
     brown: '#a2845e',
     gray: '#8e8e93'
+  },
+  // HIG color.md's "Increased contrast" columns — what Liquid Glass switches to under the system
+  // Increase Contrast setting (styles.css, the accessibility block at the end).
+  darkContrast: {
+    red: '#ff6961',
+    orange: '#ffb340',
+    yellow: '#ffd426',
+    green: '#30db5b',
+    mint: '#66d4cf',
+    teal: '#5de6ff',
+    cyan: '#70d7ff',
+    blue: '#409cff',
+    indigo: '#7d7aff',
+    purple: '#da8fff',
+    pink: '#ff6482',
+    brown: '#b59469',
+    gray: '#aeaeb2'
+  },
+  lightContrast: {
+    red: '#d70015',
+    orange: '#c93400',
+    yellow: '#b25000',
+    green: '#248a3d',
+    mint: '#0c817b',
+    teal: '#008299',
+    cyan: '#0071a4',
+    blue: '#0040dd',
+    indigo: '#3634a3',
+    purple: '#8944ab',
+    pink: '#d30f45',
+    brown: '#7f6545',
+    gray: '#6c6c70'
   }
 }
 

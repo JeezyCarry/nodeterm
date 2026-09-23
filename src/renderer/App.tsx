@@ -19,7 +19,8 @@ import { resolveUiScale } from '../shared/ui-scale'
 import { resolveTabBarHeight } from '../shared/window-chrome-metrics'
 import { useAppTheme } from './state/useAppTheme'
 import { installWindowActivityOnDocument } from './lib/windowActivity'
-import { glassChromeAlpha, glassSheen, glassSliderAlpha, parseCssColor, resolveGlassSlider } from './lib/glassContrast'
+import { glassChromeAlpha, glassSheen, glassSurfaceAlpha, parseCssColor, resolveGlassSlider } from './lib/glassContrast'
+import { useGlassA11y } from './lib/useGlassA11y'
 import { GlassRefraction } from './components/GlassRefraction'
 import { isLiquidGlass } from './lib/appTheme'
 
@@ -85,6 +86,8 @@ export default function App() {
   // The Glass slider moves every surface between Clear and Tinted through its own readable alpha
   // (glassSliderAlpha); `--glass-t` scales the blur and `--glass-sheen` the specular wash in CSS.
   const glassSlider = resolveGlassSlider(useSettings((s) => s.settings.glassTint))
+  // Reduce Transparency / Increase Contrast outrank the slider (opaque / Tinted), like iOS.
+  const glassA11y = useGlassA11y()
   useEffect(() => {
     const root = document.documentElement
     if (!liquidGlass) {
@@ -105,13 +108,13 @@ export default function App() {
     root.style.setProperty(
       '--glass-chrome-bg',
       readable !== null && rgb
-        ? `rgba(${rgb.join(', ')}, ${glassSliderAlpha(glassSlider, readable).toFixed(3)})`
+        ? `rgba(${rgb.join(', ')}, ${glassSurfaceAlpha(glassSlider, readable, glassA11y).toFixed(3)})`
         : panel
     )
     root.style.setProperty('--glass-t', glassSlider.toFixed(3))
-    root.style.setProperty('--glass-sheen', glassSheen(glassSlider).toFixed(3))
+    root.style.setProperty('--glass-sheen', glassA11y.reduceTransparency ? '0' : glassSheen(glassSlider).toFixed(3))
     root.dataset.ntGlass = 'on'
-  }, [liquidGlass, appTheme, glassSlider])
+  }, [liquidGlass, appTheme, glassSlider, glassA11y])
 
   // Apply the UI scale as page zoom (issue #299 — 4K readability; the why-page-zoom write-up
   // lives in shared/ui-scale.ts). Gated on `hydrated` so boot doesn't flash-reset a scaled window
@@ -140,7 +143,7 @@ export default function App() {
         {/* The node-icon picker, opened from the node menu, a node header and the kanban card
             modal — one dialog for all three, driven by nodeIconDialog(). */}
         <NodeIconDialogHost />
-        {liquidGlass && <GlassRefraction slider={glassSlider} />}
+        {liquidGlass && !glassA11y.reduceTransparency && <GlassRefraction slider={glassSlider} />}
       </ReactFlowProvider>
     </SessionProvider>
   )
