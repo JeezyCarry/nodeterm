@@ -705,3 +705,9 @@ Two files, two audiences:
 **If you change or discover something other contributors must know, update this file too.** An
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
+
+**Windows text submission waits for the composer.** Use `core/settled-text.ts` for native PTY and
+session-host `sendText`: adjacent paste/Enter writes can be consumed in one read. The bounded
+screen check may leave text unsubmitted; a true result means text was accepted, not that a turn
+started. Never retry the paste just because no submit was observed. Collapsed or hidden pastes
+may need manual Enter; device testing remains necessary.

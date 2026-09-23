@@ -1084,13 +1084,19 @@ emulator: a `?2004h` it sees was written by the app itself, which is exactly the
 `paste-buffer -p` asks tmux for. `HostSession.bracketedPasteRequested()` reads it (behind
 `outputTail`, like `serialize` — xterm applies writes asynchronously, so an early read answers "no"
 for the turn that just enabled it) and `sendKeysWrites` (`session-host/send-keys-delivery.ts`)
-mirrors the tmux plan: `sanitizePasteText` ALWAYS, the frame only when the app asked, and the Enter
-as its own write AFTER the close marker — never inside the framed burst, which is the shape #453
-measured as mangled. Unframed it stays one write, byte-identical to the pre-fix path. Before this
-the host answered `sendKeys` with a single raw `text + '\r'`, so an injected prompt landed in a
-paste-aware composer (Codex, Claude) and was never submitted. **NOT verified on a device**: whether
-ConPTY re-emits an app's `?2004h` into the pty stream the host reads. If it does not, the mode is
-always false and every write is the old one — no fix, never a regression.
+sanitizes ALWAYS and frames only when the app asked. Separate writes alone can still be read
+as one burst (#780). Both native Windows `sendText` and host `sendKeys` now execute through
+`core/settled-text.ts`: capture a baseline, paste without Enter, then poll at 40 ms for at most
+15 polls for a changed, stable screen containing the sanitized text. Only then write one Enter,
+after rechecking liveness/generation and paste mode. Unknown capture, unchanged output or timeout
+leaves the paste unsubmitted. True still means accepted text, so callers must not retry an
+unconfirmed submit and duplicate the paste. Overlapping sendText operations on the same pane
+are refused before input; insert-only, empty Enter and unframed input retain their contracts.
+A collapsed/hidden/oversize paste may require manual Enter. This is an observed-screen heuristic,
+not an application acknowledgement. Linux fake-PTY tests cover a 150 ms busy reader; real Windows
+Codex/Claude, context-link/write, dictation and rename device checks remain required. Existing
+hosts keep their old implementation until they retire; no automatic host restart is performed.
+
 
 **The actual fix is older than the problem: `paste-buffer -p`.** From tmux's own man page — *"If
 `-p` is specified, paste bracket control codes are inserted around the buffer **if the application
