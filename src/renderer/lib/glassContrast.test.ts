@@ -21,7 +21,9 @@ import {
   glassSliderAlpha,
   glassTint,
   resolveGlassSlider,
-  glassSurfaceAlpha
+  glassSurfaceAlpha,
+  snapGlassSlider,
+  stepGlassSlider
 } from './glassContrast'
 
 const WHITE = [255, 255, 255] as const
@@ -205,5 +207,22 @@ describe('accessibility outranks the Glass slider', () => {
     expect(glassSurfaceAlpha(0, 0.7, { reduceTransparency: true, moreContrast: false })).toBe(1)
     expect(glassSurfaceAlpha(0, 0.7, { reduceTransparency: false, moreContrast: true })).toBe(glassSliderAlpha(1, 0.7))
     expect(glassSurfaceAlpha(0.3, 0.7)).toBe(glassSliderAlpha(0.3, 0.7))
+  })
+})
+
+describe('Glass slider detent (macOS tick-mark feel)', () => {
+  it('a drag within ±0.03 of the tick lands on it', () => {
+    expect(snapGlassSlider(GLASS_READABLE_TICK + 0.03)).toBe(GLASS_READABLE_TICK)
+    expect(snapGlassSlider(GLASS_READABLE_TICK - 0.02)).toBe(GLASS_READABLE_TICK)
+    expect(snapGlassSlider(0.5)).toBe(0.5)
+  })
+
+  it('arrow keys step 0.05 and stop on the tick when they cross it', () => {
+    expect(stepGlassSlider(0.5, 1)).toBeCloseTo(0.55, 10)
+    expect(stepGlassSlider(0.68, 1)).toBe(GLASS_READABLE_TICK)
+    expect(stepGlassSlider(0.72, -1)).toBe(GLASS_READABLE_TICK)
+    expect(stepGlassSlider(GLASS_READABLE_TICK, 1)).toBeCloseTo(0.75, 10)
+    expect(stepGlassSlider(1, 1)).toBe(1)
+    expect(stepGlassSlider(0, -1)).toBe(0)
   })
 })

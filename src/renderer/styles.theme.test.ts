@@ -110,6 +110,8 @@ describe('every CSS variable resolves', () => {
     '--term-glass-header-bg',
     '--term-glass-fg',
     '--glass-chrome-bg', // App.tsx, Liquid Glass chrome fill (lib/glassContrast.ts glassChromeAlpha)
+    '--glass-fill', // GlassSlider, the slider value (fills the track)
+    '--glass-tick', // GlassSlider, the Readable tick position (the notch)
     '--peer-color', // presence chips, per peer
     '--group-label-boost', // GroupNode, zoom-compensated label size
     '--mascot-w',

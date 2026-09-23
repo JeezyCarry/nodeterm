@@ -17,6 +17,7 @@ import { SYSTEM_NODE_COLOR_SWATCHES } from '@shared/node-colors'
 import { SettingsSection } from '../SettingsSection'
 import { SearchableRow } from '../SearchableRow'
 import { FieldRow } from '../FieldRow'
+import { GlassSlider } from '../GlassSlider'
 import { Switch } from '@renderer/ui/Switch'
 import { SegmentedPill } from '@renderer/ui/SegmentedPill'
 import {
@@ -401,45 +402,15 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
                 : glassA11y.moreContrast
                 ? 'Increase Contrast is on in your system settings, so glass stays at Tinted with stronger edges.'
                 : glassSlider < GLASS_READABLE_TICK
-                ? 'Clearer than Readable: the wallpaper shows through more, and text contrast is no longer guaranteed.'
-                : 'From Readable to Tinted, regular text keeps 4.5:1 contrast over any wallpaper.'
+                ? 'Clearer than Readable: text can fade over bright parts of the wallpaper.'
+                : 'Regular text keeps 4.5:1 contrast over any wallpaper.'
             }
             control={
-              <div className={cn('flex w-56 flex-col gap-1', glassLocked && 'pointer-events-none opacity-40')}>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  list="nt-glass-ticks"
-                  disabled={glassLocked}
-                  value={glassSlider}
-                  aria-label="Glass, from Clear to Tinted"
-                  aria-valuetext={
-                    Math.abs(glassSlider - GLASS_READABLE_TICK) < 0.005
-                      ? 'Readable'
-                      : `${Math.round(glassSlider * 100)}% tinted`
-                  }
-                  onChange={(e) => update({ glassTint: Number(e.target.value) })}
-                  className="w-full accent-[var(--accent)]"
-                />
-                <datalist id="nt-glass-ticks">
-                  <option value={GLASS_READABLE_TICK} label="Readable" />
-                </datalist>
-                <div className="relative h-4 text-[11px] text-muted">
-                  <span className="absolute left-0">Clear</span>
-                  <button
-                    type="button"
-                    className="absolute -translate-x-1/2 hover:text-text"
-                    style={{ left: `${GLASS_READABLE_TICK * 100}%` }}
-                    onClick={() => update({ glassTint: null })}
-                    title="Back to the readable point"
-                  >
-                    Readable
-                  </button>
-                  <span className="absolute right-0">Tinted</span>
-                </div>
-              </div>
+              <GlassSlider
+                value={glassSlider}
+                disabled={glassLocked}
+                onChange={(v) => update({ glassTint: v })}
+              />
             }
           />
         </SearchableRow>

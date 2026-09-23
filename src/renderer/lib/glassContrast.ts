@@ -257,3 +257,19 @@ export function glassSurfaceAlpha(t: number, readable: number, a11y: GlassA11y =
   if (a11y.reduceTransparency) return 1
   return glassSliderAlpha(a11y.moreContrast ? 1 : t, readable)
 }
+
+/** Magnetic detent, like a macOS slider's tick marks: a drag within this of the tick lands on it. */
+export const GLASS_TICK_DETENT = 0.03
+/** Keyboard arrow step. */
+export const GLASS_SLIDER_STEP = 0.05
+
+export function snapGlassSlider(v: number): number {
+  return Math.abs(v - GLASS_READABLE_TICK) <= GLASS_TICK_DETENT + 1e-9 ? GLASS_READABLE_TICK : v
+}
+
+/** One arrow press from `v` (dir -1 / +1): a step of 0.05 that stops on the tick if it crosses it. */
+export function stepGlassSlider(v: number, dir: -1 | 1): number {
+  const next = Math.min(1, Math.max(0, Math.round((v + dir * GLASS_SLIDER_STEP) * 1000) / 1000))
+  const crosses = dir > 0 ? v < GLASS_READABLE_TICK && next > GLASS_READABLE_TICK : v > GLASS_READABLE_TICK && next < GLASS_READABLE_TICK
+  return crosses ? GLASS_READABLE_TICK : snapGlassSlider(next)
+}
