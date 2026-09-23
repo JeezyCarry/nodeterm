@@ -12,8 +12,26 @@ const accounts = [acct('a'), acct('b'), acct('pend', { pending: true }), acct('r
 const node = { agentId: 'claude', accountId: 'a', remote: false, sessionId: 'sid-1' }
 
 describe('claudeSwitchTargets', () => {
-  it('offers only settled local accounts', () => {
+  it('offers only settled accounts on the node\'s own machine', () => {
     expect(claudeSwitchTargets(accounts).map((x) => x.id)).toEqual(['a', 'b'])
+    const hosted = [...accounts, acct('rem2', { host: 'u@h' }), acct('other', { host: 'x@y' })]
+    expect(claudeSwitchTargets(hosted, 'u@h').map((x) => x.id)).toEqual(['rem', 'rem2'])
+  })
+})
+
+describe('planClaudeAccountSwitch — SSH', () => {
+  const ssh = { agentId: 'claude', accountId: 'rem', remote: false, hostKey: 'u@h', sessionId: 's' }
+  const hosted = [...accounts, acct('rem2', { host: 'u@h' }), acct('other', { host: 'x@y' })]
+  it('switches between accounts pinned to the node\'s host, and to the host system dir', () => {
+    expect(planClaudeAccountSwitch(ssh, 'rem2', hosted)).toEqual({
+      ok: true,
+      plan: { sessionId: 's', sourceAccountId: 'rem', targetAccountId: 'rem2' }
+    })
+    expect(planClaudeAccountSwitch(ssh, undefined, hosted)).toMatchObject({ ok: true })
+  })
+  it('refuses a local account or another host\'s account for an SSH node', () => {
+    expect(planClaudeAccountSwitch(ssh, 'a', hosted)).toEqual({ ok: false, reason: 'unavailable' })
+    expect(planClaudeAccountSwitch(ssh, 'other', hosted)).toEqual({ ok: false, reason: 'unavailable' })
   })
 })
 

@@ -2819,7 +2819,7 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     the project-default account), and validation runs against `accountsForProject`, not the raw
     list, so a **pending** account or one **pinned to another machine's host** is never stamped
     onto a node it cannot run on (both used to reach the missing-dir fallback at spawn).
-  - **Switch Claude account (running node, local only)** — node right-click → *Switch Claude
+  - **Switch Claude account (running node)** — node right-click → *Switch Claude
     account ▸* moves the conversation onto another account **already logged in** on this machine,
     with no `/login` in the pane. It works because a transcript carries **no account identity**
     (measured on 2.1.280: under a config dir lacking the file `--resume` says "No conversation found";
@@ -2833,7 +2833,12 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     overwritten; and the rebind is **returned** by `beforeRecycle` and merged into the closure's own
     `updateNodeData`, never set by a separate Canvas `setNodes` in the same tick (React Flow's update
     queue rebuilds the node from the store's copy and can drop it). Builtin `claude` only (the
-    `boundAccountId` rule below). SSH / relay: shown disabled — the host-side copy is a follow-up.
+    `boundAccountId` rule below). **SSH nodes** switch between the accounts pinned to THEIR host (and
+    the host's own `~/.claude`): the copy runs ON the host as one generated `sh` script over the
+    project's master (`core/remote-claude-session-copy.ts`, tested under a real `/bin/sh`; same
+    prefix/diverged rule, via `head -c | cmp`), and `SshProjectManager.remoteClaudeSessionCopy`
+    refuses an account pinned to another host. An SSH ctx with no remote leg (Server Edition) is
+    refused, never answered from the local disk. Relay tabs: shown disabled.
   - **`boundAccountId(accountId, agentId)` (`shared/agents/account-binding.ts`) is the ONE rule for
     whether a node is account-bound at all**, and it feeds `data.accountId` *and* the account color
     from a single decision — split them and a node carries an account it is not painted for, or is
