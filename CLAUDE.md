@@ -580,7 +580,7 @@ Lifecycle, by intent:
   carry over; do NOT "optimize" this into a respawn+redraw — a fresh xterm on a reused client
   misses the attach-time mode sequences and breaks scrolling). The park timer then runs the real
   teardown: `kill()` detaches the PTY client; the tmux session keeps running. **Window and cap
-  are settings (issue #886)**: `settings.terminalParkMinutes` (default 5; **0 = until app quit** —
+  are settings (issue #886)**: `settings.terminalParkMinutes` (default **10**, raised from 5; **0 = until app quit** —
   `parkWindowMs` returns `null` and NO timer is armed, never `Infinity`, which `setTimeout` clamps
   to ~1 ms and would dispose every park at once) and `settings.terminalParkMax` (default **20**, raised from 12), both
   re-validated at park time. The LRU cap evicts **local parks before remote ones**
