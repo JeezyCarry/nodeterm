@@ -1623,6 +1623,23 @@ else, and its context links must keep classifying across restarts).
     because `/quit --delete` exits *and permanently deletes* the session history, i.e. exactly what the
     restart exists to resume (pinned by its own test).
   Full picture, measurements, gaps and a device checklist: **`docs/gemini-agent.md`**.
+- **Claude session context capacity (#818)** — the managed hook reports only
+  `CLAUDE_CODE_MAX_CONTEXT_TOKENS` from the effective Claude process environment (including
+  `--settings` env), never the GUI/server process environment. HookServer validates decimal safe
+  integers and verified node identity before passing optional `contextWindow` metadata to BOTH
+  shells. Missing metadata means an older/unverified hook; explicit null means the current hook
+  observed no valid override and clears the old observation. Local and SSH tails apply the exact
+  per-session limit before the family estimate, including SMALLER limits; equal model ids do not
+  share configuration. The renderer labels family fallbacks as estimates. Claude observations are
+  not loaded from localStorage: `context.ensure` rehydrates usage, and until another verified hook
+  observes the session env an idle Claude session has only an estimated window. No arbitrary
+  endpoint fields, credentials, config-file reads or CLI commands are involved. A changed transcript
+  starts fresh tracked state; unchanged hook observations never replay usage. Only `context.ensure`
+  explicitly replays the live snapshot for a remounted consumer. Async reads from replaced/untracked
+  entries cannot publish.
+  Desktop and Server share validation; the SSH tail receives the remote hook's own env. Canvas and
+  kanban share ContextMeter. Mobile's separate implementation needs the same provenance distinction.
+  Gateway catalogue/accepted-launch work remains in #723/#725; this does not replace those PRs.
 - **SSH context polling is a bounded byte protocol** (issue #816). The initial snapshot reads
   only the last 1 MiB and records the absolute end offset; subsequent polls process at most
   1 MiB. `core/remote-ssh/transcript-window.ts` measures size and uses block-aligned POSIX `dd`
@@ -2048,6 +2065,22 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   refuses TODAY, not on the cutoff** — which is why every token sweep must also call
   `hookServer.forgetProvenNode`. `/hook/*` never 403s a missing token: the phone, the cross-instance
   failover and every pre-token session legitimately have none.
+- **Shared Claude/Gemini settings are user data (issue #851).** The local hook install/remove
+  and Claude fullscreen writers share `core/agents/hooks/settings-file.ts`; SSH system/account
+  hook installs and fullscreen writes share `remote-settings-file.ts`. Only ENOENT / the remote
+  explicit missing-file status or a successfully read empty/whitespace file starts from `{}`.
+  Malformed/non-object/read-error settings are preserved. Each transaction stages the complete output, takes a `.nodeterm-lock` directory,
+  compares its original bytes before rename, and preserves the file mode. Remote snapshots and
+  replacements travel on stdin, with a byte-count check against truncated transport; the shell
+  needs no Python/Node/jq. Local profiles resolve symlinks and lock/update the shared target,
+  rechecking resolution before publication. SSH does the same with plain readlink + cd -P
+  (macOS-compatible, no GNU -f), bounding cycles and refusing dangling links/newline paths.
+  Grok's owned file heals malformed JSON and hook shapes by rebuilding its managed config.
+  A held or crash-left lock skips the update with a diagnostic naming the lock and instructing
+  the user to stop writers before inspecting/removing a stale lock; it never gets stolen. External editors need not honor our lock: the final comparison detects edits
+  during merge/staging, but cannot eliminate an external write between comparison and rename.
+  No claim that the reporter's historical wipe was proven to take this path: the catch-to-empty
+  writer and its data loss were reproduced in fixture homes.
 - **Fullscreen TUI (Claude)** — through the SAME `settings.json` seam the hook installer uses,
   nodeterm ensures Claude's `"tui": "fullscreen"` so a session takes the alternate screen + mouse
   and behaves natively in tmux (else a drag falls into copy-mode). Two guardrails: **write-if-absent**
@@ -2964,8 +2997,8 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     **from settings only** — never a dir named by the POST. **Removing a linked account only
     forgets the record**: the `rm -rf` names `accountConfigDir(userData, id)` directly, so it is
     structurally incapable of reaching outside the managed root even if the settings row is gone
-    before the IPC lands. The hook installer writes `settings.json` THROUGH a symlink
-    (`writeFileSync`) — a profile whose `settings.json` symlinks to `~/.claude/settings.json` (the
+    before the IPC lands. The hook installer resolves `settings.json` symlinks and atomically updates their target
+    (without replacing the link) — a profile whose `settings.json` symlinks to `~/.claude/settings.json` (the
     two-profile layout) stays a symlink; pinned by `claude-accounts-link-symlink.test.ts`, and
     switching that write to `renameAtomic` would be the regression (it replaces the link).
   - **Observed account** (`ObservedClaudeAccount`, `NormalizedAgentEvent.account`) — which account
@@ -3614,10 +3647,11 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   disabled with a hint while the session is busy or has no id yet), delete. Actions live
   in `Canvas.tsx`, operate on `targetIds`. **Conversation actions are grouped** so an agent node's
   menu fits on screen: **Transfer conversation ▸** holds one row per target (a model-capable target
-  nests its gateway models one level further), and **Restart ▸** holds every quit-and-resume
-  variant — restart, restart + fresh shell, restart on subscription, then Reopen as / Switch model /
-  Switch account. `ContextMenu` renders submenus to any depth (`MenuRows` is recursive); a flyout
-  that hosts a submenu drops its scroll (`.ctx-submenu--host` — `overflow: auto` would clip the
+  nests its gateway models one level further), and **Restart ▸** holds the restart variants —
+  restart, restart + fresh shell, restart on subscription, then Reopen as. Switch model ▸ and Switch
+  account ▸ stay first-level rows beside it (everyday choices, not recovery restarts).
+  `ContextMenu` renders submenus to any depth (`MenuRows` is recursive); a flyout that hosts a
+  submenu drops its scroll (`.ctx-submenu--host` — `overflow: auto` would clip the
   nested flyout) and `useSubmenuFlip` lifts a flyout that would run off the bottom. The non-destructive rows are user-hideable from
   **Settings → Appearance** ("Node menu items" / "Terminal header buttons"), stored as HIDDEN
   lists in `settings.hiddenNodeMenuItems` / `settings.hiddenHeaderButtons` (empty = everything
@@ -4617,8 +4651,8 @@ the target BEFORE both complete paths are quoted, then the shell preserves the w
 while cleaning that exact temp. The temp leaf must stay independent of the target leaf — appending
 `.uuid.tmp` to a valid `NAME_MAX` target makes the write impossible. It currently protects
 filesystem API writes, tmux.conf, the private hook endpoint, node
-tokens, agent status and pending answers; generated hook scripts/config merges still use their
-existing direct writes and must not be described as atomic. Upload directories use UUIDs across app
+tokens, agent status and pending answers; some generated hook scripts/config merges still use direct writes; only the guarded shared
+Claude/Gemini settings transactions stage and rename here. Do not generalize that claim to every installer. Upload directories use UUIDs across app
 processes. Downloads and media-cache copies use hidden UUID `.part` names; user-visible downloads
 also hold an exclusive candidate lock until the rename and cleanup finish. Never simplify any of
 those back to `<target>.tmp` / `<target>.part` or a read-only "does the destination exist?" check —

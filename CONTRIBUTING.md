@@ -620,12 +620,34 @@ feature from the one they asked for.
 `status` is `error` and limits are empty, including beside other providers; preserve last-known
 bars when limits remain. Keep both single-account and multi-account views covered.
 
+**A context capacity needs session provenance.** Claude's effective `CLAUDE_CODE_MAX_CONTEXT_TOKENS`
+is reported by its managed hook, accepted only with verified node identity, and validated as a
+positive decimal safe integer. Never read the app's global env for another session or let a
+model-family guess enlarge an observed limit. Unobserved Claude windows are labelled estimates.
+The renderer rehydrates through `context.ensure`; it does not restore Claude denominators from
+storage. Other agents retain transcript-window persistence.
+Only an explicit ensure replays an unchanged live snapshot; repeated hook observations must not
+broadcast it again. Remote path, ControlMaster or connection changes replace the tracked generation.
+
 **Command-bearing terminal opens (issue #653):** the shared hook-server route requires verified
 node identity whenever `open-terminal` carries `cmd`, including an empty value or a dry run.
 The strict-policy override and foreign-instance fallback cannot release this gate. Desktop plain
 terminal opens keep their existing identity policy; Server Edition still requires verification
 for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
 command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
+
+## User-owned agent settings
+
+Claude/Gemini settings must go through the guarded transactions in
+`src/core/agents/hooks/{settings-file,remote-settings-file}.ts`. Confirmed absence or a successfully read empty/whitespace file may start from `{}`;
+malformed, non-object and unreadable files must survive unchanged.
+Keep unrelated settings and foreign hook handlers. Stage writes, serialize nodeterm writers,
+and compare the original bytes again before publishing; never use `cat … || echo '{}'` or a
+catch-all read fallback. Local and SSH symlinked profiles update and lock the resolved target without replacing
+the link; recheck resolution before publishing. SSH uses plain readlink and cd -P (no GNU -f),
+and refuses dangling/cyclic links and newline paths. A conflicting/stale lock skips installation
+with a diagnostic naming the lock and safe manual recovery; do not steal it from another process. These locks
+coordinate nodeterm, not external editors, so do not claim a filesystem-wide compare-and-swap.
 
 ## Testing
 
