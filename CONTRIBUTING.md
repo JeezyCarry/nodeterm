@@ -350,6 +350,11 @@ come from git-shared JSON and can end up interpolated into a shell command line.
 `/bin/sh` against a fixture tree. A composed fixture will not tell you that `echo ##MEM` prints an
 empty line because `#` starts a comment.
 
+**Remote context polling must bound bytes before SSH transports them.** Bootstrap from the
+file's measured end, keep offsets in raw bytes, and distinguish an idle read from failure so
+the poller can back off. Bootstrap history restores usage only, never task/result events.
+`core/remote-ssh/transcript-window.ts` and the real-shell remote-context tests pin this contract.
+
 **A shared agent daemon is live-session infrastructure.** Codex's app-server control socket is
 shared by every `--remote` TUI in an account scope, so stopping or replacing one daemon disconnects
 every attached canvas node. A managed launcher must keep the already-bound thread under a bounded

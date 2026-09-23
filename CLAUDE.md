@@ -1616,6 +1616,19 @@ else, and its context links must keep classifying across restarts).
     because `/quit --delete` exits *and permanently deletes* the session history, i.e. exactly what the
     restart exists to resume (pinned by its own test).
   Full picture, measurements, gaps and a device checklist: **`docs/gemini-agent.md`**.
+- **SSH context polling is a bounded byte protocol** (issue #816). The initial snapshot reads
+  only the last 1 MiB and records the absolute end offset; subsequent polls process at most
+  1 MiB. `core/remote-ssh/transcript-window.ts` measures size and uses block-aligned POSIX `dd`
+  with base64, transferring less than 1.6 MiB including alignment/framing; idle replies contain
+  only the size/range header. The encoded dd exit status must survive the shell pipeline:
+  pipeline success alone can hide a failed read. Short/malformed replies and SSH failures throw,
+  retain the cursor, and back off from 2s to 60s with payload-free diagnostics. Bootstrap and
+  detected truncation restore usage without replaying historical task notifications/tool results,
+  including a historical partial line completed later. A changed remote reference replaces its
+  tracking generation so stale in-flight replies cannot publish. Server Edition uses the local
+  core tail on its host (no SSH-project manager); mobile has its own direct-SSH implementation,
+  so this desktop fix makes no claim about that separate path. Real `/bin/sh` fixtures cover
+  >20 MiB idle files and a new notification split inside UTF-8; BSD/macOS SSH remains a device check.
 - **Context-meter rehydration (`context:ensure`)** — the meter is fed by hook events, and a tmux
   session outlives the app, so a continuing session that is idle after a restart emits nothing and
   its meter stays blank until the user's next prompt. The mount-time read that exists to close that
