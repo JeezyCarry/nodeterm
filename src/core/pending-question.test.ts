@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeClaude } from '../shared/agents/normalize'
 import { parseToolResultIds } from './context-tail'
+import { subagentReplay } from './subagent-replay'
 import { _resetForTest, _snapshot, _inboxSnapshot, recordAgentEvent, recordRawToolEvent,
   recordQuestionResult, ignoreQuestionHook, STASH_MAX_AGE_MS, sweepStaleWorking } from './agent-status-mirror'
 
@@ -199,6 +200,23 @@ describe('independent question, approval and lifecycle streams', () => {
       expect(_snapshot().node).toEqual(before)
       expect(_inboxSnapshot().events).toEqual(cards)
     })
+  })
+
+  it('keeps reload replay and live lifecycle consistent while child approvals hold attention', () => {
+    open()
+    recordQuestionResult('node', 'parent', 'ask-1')
+    expect(hook('PreToolUse', { tool_name: 'Agent', tool_use_id: 'task-1',
+      tool_input: { description: 'Independent child' } })).toMatchObject({ kind: 'subagent-start' })
+    expect(subagentReplay.snapshot()).toMatchObject([{ kind: 'subagent-start', toolUseId: 'task-1', taskLabel: 'Independent child' }])
+    expect(subagentReplay.snapshot()[0].verified).toBeUndefined()
+    ask('ask-2')
+    expect(subagentReplay.snapshot()).toHaveLength(1)
+    recordQuestionResult('node', 'parent', 'ask-2')
+    expect(hook('PostToolUse', { tool_name: 'Agent', tool_use_id: 'task-1', tool_response: {} }))
+      .toMatchObject({ kind: 'subagent-end', toolUseId: 'task-1' })
+    expect(subagentReplay.snapshot()).toEqual([])
+    expect(_snapshot().node.state).toBe('blocked')
+    expect(live().map(e => e.pendingId)).toEqual(['ticket-1', 'ticket-2'])
   })
 
   it('does not deduplicate a new picker against an independent approval with the same title', () => {
