@@ -565,12 +565,12 @@ const api: NodeTerminalApi = {
       ipcRenderer.invoke(IPC.claudeAccountsCopySession, sessionId, sourceAccountId, targetAccountId)
   },
   codexAccounts: {
-    add: () => ipcRenderer.invoke(IPC.codexAccountsAdd),
-    waitLogin: (id) => ipcRenderer.invoke(IPC.codexAccountsWaitLogin, id),
+    add: (ctx) => ipcRenderer.invoke(IPC.codexAccountsAdd, ctx),
+    waitLogin: (id, ctx) => ipcRenderer.invoke(IPC.codexAccountsWaitLogin, id, ctx),
     cancelWaitLogin: (id) => ipcRenderer.invoke(IPC.codexAccountsCancelWait, id),
-    identity: (id) => ipcRenderer.invoke(IPC.codexAccountsIdentity, id),
+    identity: (id, ctx) => ipcRenderer.invoke(IPC.codexAccountsIdentity, id, ctx),
     systemIdentity: (ctx) => ipcRenderer.invoke(IPC.codexAccountsSystemIdentity, ctx),
-    remove: (id) => ipcRenderer.invoke(IPC.codexAccountsRemove, id),
+    remove: (id, ctx) => ipcRenderer.invoke(IPC.codexAccountsRemove, id, ctx),
     switchThread: (threadId, cwd, sourceAccountId, targetAccountId) =>
       ipcRenderer.invoke(
         IPC.codexAccountsSwitchThread,

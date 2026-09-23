@@ -2833,22 +2833,26 @@ export interface ClaudeSkillShareResult {
  */
 export interface CodexAccountsApi {
   /** Mint a new managed account: create its private CODEX_HOME (0700) and symlink the shared,
-   *  non-secret runtime assets in. Returns the new id + its home. */
-  add(): Promise<{ id: string; home: string }>
+   *  non-secret runtime assets in. Returns the new id + its home. With an SSH `ctx` the home is
+   *  created ON that connected host (no credential ever travels); throws when it cannot be. */
+  add(ctx?: AccountSshCtx): Promise<{ id: string; home: string }>
   /** Poll the account's `auth.json` (a real file, never a symlink) every 2s up to 5min for a
-   *  completed device login, then read its email; null on timeout/cancel. */
-  waitLogin(id: string): Promise<{ email: string | null } | null>
+   *  completed device login, then read its email; null on timeout/cancel. With an SSH `ctx` the poll
+   *  runs on the host, and a login whose email cannot be read there resolves `{ email: null }`. */
+  waitLogin(id: string, ctx?: AccountSshCtx): Promise<{ email: string | null } | null>
   /** Cancel an in-flight `waitLogin` for this account. */
   cancelWaitLogin(id: string): Promise<void>
-  /** Read a managed account's already-logged-in identity (email), or null if not logged in. */
-  identity(id: string): Promise<{ email: string | null } | null>
+  /** Read a managed account's already-logged-in identity (email), or null if not logged in. With an
+   *  SSH `ctx`, asked of the account's home on that host. */
+  identity(id: string, ctx?: AccountSshCtx): Promise<{ email: string | null } | null>
   /** Read a machine's system (`~/.codex`) account identity. No arg ⇒ this Mac. `{ projectId }` ⇒
    *  the connected SSH host behind that project; a host whose system identity cannot be resolved
    *  resolves `null` (fail-closed — a remote machine panel never borrows this Mac's login). */
   systemIdentity(ctx?: { projectId?: string }): Promise<{ email: string | null } | null>
   /** Remove a managed account: stop its daemon and delete its home. Refused while a switch
-   *  reservation holds it or a concurrent removal is in flight (Property 10). */
-  remove(id: string): Promise<void>
+   *  reservation holds it or a concurrent removal is in flight (Property 10). With an SSH `ctx`,
+   *  the home is deleted on that host; throws when it could not be. */
+  remove(id: string, ctx?: AccountSshCtx): Promise<void>
   /** Phase 1 of the owner-authorized same-machine switch: plan + reserve the rollout exposure of a
    *  conversation from one account to another under a `rollbackToken` (TTL 60s, owner = caller). */
   switchThread(
