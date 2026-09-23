@@ -1425,6 +1425,21 @@ export function recordAgentEvent(rawEvent: NormalizedAgentEvent): NormalizedAgen
   let out = ev
   if (next.pendingQuestion && prev?.pendingQuestion && next.state) {
     if (ev.kind !== 'state' && ev.kind !== 'session') return ev
+    // A concurrent permission is independent of the held picker. Publish its ticket/card,
+    // but keep the parent's waiting badge and question correlation until its own answer.
+    if (ev.pendingId && ev.state === 'blocked' && ev.askKind === 'approval') {
+      produceInboxFromState(nodeId, ev, prevState, 'blocked', now, true)
+      scheduleWrite()
+      return { ...ev, state: next.state, sessionId: next.sessionId }
+    }
+    if (ev.pendingId && ev.state === 'working') {
+      for (const card of inboxEvents) {
+        if (card.nodeId === nodeId && card.kind === 'approval' && card.pendingId === ev.pendingId) {
+          card.resolved = true
+        }
+      }
+      scheduleWrite()
+    }
     // Broadcast the same held state to Desktop, Server, canvas/board and the phone.
     return { ...ev, kind: 'state', state: next.state, sessionId: next.sessionId,
       verified: ev.verified, newTurn: undefined, interrupted: undefined,
@@ -1452,7 +1467,8 @@ function produceInboxFromState(
   ev: NormalizedAgentEvent,
   prevState: AgentState | undefined,
   nextState: AgentState | undefined,
-  now: number
+  now: number,
+  concurrentApproval = false
 ): NeedsYouClassification | undefined {
   // Clear any stashed question options on a new turn or session boundary — a stale option set must
   // never attach to a later, unrelated question. (State-leave clearing is handled below.)
@@ -1499,7 +1515,7 @@ function produceInboxFromState(
     const stash = freshStash(nodeId, now)
     // Only a real AskUserQuestion picker (options present) forces the QUESTION classification — an
     // approval-only stash (a PermissionRequest summary) must stay an approval.
-    const options = stash?.options
+    const options = concurrentApproval ? undefined : stash?.options
     // multiSelect rides only a real question (options present) — an approval-only stash never sets it.
     const multiSelect = options ? stash?.multiSelect : undefined
     const hasQuestion = !!options
@@ -1539,7 +1555,9 @@ function produceInboxFromState(
     // stops muzzling — and the new ask fires. A different-title unresolved event never suppresses:
     // that is a genuinely NEW ask. Always return the classification below so the broadcast
     // enrichment stays consistent across the re-assert.
-    const dup = newestUnresolved(inboxEvents, nodeId)
+    const dup = concurrentApproval
+      ? inboxEvents.find(e => e.nodeId === nodeId && e.kind === 'approval' && !e.resolved && e.pendingId === ev.pendingId)
+      : newestUnresolved(inboxEvents, nodeId)
     const sameTitle = !!dup && dup.title === title
     const freshDup = sameTitle && dup ? now - dup.ts < QUESTION_DEDUP_WINDOW_MS : false
     const newAsk = !freshDup
@@ -1566,7 +1584,7 @@ function produceInboxFromState(
       // asking something else unless the previous one was answered. Without this the Inbox kept a
       // card per ask and the user had to dismiss answered questions by hand — the state never
       // leaves `blocked` between them, so the transition-based resolve never ran.
-      resolveUnresolvedFor(nodeId)
+      if (!concurrentApproval) resolveUnresolvedFor(nodeId)
       pushInboxEvent({
         ...baseEvent,
         kind,

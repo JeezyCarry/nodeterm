@@ -91,6 +91,44 @@ describe('subagent attention forwarding (W2)', () => {
     expect(_inboxSnapshot().events[0].resolved).toBe(true)
   })
 
+  it.each(['allow', 'deny'])('keeps the parent picker while concurrent child approvals receive %s replies', decision => {
+    ask()
+    const question = _inboxSnapshot().events[0]
+    const approval = { agent_id: 'child', session_id: 'child-session', tool_name: 'Bash',
+      tool_input: { command: 'echo child' }, nodeterm_pending_id: 'ticket-1' }
+    const request = (ticket: string) => hook('PermissionRequest', { ...approval, nodeterm_pending_id: ticket })
+    expect(request('ticket-1')).toMatchObject({ state: 'waiting', sessionId: 'parent',
+      pendingId: 'ticket-1', askKind: 'approval' })
+    request('ticket-1') // A reassertion must not duplicate the card.
+    request('ticket-2') // Identical commands may be waiting on distinct tickets.
+    const cards = _inboxSnapshot().events
+    expect(cards).toHaveLength(3)
+    expect(cards.filter(e => !e.resolved)).toHaveLength(3)
+    for (const pendingId of ['ticket-1', 'ticket-2']) {
+      expect(cards.find(e => e.pendingId === pendingId)).toMatchObject({ kind: 'approval' })
+      expect(JSON.stringify(cards.find(e => e.pendingId === pendingId))).toContain('echo child')
+      expect(cards.find(e => e.pendingId === pendingId)?.options).toBeUndefined()
+    }
+    expect(hook('PermissionRequest', { ...approval, nodeterm_answered: decision })).toMatchObject({
+      state: 'waiting', sessionId: 'parent', askKind: 'question' })
+    expect(_inboxSnapshot().events.find(e => e.pendingId === 'ticket-1')?.resolved).toBe(true)
+    expect(_inboxSnapshot().events.find(e => e.pendingId === 'ticket-2')?.resolved).not.toBe(true)
+    expect(_inboxSnapshot().events.find(e => e.id === question.id)?.resolved).not.toBe(true)
+    expect(_snapshot().node.pendingQuestion).toEqual({ sessionId: 'parent', toolUseId: 'ask-1' })
+    hook('PermissionRequest', { ...approval, nodeterm_pending_id: 'ticket-2', nodeterm_answered: decision })
+    expect(_inboxSnapshot().events.filter(e => !e.resolved).map(e => e.id)).toEqual([question.id])
+    expect(recordQuestionResult('node', 'parent', 'ask-1')?.state).toBe('working')
+    expect(_inboxSnapshot().events.every(e => e.resolved)).toBe(true)
+  })
+
+  it('does not turn the held picker own permission into an approval', () => {
+    ask()
+    expect(hook('PermissionRequest', { tool_name: 'AskUserQuestion', nodeterm_pending_id: 'picker' }))
+      .toMatchObject({ state: 'waiting', askKind: 'question' })
+    expect(_inboxSnapshot().events).toHaveLength(1)
+    expect(_inboxSnapshot().events[0].pendingId).toBeUndefined()
+  })
+
   it('forwards child permission notifications and ignores informational notifications', () => {
     expect(hook('Notification', { agent_id: 'child', notification_type: 'permission_prompt' })?.state).toBe('blocked')
     expect(hook('Notification', { agent_id: 'child', notification_type: 'auth_success' })).toBeNull()

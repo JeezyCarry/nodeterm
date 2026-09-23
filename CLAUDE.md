@@ -4872,3 +4872,7 @@ Claude child `PreToolUse`/`PostToolUse`/`PostToolUseFailure` hooks must not driv
 Child `PermissionRequest` and attention `Notification` hooks still reach needs-you and phone
 approvals, including the raw approval summary and deterministic reply ticket. Keep raw summary
 recording before the child transcript-association guard in both shells.
+
+A held parent question can overlap child permissions: retain its question card and waiting
+state while publishing each approval ticket separately. Approval replies resolve only their
+own ticket; the picker stays pending until its correlated answer or explicit reset.

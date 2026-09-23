@@ -65,8 +65,8 @@ export interface NormalizedAgentEvent {
   // stash-priority reclassification (see agent-status-mirror.recordAgentEvent). 'question' = an
   // AskUserQuestion picker (its `pendingId` is stripped — approve/deny on a question is wrong UX);
   // 'approval' = a genuine permission request (its `pendingId`, if any, is kept). Absent on every
-  // non-needs-you event. This is the ENRICHED field the shells broadcast — it is not produced by
-  // the normalizers themselves. Present for future UI; the canvas already keys the approve/deny
+  // non-needs-you event. Claude also identifies non-picker PermissionRequest hooks here so a
+  // concurrent parent picker cannot hide their approval tickets. The canvas keys the approve/deny
   // buttons off `pendingId`, which is now absent on a question. */
   askKind?: 'question' | 'approval'
   // session
@@ -313,6 +313,7 @@ export function normalizeClaude(env: RawHookEnvelope): NormalizedAgentEvent | nu
       ...base,
       kind: 'state',
       state: 'blocked',
+      ...(tool && tool !== 'AskUserQuestion' ? { askKind: 'approval' as const } : {}),
       lastMessage: p.last_assistant_message,
       // Deterministic-approval ticket (present only when the wait-branch of the managed hook ran).
       ...(p.nodeterm_pending_id ? { pendingId: p.nodeterm_pending_id } : {})
