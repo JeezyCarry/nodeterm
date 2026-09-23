@@ -10,7 +10,7 @@ beforeEach(() => { home = mkdtempSync(path.join(tmpdir(), 'nt-851-home-')) })
 afterEach(() => rmSync(home, { recursive: true, force: true }))
 const conn = { host: 'fixture', user: 'fixture' }
 for (const account of [false, true]) {
-  describe(account ? 'remote Claude account settings' : 'remote system Claude settings', () => {
+  describe.skipIf(process.platform === 'win32')(account ? 'remote Claude account settings' : 'remote system Claude settings', () => {
     async function install(raw: string, race = false) {
       const file = path.join(home, account ? '.nodeterm/claude-accounts/acc/settings.json' : '.claude/settings.json')
       mkdirSync(path.dirname(file), { recursive: true })
@@ -32,8 +32,14 @@ for (const account of [false, true]) {
       return readFileSync(file, 'utf8')
     }
 
-    it.each(['{broken', '', 'null', '[]'])('neither hooks nor TUI destroys malformed settings: %s', async (raw) => {
+    it.each(['{broken', 'null', '[]'])('neither hooks nor TUI destroys malformed settings: %s', async (raw) => {
       expect(await install(raw)).toBe(raw)
+    })
+
+    it.each(['', ' \t\n'])('installs hooks and TUI into blank settings: %j', async (raw) => {
+      const result = JSON.parse(await install(raw))
+      expect(result.tui).toBe('fullscreen')
+      expect(result.hooks.Stop).toHaveLength(1)
     })
 
     it('preserves unrelated settings and foreign hooks through both writers', async () => {

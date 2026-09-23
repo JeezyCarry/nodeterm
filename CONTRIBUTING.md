@@ -626,13 +626,14 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
 ## User-owned agent settings
 
 Claude/Gemini settings must go through the guarded transactions in
-`src/core/agents/hooks/{settings-file,remote-settings-file}.ts`. Only a confirmed missing file
-may start from `{}`; empty, malformed, non-object and unreadable files must survive unchanged.
+`src/core/agents/hooks/{settings-file,remote-settings-file}.ts`. Confirmed absence or a successfully read empty/whitespace file may start from `{}`;
+malformed, non-object and unreadable files must survive unchanged.
 Keep unrelated settings and foreign hook handlers. Stage writes, serialize nodeterm writers,
 and compare the original bytes again before publishing; never use `cat … || echo '{}'` or a
-catch-all read fallback. Local symlinked profiles update the resolved target without replacing
-the link. SSH currently skips symlinked config files rather than guessing their target.
-A conflicting/stale lock skips installation; do not steal it from another process. These locks
+catch-all read fallback. Local and SSH symlinked profiles update and lock the resolved target without replacing
+the link; recheck resolution before publishing. SSH uses plain readlink and cd -P (no GNU -f),
+and refuses dangling/cyclic links and newline paths. A conflicting/stale lock skips installation
+with a diagnostic naming the lock and safe manual recovery; do not steal it from another process. These locks
 coordinate nodeterm, not external editors, so do not claim a filesystem-wide compare-and-swap.
 
 ## Testing

@@ -269,10 +269,11 @@ export function installHooksInto(opts: InstallHooksOptions): void {
   let config: Settings = {}
   try {
     config = JSON.parse(readFileSync(configPath, 'utf8')) as Settings
+    config = mergeManagedHook(config, command, events)
   } catch {
-    config = {}
+    // This branch owns the entire Grok config, including malformed hook shapes.
+    config = mergeManagedHook({}, command, events)
   }
-  config = mergeManagedHook(config, command, events)
   try {
     mkdirSync(path.dirname(configPath), { recursive: true })
     writeManagedHookConfig(configPath, JSON.stringify(config, null, 2), atomicConfig)

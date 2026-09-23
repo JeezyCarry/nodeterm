@@ -4,7 +4,7 @@ import path from 'path'
 import { renameAtomicSync, tempNameFor } from '../../fs-atomic'
 
 export function parseSettings(raw: string): Record<string, unknown> {
-  const value: unknown = JSON.parse(raw)
+  const value: unknown = raw.trim() === '' ? {} : JSON.parse(raw)
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Settings must be an object')
   return value as Record<string, unknown>
 }
@@ -50,7 +50,10 @@ export function updateSettingsFile(requested: string, update: (config: Record<st
     mkdirSync(path.dirname(requested), { recursive: true })
     const file = settingsTarget(requested)
     lock = `${file}.nodeterm-lock`
-    mkdirSync(lock)
+    try { mkdirSync(lock) } catch (error) {
+      console.warn(`[agent-hooks] Settings lock unavailable: ${lock}. Installation skipped; if it persists, stop nodeterm writers and inspect/remove the stale lock before retrying.`)
+      throw error
+    }
     locked = true
     const before = snapshot(file)
     const config = before === null ? {} : parseSettings(before)

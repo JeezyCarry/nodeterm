@@ -29,13 +29,14 @@ function harness(
     calls.push({ args, stdin, cmd: joined })
     if (opts.failOn && joined.includes(opts.failOn)) throw new Error(`fake ssh failed: ${opts.failOn}`)
     if (opts.failCodeOn && joined.includes(opts.failCodeOn)) return { code: 1, stdout: '' }
+    const resolved = joined.match(/nt_resolve '([^']+)' \|\| exit 1/)?.[1]
     for (const [needle, stdout] of Object.entries(opts.responses ?? {})) {
-      if (joined.includes(needle)) return { code: 0, stdout }
+      if (joined.includes(needle)) return { code: 0, stdout: resolved ? `${resolved}\n${stdout}` : stdout }
     }
     // resolve the remote $HOME probe → absolute remote paths build from this.
     if (joined.includes('$HOME')) return { code: 0, stdout: '/home/u' }
     if (joined.includes("cat '/home/u/.claude/settings.json'")) return { code: 0, stdout: '{}' }
-    if (joined.includes('else exit 44; fi')) return { code: 44, stdout: '' }
+    if (resolved) return { code: 44, stdout: `${resolved}\n` }
     // the end-to-end tunnel verification curl (runs in ARGS, unlike the script's stdin curl).
     if (joined.includes('%{http_code}')) return { code: 0, stdout: verifyAnswers.shift() ?? '204' }
     return { code: 0, stdout: '' }
@@ -489,7 +490,7 @@ describe('RemoteHooks.ensureFullscreenTui', () => {
     const calls: { args: string[]; stdin?: string }[] = []
     const run = vi.fn(async (args: string[], stdin?: string) => {
       calls.push({ args, stdin })
-      if (isReadOf(args, target)) return { code: 0, stdout: JSON.stringify({ hooks: { Stop: [] } }) }
+      if (isReadOf(args, target)) return { code: 0, stdout: `${target}\n` + JSON.stringify({ hooks: { Stop: [] } }) }
       return { code: 0, stdout: '' }
     })
     const rh = new RemoteHooks({ run })
@@ -504,7 +505,7 @@ describe('RemoteHooks.ensureFullscreenTui', () => {
     const calls: { args: string[]; stdin?: string }[] = []
     const run = vi.fn(async (args: string[]) => {
       calls.push({ args })
-      if (isReadOf(args, target)) return { code: 0, stdout: JSON.stringify({ tui: 'default' }) }
+      if (isReadOf(args, target)) return { code: 0, stdout: `${target}\n` + JSON.stringify({ tui: 'default' }) }
       return { code: 0, stdout: '' }
     })
     const rh = new RemoteHooks({ run })
@@ -517,7 +518,7 @@ describe('RemoteHooks.ensureFullscreenTui', () => {
     const calls: { args: string[]; stdin?: string }[] = []
     const run = vi.fn(async (args: string[], stdin?: string) => {
       calls.push({ args, stdin })
-      return { code: 0, stdout: '{}' } // any read → empty settings
+      return { code: 0, stdout: `${target}\n{}` } // resolved target header + empty settings
     })
     const rh = new RemoteHooks({ run })
     await rh.ensureFullscreenTuiInAccountDir(conn, '/s.sock', '/home/u', 'acc-1')

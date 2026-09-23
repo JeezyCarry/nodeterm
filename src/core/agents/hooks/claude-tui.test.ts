@@ -68,11 +68,11 @@ describe('ensureFullscreenTuiInFile (fail-open file wrapper)', () => {
     expect(readFileSync(p, 'utf8')).toBe('{ not json')
   })
 
-  it('preserves an empty file (it may be an interrupted user write)' , () => {
+  it('initializes a successfully read empty file' , () => {
     const p = path.join(dir, 'empty.json')
     writeFileSync(p, '', 'utf8')
-    expect(ensureFullscreenTuiInFile(p)).toBe(false)
+    expect(ensureFullscreenTuiInFile(p)).toBe(true)
     expect(existsSync(p)).toBe(true)
-    expect(readFileSync(p, 'utf8')).toBe('')
+    expect(JSON.parse(readFileSync(p, 'utf8'))).toEqual({ tui: TUI_FULLSCREEN })
   })
 })

@@ -2044,14 +2044,16 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
 - **Shared Claude/Gemini settings are user data (issue #851).** The local hook install/remove
   and Claude fullscreen writers share `core/agents/hooks/settings-file.ts`; SSH system/account
   hook installs and fullscreen writes share `remote-settings-file.ts`. Only ENOENT / the remote
-  explicit missing-file status starts from `{}`. Empty/malformed/non-object/read-error settings
-  are preserved. Each transaction stages the complete output, takes a `.nodeterm-lock` directory,
+  explicit missing-file status or a successfully read empty/whitespace file starts from `{}`.
+  Malformed/non-object/read-error settings are preserved. Each transaction stages the complete output, takes a `.nodeterm-lock` directory,
   compares its original bytes before rename, and preserves the file mode. Remote snapshots and
   replacements travel on stdin, with a byte-count check against truncated transport; the shell
   needs no Python/Node/jq. Local profiles resolve symlinks and lock/update the shared target,
-  rechecking resolution before publication; SSH skips a symlinked config safely. Grok's owned
-  file keeps its intentional malformed-file healing. A held or crash-left lock skips the update,
-  never gets stolen. External editors need not honor our lock: the final comparison detects edits
+  rechecking resolution before publication. SSH does the same with plain readlink + cd -P
+  (macOS-compatible, no GNU -f), bounding cycles and refusing dangling links/newline paths.
+  Grok's owned file heals malformed JSON and hook shapes by rebuilding its managed config.
+  A held or crash-left lock skips the update with a diagnostic naming the lock and instructing
+  the user to stop writers before inspecting/removing a stale lock; it never gets stolen. External editors need not honor our lock: the final comparison detects edits
   during merge/staging, but cannot eliminate an external write between comparison and rename.
   No claim that the reporter's historical wipe was proven to take this path: the catch-to-empty
   writer and its data loss were reproduced in fixture homes.
