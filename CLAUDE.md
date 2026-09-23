@@ -3770,10 +3770,12 @@ one (`defaultWallpaper`: the first macOS still, Sonoma Horizon when present, els
 glass never sits over plain black; a wallpaper the user chose is never replaced. The pre-release
 `glassTerminals: true` maps to it once in `settings-store` (only over `auto`).
 
-- **The wallpaper is painted on the React Flow ROOT** (`Canvas.tsx`), which is viewport-sized and
-  never transformed, so it stays put while the canvas pans and zooms; the dot grid is faded to 30%
-  over it, not removed, because snapping still aligns to it. The kanban overlay paints its own
-  background and is unaffected.
+- **The wallpaper is painted on `.canvas-root`** (`Canvas.tsx`), which spans the whole window —
+  tab bar row included, so Liquid Glass's tab bar is glass over the picture — and is never
+  transformed, so it stays put while the canvas pans and zooms. React Flow's own root goes
+  transparent over it (`.react-flow.has-wallpaper`); the dot grid is faded to 30%, not removed,
+  because snapping still aligns to it. The kanban overlay paints its own background and is
+  unaffected.
 - **`background-image` + longhands, never a `background` shorthand next to `var(--canvas-bg)`.**
   MEASURED live: Chromium drops a var()-containing value once it passes ~2 MB, and a still's data:
   URL is ~3 MB, so the shorthand resolved to nothing and the canvas stayed black. The class rule
@@ -3832,8 +3834,8 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   sidebar icon buttons) take the fill alone. Node blur pauses during camera moves; chrome is static
   and keeps it. **Left opaque, deliberately:** Monaco, `<webview>` and `<video>` bodies (another
   renderer's surface), sticky notes (the colour is the note), the kanban board (opaque overlay), and
-  the `surface-sunken`/`--bg` wells. The tab bar is a row above the canvas, so its glass shows the
-  window background rather than the wallpaper.
+  the `surface-sunken`/`--bg` wells. The minimap draws node rectangles in translucent theme ink
+  (inline node colours overridden with `!important`), keeping the working/attention/unread strokes.
 - **No window accents under Liquid Glass.** A terminal window's per-node colour arrives as INLINE
   styles (`borderTopColor`, the colour dot's background), so the overrides carry `!important`: a
   neutral `--glass-edge` border, the dot as a neutral ring (it is still the colour-picker button),
