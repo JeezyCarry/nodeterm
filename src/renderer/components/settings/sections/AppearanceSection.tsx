@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useSettings } from '../../../state/settings'
 import { isLiquidGlass } from '@renderer/lib/appTheme'
-import { GLASS_READABLE_TICK, resolveGlassSlider } from '@renderer/lib/glassContrast'
+import {
+  GLASS_READABLE_TICK,
+  keepGlassBlurWhileMoving,
+  resolveGlassSlider
+} from '@renderer/lib/glassContrast'
 import { useGlassA11y } from '@renderer/lib/useGlassA11y'
 import { showCanvasDots } from '@renderer/lib/canvasDots'
 import {
@@ -75,6 +79,10 @@ const ROWS = {
   glassTint: {
     title: 'Glass',
     keywords: ['glass', 'liquid', 'transparency', 'clear', 'tinted', 'frosted', 'blur', 'opacity']
+  },
+  glassBlurWhileMoving: {
+    title: 'Keep blur while moving',
+    keywords: ['glass', 'blur', 'pan', 'zoom', 'moving', 'gpu', 'performance', 'refraction']
   },
   canvasDots: {
     title: 'Show grid dots',
@@ -347,6 +355,9 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
   const glassSlider = resolveGlassSlider(useSettings((s) => s.settings.glassTint))
   const glassA11y = useGlassA11y()
   const glassLocked = glassA11y.reduceTransparency || glassA11y.moreContrast
+  const glassBlurWhileMoving = keepGlassBlurWhileMoving(
+    useSettings((s) => s.settings.glassBlurWhileMoving)
+  )
   const windowTitleActiveSession = useSettings((s) => s.settings.windowTitleActiveSession)
   const update = useSettings((s) => s.update)
   // Glass over plain black reads as a dark theme with smudges, so choosing Liquid Glass with no
@@ -410,6 +421,21 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
                 value={glassSlider}
                 disabled={glassLocked}
                 onChange={(v) => update({ glassTint: v })}
+              />
+            }
+          />
+        </SearchableRow>
+      )}
+      {isLiquidGlass(appTheme) && (
+        <SearchableRow {...ROWS.glassBlurWhileMoving}>
+          <FieldRow
+            label="Keep blur while moving"
+            description="Uses more GPU while panning and zooming."
+            control={
+              <Switch
+                checked={glassBlurWhileMoving}
+                onChange={(v) => update({ glassBlurWhileMoving: v })}
+                ariaLabel="Keep blur while moving"
               />
             }
           />

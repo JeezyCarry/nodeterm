@@ -42,6 +42,8 @@ export const APPEARANCE_RESET_KEYS = [
   'hiddenHeaderButtons',
   'showResumeCard',
   'canvasDots',
+  'glassTint',
+  'glassBlurWhileMoving',
   'windowTitleActiveSession'
 ] as const satisfies readonly (keyof Settings)[]
 

@@ -273,3 +273,8 @@ export function stepGlassSlider(v: number, dir: -1 | 1): number {
   const crosses = dir > 0 ? v < GLASS_READABLE_TICK && next > GLASS_READABLE_TICK : v > GLASS_READABLE_TICK && next < GLASS_READABLE_TICK
   return crosses ? GLASS_READABLE_TICK : snapGlassSlider(next)
 }
+
+/** `settings.glassBlurWhileMoving`: only a literal false pauses the blur during camera moves. */
+export function keepGlassBlurWhileMoving(value: unknown): boolean {
+  return value !== false
+}

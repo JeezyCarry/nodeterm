@@ -1696,6 +1696,10 @@ export interface Settings {
   /** The Liquid Glass slider (Settings → Appearance), 0 = Clear … 1 = Tinted. null = the Readable
    *  tick, where text keeps 4.5:1 (renderer/lib/glassContrast.ts `resolveGlassSlider`). */
   glassTint: number | null
+  /** Liquid Glass: keep the node blur and refraction live while the canvas pans or zooms (Apple's
+   *  behaviour, more GPU). Off = the blur pauses during a camera move and the tint alone stays.
+   *  Default ON; only a literal false turns it off (`keepGlassBlurWhileMoving`). */
+  glassBlurWhileMoving: boolean
   /** Whether usage percentages render as consumed ("32% used"), remaining ("68% left"), or raw
    *  token counts ("48k/200k tokens" — context-window surfaces only; provider quota surfaces
    *  have no token counts and fall back to 'used' display). 'remaining' is the historical
@@ -1942,6 +1946,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showResumeCard: false,
   canvasDots: true,
   glassTint: null,
+  glassBlurWhileMoving: true,
   usagePercentMode: 'remaining',
   defaultAgent: 'claude',
   // Sessions start in auto mode out of the box. Existing users pick this up on hydrate

@@ -23,7 +23,8 @@ import {
   resolveGlassSlider,
   glassSurfaceAlpha,
   snapGlassSlider,
-  stepGlassSlider
+  stepGlassSlider,
+  keepGlassBlurWhileMoving
 } from './glassContrast'
 
 const WHITE = [255, 255, 255] as const
@@ -224,5 +225,19 @@ describe('Glass slider detent (macOS tick-mark feel)', () => {
     expect(stepGlassSlider(GLASS_READABLE_TICK, 1)).toBeCloseTo(0.75, 10)
     expect(stepGlassSlider(1, 1)).toBe(1)
     expect(stepGlassSlider(0, -1)).toBe(0)
+  })
+})
+
+describe('Keep blur while moving', () => {
+  it('defaults on; only a literal false pauses the blur', () => {
+    for (const v of [true, undefined, null, 'x']) expect(keepGlassBlurWhileMoving(v)).toBe(true)
+    expect(keepGlassBlurWhileMoving(false)).toBe(false)
+  })
+
+  it('the camera-move handler skips the pause class when it is on', () => {
+    const src = readFileSync(join(__dirname, '..', 'canvas', 'Canvas.tsx'), 'utf8')
+    const start = src.slice(src.indexOf('const onCanvasMoveStart'))
+    const body = start.slice(0, start.indexOf("classList.add('canvas-moving')"))
+    expect(body).toContain('if (keepBlurWhileMovingRef.current) return')
   })
 })

@@ -3899,8 +3899,10 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   `--glass-blur` as `url(#nt-refract)` — no per-node filters. Its scale is `0.06 × (1 − t)`; it moves
   backdrop pixels, never the tint, so it cannot touch contrast. The specular sheen is a background
   gradient scaled by `glassSheen(t)`, which is ZERO from the tick on — it lightens the surface, so it
-  may only exist where the promise is already off. Node blur+refraction still pause while the camera
-  moves (`.canvas-moving`); chrome keeps both. MEASURED on the live dev build (CDP computed style):
+  may only exist where the promise is already off. Node blur+refraction pause while the camera moves
+  (`.canvas-moving`) ONLY when **Keep blur while moving** is off (`settings.glassBlurWhileMoving`,
+  default ON, read through `keepGlassBlurWhileMoving` — only a literal `false` pauses): on, Canvas
+  never adds the class, so the glass stays live through a pan at a GPU cost; chrome keeps both always. MEASURED on the live dev build (CDP computed style):
   Chromium keeps `url("#nt-refract") blur(…) saturate(…)` on the tab bar, dock, sessions sidebar,
   minimap, zoom controls and terminal nodes.
 - **Needs-you on glass is an INNER light** (the user's pick, "variant B"): the outer red `::after`

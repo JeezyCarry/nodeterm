@@ -1,6 +1,7 @@
 import { reportTextDelivery } from '../lib/textDelivery'
 import { TEXT_NOT_SUBMITTED } from '@shared/text-delivery'
 import { VisibleMiniMap } from './VisibleMiniMap'
+import { keepGlassBlurWhileMoving } from '../lib/glassContrast'
 import { LINK_ENDPOINT_NOT_FOUND } from '@shared/canvas-link'
 import { createControlOpenBatch } from '../lib/controlOpenBatch'
 import { commitOwnedLaunchAttempt, registerLaunchCommit } from '../terminal/launch-attempt'
@@ -1528,10 +1529,18 @@ export function Canvas() {
   // toggle rather than state, so a pan does not re-render this component twice. The REMOVAL is
   // debounced: a wheel zoom driven through setViewport ends a "move" on every packet, and toggling
   // the blur back on between packets would re-rasterise it anyway.
+  // Settings → Appearance → "Keep blur while moving" (default on) skips the pause entirely: the
+  // blur and refraction stay live through the move, Apple's behaviour, at a GPU cost. Read
+  // through a ref so the handlers stay stable.
   const movingClearRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const keepBlurWhileMovingRef = useRef(true)
+  keepBlurWhileMovingRef.current = keepGlassBlurWhileMoving(
+    useSettings((s) => s.settings.glassBlurWhileMoving)
+  )
   const onCanvasMoveStart = useCallback(() => {
     if (movingClearRef.current) clearTimeout(movingClearRef.current)
     movingClearRef.current = null
+    if (keepBlurWhileMovingRef.current) return
     flowWrapRef.current?.classList.add('canvas-moving')
   }, [])
   const onCanvasMoveEnd = useCallback(() => {
