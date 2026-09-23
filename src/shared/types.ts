@@ -1605,6 +1605,13 @@ export interface Settings {
   /** Minutes a terminal may sit fully offscreen before its xterm+PTY client is torn down in
    *  place (tmux keeps the session; re-approach reattaches and redraws). 0 = never. */
   offscreenTerminalMinutes: number
+  /** Minutes a terminal stays PARKED after its project is switched away — xterm + PTY client kept
+   *  alive off-DOM so switching back is instant and exact (no reattach). 0 = until the app quits.
+   *  Default 5. Hand-editable; re-validated at the use site (`parkWindowMs`). Issue #886. */
+  terminalParkMinutes: number
+  /** Max parked terminals across all projects before the oldest (local first, then remote) are
+   *  released early. Default 12. Re-validated at the use site (`parkCap`). Issue #886. */
+  terminalParkMax: number
   /** AI commit message agent: a local coding-agent CLI run read-only. */
   commitAgent: 'claude' | 'codex' | 'custom'
   /** For commitAgent='custom': command template; {prompt} placeholder optional (else stdin). */
@@ -1878,6 +1885,8 @@ export const DEFAULT_SETTINGS: Settings = {
   tmuxScrollback: 50000,
   tmuxLeadPaneWidth: 0,
   offscreenTerminalMinutes: 10,
+  terminalParkMinutes: 5,
+  terminalParkMax: 12,
   commitAgent: 'claude',
   commitAgentCommand: '',
   commitExtraPrompt: '',

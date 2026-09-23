@@ -10,6 +10,12 @@ import {
   LEAD_PANE_WIDTH_MAX,
   LEAD_PANE_WIDTH_MIN
 } from '@shared/tmux-lead-pane'
+import {
+  PARK_MAX,
+  PARK_MAX_LIMIT,
+  PARK_MINUTES_DEFAULT,
+  PARK_MINUTES_MAX
+} from '@renderer/terminal/park-budget'
 
 const ROWS = {
   enabled: {
@@ -20,6 +26,14 @@ const ROWS = {
   leadPane: {
     title: 'Keep lead pane wide (agent teams)',
     keywords: ['lead', 'pane', 'width', 'agent', 'team', 'teammates', 'split', 'claude', 'resize']
+  },
+  parkMinutes: {
+    title: 'Keep switched-away terminals attached',
+    keywords: ['park', 'switch', 'project', 'ssh', 'fast', 'instant', 'reattach', 'minutes', 'memory']
+  },
+  parkMax: {
+    title: 'Max attached terminals in other projects',
+    keywords: ['park', 'cap', 'limit', 'switch', 'project', 'ssh', 'reattach', 'memory', 'ram']
   },
   offscreen: {
     title: 'Release offscreen terminals',
@@ -97,6 +111,54 @@ export function TmuxSection({ isActive }: { isActive: boolean }): React.JSX.Elem
                 ariaLabel="Keep lead pane wide"
               />
             </div>
+          }
+        />
+      </SearchableRow>
+      <SearchableRow {...ROWS.parkMinutes}>
+        <FieldRow
+          label="Keep switched-away terminals attached"
+          description={
+            'Minutes a project’s terminals stay attached after you switch to another project, so switching back is instant. ' +
+            'After that they reattach on return — seconds per project over SSH. 0 = until the app quits. ' +
+            `Default ${PARK_MINUTES_DEFAULT}. Applies from the next switch.`
+          }
+          control={
+            <NumberField
+              value={settings.terminalParkMinutes}
+              min={0}
+              max={PARK_MINUTES_MAX}
+              step={1}
+              ariaLabel="Park window (minutes)"
+              // A cleared field reads back as the DEFAULT, not 0: 0 means "keep forever", the
+              // memory-expensive end, and must only ever be typed on purpose.
+              onChange={(v) =>
+                update({
+                  terminalParkMinutes: Number.isFinite(v) ? Math.max(0, v) : PARK_MINUTES_DEFAULT
+                })
+              }
+            />
+          }
+        />
+      </SearchableRow>
+      <SearchableRow {...ROWS.parkMax}>
+        <FieldRow
+          label="Max attached terminals in other projects"
+          description={
+            'How many switched-away terminals stay attached in total. Beyond this the oldest are released early — local ones before SSH ones, which are slower to reattach. ' +
+            'Each costs about 2 MB with tmux (more without tmux: its scrollback lives in the app) and, over SSH, one local ssh client on the project’s connection. ' +
+            `Default ${PARK_MAX}.`
+          }
+          control={
+            <NumberField
+              value={settings.terminalParkMax}
+              min={1}
+              max={PARK_MAX_LIMIT}
+              step={1}
+              ariaLabel="Max parked terminals"
+              onChange={(v) =>
+                update({ terminalParkMax: Number.isFinite(v) && v >= 1 ? Math.floor(v) : PARK_MAX })
+              }
+            />
           }
         />
       </SearchableRow>

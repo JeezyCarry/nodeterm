@@ -579,11 +579,22 @@ Lifecycle, by intent:
   look at it" was this.
 - **Node unmount (project switch)** → the RENDERER **parks** the terminal (`TerminalNode.tsx`
   `parkedTerminals`): the xterm instance + its attached PTY stay alive with the `.xterm` element
-  detached from the DOM, so a remount within `TERM_PARK_MS` (5 min) re-adopts them — instant, and
+  detached from the DOM, so a remount within the park window re-adopts them — instant, and
   exact (the tmux client never detaches, so mouse-tracking/alternate-screen modes and scrollback
   carry over; do NOT "optimize" this into a respawn+redraw — a fresh xterm on a reused client
   misses the attach-time mode sequences and breaks scrolling). The park timer then runs the real
-  teardown: `kill()` detaches the PTY client; the tmux session keeps running. WebGL contexts are
+  teardown: `kill()` detaches the PTY client; the tmux session keeps running. **Window and cap
+  are settings (issue #886)**: `settings.terminalParkMinutes` (default 5; **0 = until app quit** —
+  `parkWindowMs` returns `null` and NO timer is armed, never `Infinity`, which `setTimeout` clamps
+  to ~1 ms and would dispose every park at once) and `settings.terminalParkMax` (default 12), both
+  re-validated at park time. The LRU cap evicts **local parks before remote ones**
+  (`planParkEviction`'s `isRemote`): a local re-adopt miss is a warm reattach in ms, an SSH one is
+  a new client per terminal paced 4-per-master, plus a login if the master idled out
+  (`ControlPersist`) — and a live parked client is also what keeps that master from idling out.
+  Parking does not raise sshd `MaxSessions` pressure: masters are per project, so a parked SSH
+  project holds exactly the channels it held while in view. Measured (headless xterm, 200×50): a
+  parked tmux-backed terminal ≈ **2 MB** (alternate screen, empty normal buffer — tmux owns the
+  history); a plain shell with a full 10k scrollback ≈ **27 MB**. WebGL contexts are
   **viewport-scoped and budgeted** (browsers cap ~16 live contexts, and a canvas holds far more
   terminals). A per-terminal `IntersectionObserver` (`rootMargin` pre-announces approach) only
   REPORTS visibility to a **module-level budget coordinator** (`terminal/webgl-budget.ts`) that owns
