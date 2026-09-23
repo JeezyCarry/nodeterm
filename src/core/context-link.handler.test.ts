@@ -2,10 +2,10 @@
 // The cli test drives the shim against a stand-in handler; this one drives the actual code that
 // decides WHICH bytes a request may see, which is the part with teeth.
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { handleContextLinkRequest, initContextLink, type ContextLinkDeps } from './context-link'
+import { handleContextLinkRequest, initContextLink, setContextLinks, type ContextLinkDeps } from './context-link'
 import { setNodeTranscript } from './context-link-core'
 import { IPC } from '../shared/ipc'
 import { initPlatform, resetPlatformForTests } from './platform'
@@ -179,4 +179,61 @@ describe('handleContextLinkRequest — remote (SSH) reads', () => {
       'user: ship it'
     )
   })
+})
+
+// Hold transcript discovery at a deterministic boundary, without touching real sessions.
+vi.mock('./handoff/locate', async (original) => ({
+  ...await original<typeof import('./handoff/locate')>(),
+  locateCodex: vi.fn(async () => undefined)
+}))
+
+it('publishes permissions immediately and cannot resurrect revoked links from an older write', async () => {
+  const { locateCodex } = await import('./handoff/locate')
+  let release!: (path: undefined) => void
+  let entered!: () => void
+  const started = new Promise<void>((resolve) => { entered = resolve })
+  vi.mocked(locateCodex).mockImplementationOnce(async () => {
+    entered()
+    return await new Promise<undefined>((resolve) => { release = resolve })
+  })
+  const old = setContextLinks({ 'node-A': [{ id: 'node-B', title: 'Old', agentId: 'codex', sessionId: 'slow' }] })
+  await started
+  let releaseNext!: (path: undefined) => void
+  let enteredNext!: () => void
+  const nextStarted = new Promise<void>((resolve) => { enteredNext = resolve })
+  vi.mocked(locateCodex).mockImplementationOnce(async () => {
+    enteredNext()
+    return await new Promise<undefined>((resolve) => { releaseNext = resolve })
+  })
+  const map = { 'node-C': [{ id: 'node-D', title: 'New', agentId: 'codex', sessionId: 'slow-next' }] }
+  const next = setContextLinks(map)
+  // The caller cannot mutate a queued authorization snapshot after submission.
+  map['node-C'][0].id = 'node-SECRET'
+  try {
+    expect(await handleContextLinkRequest({ verb: 'list', nodeId: 'node-C', args: {} })).toContain('node-D')
+    expect(await handleContextLinkRequest({ verb: 'terminal', nodeId: 'node-A', args: {} })).toContain('No linked nodes')
+    expect(captured).toEqual([])
+    release(undefined)
+    await nextStarted
+    // Old enrichment has finished but the newer enrichment is still blocked. The old ACL
+    // must not be visible even temporarily between those completions.
+    expect(await handleContextLinkRequest({ verb: 'list', nodeId: 'node-A', args: {} })).toContain('No linked nodes')
+    expect(await handleContextLinkRequest({ verb: 'list', nodeId: 'node-C', args: {} })).toContain('node-D')
+  } finally {
+    release(undefined)
+    await nextStarted
+    releaseNext(undefined)
+    await Promise.all([old, next])
+  }
+  expect(await handleContextLinkRequest({ verb: 'list', nodeId: 'node-A', args: {} })).toContain('No linked nodes')
+  expect(existsSync(join(dir, 'context-links', 'node-A.json'))).toBe(false)
+  expect(JSON.parse(readFileSync(join(dir, 'context-links', 'node-C.json'), 'utf8')).links[0].id).toBe('node-D')
+})
+
+it('recovers the write queue after enrichment fails', async () => {
+  start({ isRemoteNode: () => { throw new Error('lookup failed') } })
+  await expect(setContextLinks({ a: [{ id: 'b', title: 'B', agentId: 'codex' }] })).rejects.toThrow('lookup failed')
+  await setContextLinks({ a: [{ id: 'note', title: 'Recovered', note: 'safe fixture' }] })
+  expect(await handleContextLinkRequest({ verb: 'list', nodeId: 'a', args: {} })).toContain('Recovered')
+  expect(JSON.parse(readFileSync(join(dir, 'context-links', 'a.json'), 'utf8')).links[0].note).toBe('safe fixture')
 })

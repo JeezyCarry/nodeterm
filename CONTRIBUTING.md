@@ -56,6 +56,12 @@ handler needs something only Electron has (an SSH ControlMaster, a native dialog
 **injected dep** whose absence is a documented degrade — see `registerTranscriptIpc` /
 `registerContextEnsureIpc` — rather than a reason to keep the whole handler in `src/main`.
 
+Context-link maps authorize reads. Publish changes to edges, linked metadata, and background
+projects independently of canvas geometry updates; a debounce reset by every node render can
+starve publication indefinitely. Only merge projects owned by the same core, and use the rendered
+canvas's project epoch during tab switches. Core must revoke removed links before asynchronous
+transcript discovery or debug-file writes finish; an older write must never restore that access.
+
 ## Three surfaces
 
 A feature is not done until you have decided how it behaves on each — even if the decision is "not
