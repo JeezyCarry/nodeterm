@@ -38,6 +38,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }))
 describe('prefixState', () => {
   it('tells identical, prefix and diverged apart', async () => {
     const t = path.join(root, 't')
+    expect(await prefixState(t, sourceFile)).toBe('absent')
     writeFileSync(t, 'line1\nline2\n')
     expect(await prefixState(t, sourceFile)).toBe('identical')
     writeFileSync(t, 'line1\n')

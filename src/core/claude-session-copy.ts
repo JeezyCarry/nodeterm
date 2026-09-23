@@ -36,37 +36,38 @@ type PrefixState = 'identical' | 'prefix' | 'diverged'
 const CHUNK = 1024 * 1024
 
 /** Is `target` a byte-prefix of `source` (or identical to it)? Streamed, so a 100 MB transcript
- *  costs two 1 MB buffers, not two whole files in memory. */
-export async function prefixState(target: string, source: string): Promise<PrefixState> {
-  const [ts, ss] = await Promise.all([fs.stat(target), fs.stat(source)])
-  if (ts.size > ss.size) return 'diverged'
-  const [tf, sf] = await Promise.all([fs.open(target, 'r'), fs.open(source, 'r')])
+ *  costs two 1 MB buffers, not two whole files in memory. Works on OPEN handles and sizes them with
+ *  `fstat`, so the bytes compared are the bytes of the files that were measured (no check-then-use
+ *  window between a path `stat` and the read). A missing target answers `absent`. */
+export async function prefixState(target: string, source: string): Promise<PrefixState | 'absent'> {
+  let tf: fs.FileHandle
   try {
-    const tb = Buffer.alloc(CHUNK)
-    const sb = Buffer.alloc(CHUNK)
-    let pos = 0
-    while (pos < ts.size) {
-      const len = Math.min(CHUNK, ts.size - pos)
-      const [a, b] = await Promise.all([
-        tf.read(tb, 0, len, pos),
-        sf.read(sb, 0, len, pos)
-      ])
-      if (a.bytesRead !== len || b.bytesRead !== len) return 'diverged'
-      if (!tb.subarray(0, len).equals(sb.subarray(0, len))) return 'diverged'
-      pos += len
+    tf = await fs.open(target, 'r')
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return 'absent'
+    throw e
+  }
+  try {
+    const sf = await fs.open(source, 'r')
+    try {
+      const [ts, ss] = await Promise.all([tf.stat(), sf.stat()])
+      if (ts.size > ss.size) return 'diverged'
+      const tb = Buffer.alloc(CHUNK)
+      const sb = Buffer.alloc(CHUNK)
+      let pos = 0
+      while (pos < ts.size) {
+        const len = Math.min(CHUNK, ts.size - pos)
+        const [a, b] = await Promise.all([tf.read(tb, 0, len, pos), sf.read(sb, 0, len, pos)])
+        if (a.bytesRead !== len || b.bytesRead !== len) return 'diverged'
+        if (!tb.subarray(0, len).equals(sb.subarray(0, len))) return 'diverged'
+        pos += len
+      }
+      return ts.size === ss.size ? 'identical' : 'prefix'
+    } finally {
+      await sf.close()
     }
   } finally {
-    await Promise.all([tf.close(), sf.close()])
-  }
-  return ts.size === ss.size ? 'identical' : 'prefix'
-}
-
-async function exists(p: string): Promise<boolean> {
-  try {
-    await fs.lstat(p)
-    return true
-  } catch {
-    return false
+    await tf.close()
   }
 }
 
@@ -74,7 +75,7 @@ async function exists(p: string): Promise<boolean> {
  *  transcript is what `--resume` needs; these sidecars (subagent transcripts, tool results,
  *  `/rewind` file history) only make the resumed session more complete. */
 async function copyTreeNoClobber(src: string, dst: string): Promise<void> {
-  if (!(await exists(src))) return
+  // No existence pre-check: a missing source is an ENOENT from `cp` itself, swallowed like any miss.
   await fs.cp(src, dst, { recursive: true, force: false, errorOnExist: false }).catch(() => {})
 }
 
@@ -88,9 +89,7 @@ export async function copyClaudeSession(plan: ClaudeSessionCopyPlan): Promise<Cl
   let copied = false
   try {
     await fs.mkdir(targetDir, { recursive: true })
-    const state: PrefixState | 'absent' = (await exists(targetFile))
-      ? await prefixState(targetFile, plan.sourceFile)
-      : 'absent'
+    const state = await prefixState(targetFile, plan.sourceFile)
     if (state === 'diverged') return { ok: false, reason: 'diverged' }
     if (state !== 'identical') {
       const tmp = tempNameFor(targetFile)
