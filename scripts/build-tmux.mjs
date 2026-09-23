@@ -189,7 +189,6 @@ function buildArch({ arch, triple, minOs }, work, tarballs) {
       // for the next one nobody listed here.
       'ac_cv_func_pipe2=no',
       'ac_cv_func_accept4=no',
-      'ac_cv_func_strtonum=no',
       ...hostArg
     ],
     { cwd: evDir, env }
@@ -247,6 +246,9 @@ function buildArch({ arch, triple, minOs }, work, tarballs) {
       // rendering the same. The price is the third vendored library above: one more pinned
       // tarball to download, verify, cross-build statically and carry a license for.
       '--enable-utf8proc',
+      // tmux itself probes strtonum (not libevent). The runner SDK exposes it even though our
+      // deployment target does not, so force tmux's bundled compat implementation.
+      'ac_cv_func_strtonum=no',
       ...hostArg
     ],
     { cwd: tmuxDir, env: tmuxEnv }
