@@ -305,10 +305,12 @@ body,
   pointer-events: none;
 }
 
-/* Interactive elements inside the bar must not drag the window. */
-.tabbar button,
-.tabbar input,
-.tab,
+/* Only the stationary strip viewport excludes window dragging. Electron includes explicit
+   no-drag rectangles from scrolled-out descendants without clipping them to the viewport
+   (issue #847), so tab/button/input rectangles would cover the wordmark after scrolling.
+   Children need no region of their own: the viewport already keeps them interactive. */
+.tabbar button:not(.tabbar__tabs *),
+.tabbar input:not(.tabbar__tabs *),
 .tabbar__tabs {
   -webkit-app-region: no-drag;
 }
