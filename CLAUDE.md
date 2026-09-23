@@ -2964,6 +2964,24 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     correct (their credentials aren't on the host) but read as "multi-account is broken on SSH".
   - **Remote accounts** — selection + login + env injection, plus **usage** (below); no
     per-account transcript readers beyond env.
+  - **Settings → Accounts is ONE machine-grouped surface for BOTH providers** (2026-09): a panel
+    per machine (this one, then each saved SSH server ∪ the active project's server — a saved server
+    with no accounts and no connection is folded into a footnote count), each holding a Claude and a
+    Codex block with the SAME row, system row and Add button (`groupAccountsByMachine`). A remote
+    machine's Add / Retry / Remove act ON that host over a **connected** project only — a
+    disconnected host's Add is disabled and its Remove only forgets the record (the dialog says so);
+    a remote id never reaches a LOCAL remove. Codex gained the remote lifecycle this needed:
+    `codexAccounts.add/waitLogin/identity/remove` take an SSH `ctx` (desktop `src/main/codex-accounts.ts`
+    → the `SshProjectManager.remoteCodex*` legs; the credential is written on the host by
+    `codex login --device-auth` — the default browser flow calls back to the HOST's localhost), and
+    `systemIdentity({projectId})` now asks the host instead of answering `null`.
+  - **The remote spawn scopes the account BY PROVIDER** (`core/remote-account-env.ts`). It used to
+    hand every `accountId` to Claude's `CLAUDE_CONFIG_DIR`, so a node bound to a managed Codex account
+    on an SSH host got a Claude dir that does not exist and NO `CODEX_HOME` — its codex silently ran
+    as the host's system login (`remoteCodexTmuxEnvArgs` existed with no caller). The system Codex
+    account is left to the host's own env (a remote `CODEX_HOME` of the user's — a snap remap — must
+    win). The running-node **Switch Codex account** is shown disabled on SSH nodes: its three-phase
+    switch plans rollouts in LOCAL homes only.
   - **Linked accounts** (`ClaudeAccount.configDir`) — a PRE-EXISTING local config
     dir the user already drives themselves (`export CLAUDE_CONFIG_DIR=~/.claude-2; claude …` in a
     plain terminal) adopted as a first-class account without a login node. Settings → Accounts →
