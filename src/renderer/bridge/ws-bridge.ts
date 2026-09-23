@@ -999,12 +999,15 @@ export function buildClaudeAccountsApi(client: RpcClient): Pick<NodeTerminalApi,
         ) as Promise<ClaudeSkillShareResult>,
       // Real: the copy is core, on the machine the browser is served from — the same machine whose
       // account dirs the Server Edition's panes run under.
-      copySession: (sessionId, sourceAccountId, targetAccountId) =>
+      // An SSH ctx is forwarded as-is: the server registers no SSH leg, so core refuses it
+      // (`failed`) instead of copying on the server's own disk.
+      copySession: (sessionId, sourceAccountId, targetAccountId, ctx) =>
         client.request(
           IPC.claudeAccountsCopySession,
           sessionId,
           sourceAccountId,
-          targetAccountId
+          targetAccountId,
+          ctx
         ) as Promise<ClaudeSessionCopyResult>
     }
   }
