@@ -597,7 +597,7 @@ import {
   nodeSshFor,
   createVideoNode,
   createWebNode,
-  isVideoFile,
+  isMediaFile,
   duplicateNode,
   flowToNodeStates,
   addSelectionToGroup,
@@ -4184,7 +4184,7 @@ export function Canvas() {
       setNodes((ns) => [
         ...ns.map((n) => (n.selected ? { ...n, selected: false } : n)),
         {
-          ...(isVideoFile(filePath)
+          ...(isMediaFile(filePath)
             ? createVideoNode(ns.length, filePath, center ?? viewCenter(), sshFs)
             : createEditorNode(ns.length, filePath, center ?? viewCenter(), sshFs)),
           selected: true

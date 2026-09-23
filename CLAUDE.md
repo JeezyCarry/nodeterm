@@ -4685,3 +4685,15 @@ sessions is a hazard whatever kills it; this removes the hazard, not a proven ca
     follow-up note rather than same-PR work — but flag it so it isn't forgotten.
   When a change is genuinely desktop-only (native menus, auto-update, Keychain), say so; the
   point is to make the call consciously, not to leave the other surfaces to rot.
+
+## Media playback lifetime (#680)
+
+Audio routes through `isMediaFile` to the existing persisted `video` kind and native audio controls.
+Legacy audio editor nodes migrate on load. Desktop uses the existing local/SSH allowlist; Server
+and relay retain their explicit media transport degradation. Native mobile does not consume these
+React nodes; its own player/IME behavior requires a separate device check.
+
+Remote cache entries requested in this run are retained until exit, including cache hits; pruning
+waits are coordinated with a concurrent cache reader. The 20-entry cap is soft for retained files,
+so disk use may grow in a long run; prior-run entries are eligible again after restart. `mediaRange`
+handles suffix ranges and rejects unsatisfiable ones without weakening the serve-time path jail.

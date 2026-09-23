@@ -939,6 +939,17 @@ export function createEditorNode(
 
 const VIDEO_EXTS = ['mp4', 'webm', 'mov', 'm4v', 'mkv', 'ogv', 'avi']
 
+/** Audio uses the existing media node kind; no workspace schema change is needed. */
+export function isAudioFile(path: string): boolean {
+  return ['mp3', 'wav', 'flac', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'aiff', 'aif', 'weba'].includes(
+    path.split('.').pop()?.toLowerCase() ?? ''
+  )
+}
+
+export function isMediaFile(path: string): boolean {
+  return isVideoFile(path) || isAudioFile(path)
+}
+
 /** True when a path looks like a playable video file (by extension). */
 export function isVideoFile(path: string): boolean {
   const ext = path.split('.').pop()?.toLowerCase() ?? ''
@@ -1908,7 +1919,7 @@ export function nodeStatesToFlow(states: CanvasNodeState[]): CanvasNode[] {
     return {
       id: n.id,
       // Default to 'terminal' for nodes saved before the kind field existed.
-      type: n.kind ?? 'terminal',
+      type: n.kind === 'editor' && n.filePath && isAudioFile(n.filePath) ? 'video' : n.kind ?? 'terminal',
       ...((n.kind ?? 'terminal') === 'group' ? { dragHandle: '.group-node__label' } : {}),
       position: n.position,
       width: n.size.width,

@@ -894,6 +894,34 @@ describe('SshProjectManager', () => {
       expect((await fs.readdir(dir)).filter((file) => file.endsWith('.part'))).toEqual([])
     })
 
+    it('keeps an open media file seekable after more than twenty later downloads', async () => {
+      const dir = await destDir()
+      const mgr = new SshProjectManager({
+        userDataDir: '/ud',
+        spawnMaster: vi.fn(() => ({ kill: vi.fn(), on: vi.fn() })),
+        run: vi.fn(async (args: string[]) => ({
+          code: args.at(-1)?.includes('test -d') ? 1 : 0,
+          stdout: args.at(-1)?.includes('wc -c') ? '4' : '/home/u'
+        })),
+        runScp: vi.fn(async (args: string[]) => {
+          await fs.writeFile(args.at(-1)!, 'data')
+          return { code: 0 }
+        }),
+        getHook: () => ({ port: 1, token: 't', version: '1' }),
+        onStatus: vi.fn()
+      })
+      await mgr.connect('p1', conn, '/srv/repo')
+      const first = await mgr.cacheMediaFile('p1', '/srv/first.mp3', dir)
+      expect(first.ok).toBe(true)
+      // Await the real pruner to make deletion observable, without timing sleeps.
+      for (let i = 0; i < 22; i++) {
+        const next = await mgr.cacheMediaFile('p1', `/srv/clip-${i}.mp4`, dir)
+        expect(next.ok).toBe(true)
+        if (next.ok) await (mgr as unknown as { pruneMediaCache(d: string, n: string): Promise<void> }).pruneMediaCache(dir, path.basename(next.localPath))
+      }
+      expect(first.ok && await fs.readFile(first.localPath, 'utf8')).toBe('data')
+    })
+
     it('does not replace a cache entry when checking it fails for a reason other than absence', async () => {
       const dir = await destDir()
       const runScp = vi.fn(async () => ({ code: 0 }))

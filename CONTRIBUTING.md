@@ -690,3 +690,6 @@ Two files, two audiences:
 **If you change or discover something other contributors must know, update this file too.** An
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
+
+- Media URLs live for the app run. Remote cache pruning must keep files already handed to
+  players; the cache cap is soft until restart. Use the existing `video` node for audio too.
