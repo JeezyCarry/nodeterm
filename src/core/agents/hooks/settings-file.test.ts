@@ -39,10 +39,10 @@ for (const remote of [false, true]) {
       const result = JSON.parse(readFileSync(file, 'utf8'))
       expect(result).toMatchObject({ outputStyle: original.outputStyle, model: original.model, statusLine: original.statusLine })
       expect(result.hooks.Stop[0]).toEqual({ matcher: '*', hooks: [foreign] })
-      expect(statSync(file).mode & 0o777).toBe(0o640)
       const once = readFileSync(file, 'utf8')
       expect(await update()).toBe(false)
       expect(readFileSync(file, 'utf8')).toBe(once)
+      expect(statSync(file).mode & 0o777).toBe(0o640)
     })
 
     it.each(['', '{broken', 'null', '[]', '42', '{"hooks":null}', '{"hooks":{"Stop":{}}}', '{"hooks":{"Stop":[null]}}', '{"hooks":{"Stop":[{"hooks":[null]}]}}'])('preserves malformed settings: %s', async (raw) => {
@@ -64,6 +64,13 @@ for (const remote of [false, true]) {
       expect(await update()).toBe(!remote)
       expect(lstatSync(file).isSymbolicLink()).toBe(true)
       expect(JSON.parse(readFileSync(target, 'utf8')).model).toBe('keep')
+    })
+
+    it.skipIf(process.platform === 'win32')('refuses a FIFO without waiting for a writer', async () => {
+      const fifo = spawnSync('mkfifo', [file])
+      expect(fifo.status).toBe(0)
+      expect(await update()).toBe(false)
+      expect(lstatSync(file).isFIFO()).toBe(true)
     })
 
     it('leaves dangling symlinks untouched', async () => {

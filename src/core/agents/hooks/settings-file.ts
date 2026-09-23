@@ -1,5 +1,5 @@
 // User-owned JSON is never repaired by an installer. Only ENOENT means a new config.
-import { lstatSync, readFileSync, mkdirSync, rmdirSync, statSync, writeFileSync, rmSync, chmodSync, realpathSync } from 'fs'
+import { lstatSync, readFileSync, mkdirSync, rmdirSync, statSync, writeFileSync, rmSync, chmodSync, realpathSync, openSync, closeSync, fstatSync, constants } from 'fs'
 import path from 'path'
 import { renameAtomicSync, tempNameFor } from '../../fs-atomic'
 
@@ -10,13 +10,20 @@ export function parseSettings(raw: string): Record<string, unknown> {
 }
 
 function snapshot(file: string): string | null {
+  let fd: number | undefined
   try {
-    // Do not replace links (including dangling links), devices, or directories.
-    if (!lstatSync(file).isFile()) throw new Error('Settings must be a regular file')
-    return readFileSync(file, 'utf8')
+    // Inspect and read the SAME open file, never lstat(path) then reopen a possibly swapped path.
+    // POSIX O_NOFOLLOW rejects a symlink introduced after target resolution. On platforms without
+    // that flag, the target-resolution check before publication remains the backstop. NONBLOCK
+    // lets fstat reject a FIFO without waiting for a writer.
+    fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0))
+    if (!fstatSync(fd).isFile()) throw new Error('Settings must be a regular file')
+    return readFileSync(fd, 'utf8')
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw e
+  } finally {
+    if (fd !== undefined) closeSync(fd)
   }
 }
 
