@@ -2767,6 +2767,11 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   retired — its embedded-JS parser now lives as tested TS in `core/context-link-render.ts`:
   parsers for **all four** formats — claude JSONL / codex rollout / gemini event-sourced chat /
   opencode export — plus `renderContextLink` over injected fetchers). `src/core/context-link.ts`
+  coalesces renderer updates before workspace-map construction with a non-resetting task.
+  Intermediate ACL publications retain previously resolved paths keyed by node, agent, session,
+  account, cwd, remote/local placement and hook path. Ingest prunes changed/removed identities,
+  so changing back during queued discovery cannot revive an invalidated path. Reinitialization
+  clears the cache, and only current-revision discovery may refill it. The service
   holds the link docs in memory (per-node files under `<userData>/context-links/` remain as a
   debug aid), carries per-entry `agentId`/`sessionId`/`accountId`, and answers the route;
   **authorization** = the doc is selected by the REQUESTER's node id, so a token-holding caller

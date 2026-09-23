@@ -237,3 +237,72 @@ it('recovers the write queue after enrichment fails', async () => {
   expect(await handleContextLinkRequest({ verb: 'list', nodeId: 'a', args: {} })).toContain('Recovered')
   expect(JSON.parse(readFileSync(join(dir, 'context-links', 'a.json'), 'utf8')).links[0].note).toBe('safe fixture')
 })
+
+it('keeps verified local and remote transcripts readable during edits and delayed discovery', async () => {
+  const { locateCodex } = await import('./handoff/locate')
+  const local = join(dir, 'retained.jsonl')
+  writeFileSync(local, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'ship it' }] } }))
+  const readRemoteFile = vi.fn(async () => CLAUDE_LINE)
+  start({ isRemoteNode: id => id === 'retained-remote', readRemoteFile })
+  setNodeTranscript('retained-remote', 'remote-session', '/home/u/.claude/projects/x/retained.jsonl')
+  vi.mocked(locateCodex).mockResolvedValueOnce(local)
+  const links = [
+    { id: 'retained-local', title: 'Local', agentId: 'codex', sessionId: 'local-session' },
+    { id: 'retained-remote', title: 'Remote', agentId: 'claude', sessionId: 'remote-session' },
+    { id: 'retained-note', title: 'Brief', note: 'old' }
+  ]
+  await setContextLinks({ reader: links })
+  let release!: (value: string) => void
+  let entered!: () => void
+  const started = new Promise<void>(resolve => { entered = resolve })
+  vi.mocked(locateCodex).mockImplementationOnce(async () => {
+    entered()
+    return new Promise<string>(resolve => { release = resolve })
+  })
+  const pending = setContextLinks({ reader: links.map(n => ({ ...n, title: `${n.title} edited`, ...(n.note ? { note: 'new' } : {}) })) })
+  await started
+  try {
+    expect(await handleContextLinkRequest({ verb: 'list', nodeId: 'reader', args: {} })).toContain('Local edited')
+    for (const node of ['retained-local', 'retained-remote']) {
+      expect(await handleContextLinkRequest({ verb: 'transcript', nodeId: 'reader', args: { node } })).toContain('ship it')
+    }
+    expect(await handleContextLinkRequest({ verb: 'transcript', nodeId: 'reader', args: { node: 'retained-note' } })).toContain('new')
+    expect(readRemoteFile).toHaveBeenCalledWith('retained-remote', '/home/u/.claude/projects/x/retained.jsonl', expect.any(Number))
+  } finally { release(local); await pending }
+})
+
+it.each(['sessionId', 'accountId', 'cwd', 'agentId', 'hook', 'remote', 'removed'])(
+  'invalidates retained paths when %s changes, including change-back before discovery finishes', async field => {
+    const { locateCodex } = await import('./handoff/locate')
+    const local = join(dir, 'identity.jsonl')
+    writeFileSync(local, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'ship it' }] } }))
+    let remote = false
+    start({ isRemoteNode: () => remote })
+    const link = { id: `identity-${field}`, title: 'Identity', agentId: 'codex', sessionId: 'original', accountId: 'original', cwd: '/original' }
+    vi.mocked(locateCodex).mockResolvedValueOnce(local)
+    await setContextLinks({ reader: [link] })
+    expect(await handleContextLinkRequest({ verb: 'transcript', nodeId: 'reader', args: {} })).toContain('ship it')
+    let release!: (value: undefined) => void
+    let entered!: () => void
+    const started = new Promise<void>(resolve => { entered = resolve })
+    vi.mocked(locateCodex).mockImplementationOnce(async () => {
+      entered()
+      return new Promise<undefined>(resolve => { release = resolve })
+    })
+    // Block the write queue so all assertions observe the intermediate publication.
+    const blocker = setContextLinks({ reader: [link], slow: [{ id: 'slow-identity', title: 'Slow', agentId: 'codex', sessionId: 'slow' }] })
+    await started
+    if (field === 'remote') remote = true
+    if (field === 'hook') setNodeTranscript(link.id, 'original', '/changed-hook.jsonl')
+    const changed: ContextLinkMap = field === 'removed' ? {} : { reader: [{ ...link, ...(['sessionId', 'accountId', 'cwd', 'agentId'].includes(field) ? { [field]: 'changed' } : {}) }] }
+    const pending = setContextLinks(changed)
+    try {
+      expect(await handleContextLinkRequest({ verb: 'transcript', nodeId: 'reader', args: {} })).not.toContain('ship it')
+      remote = false
+      const back = setContextLinks({ reader: [link] })
+      expect(await handleContextLinkRequest({ verb: 'transcript', nodeId: 'reader', args: {} })).not.toContain('ship it')
+      release(undefined)
+      await Promise.all([blocker, pending, back])
+    } finally { release(undefined); await blocker }
+  }
+)

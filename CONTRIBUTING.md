@@ -61,6 +61,9 @@ projects independently of canvas geometry updates; a debounce reset by every nod
 starve publication indefinitely. Only merge projects owned by the same core, and use the rendered
 canvas's project epoch during tab switches. Core must revoke removed links before asynchronous
 transcript discovery or debug-file writes finish; an older write must never restore that access.
+Coalesce renderer updates before building the workspace map, without resetting the scheduled task.
+Intermediate publications retain resolved transcript paths only for unchanged identities; changing
+a session/account/location/hook path or removing the target invalidates that cache immediately.
 
 ## Three surfaces
 

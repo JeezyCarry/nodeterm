@@ -19,7 +19,7 @@ import os from 'os'
 import path from 'path'
 import { platform } from './platform'
 import { IPC } from '../shared/ipc'
-import type { ContextLinkMap } from '../shared/types'
+import type { ContextLinkInfo, ContextLinkMap } from '../shared/types'
 import { type PtyManager } from './pty-manager'
 import { directExecutableInvocation, findInLoginPath } from './exec-path'
 import { TMUX_SOCKET } from './tmux-naming'
@@ -140,6 +140,13 @@ const LINK_LOCATORS = { claude: locateClaude, codex: locateCodex, gemini: locate
 // are what authorizes a read (a node may only ever name a link inside ITS OWN document).
 let linkDocs = new Map<string, LinkDoc>()
 let linkRevision = 0
+// Only paths resolved for this exact identity may survive an intermediate publication.
+// Include the hook path so a replaced/invalidated hook cannot reuse an older resolution.
+let verifiedPaths = new Map<string, string>()
+function transcriptIdentity(n: ContextLinkInfo): string {
+  return JSON.stringify([n.id, n.agentId, n.sessionId, n.accountId, n.cwd,
+    !!deps.isRemoteNode?.(n.id), transcriptPathOf(n.id)])
+}
 
 // Write one enriched link file per node id present in the map. Removed links should not
 // linger, so we clear stale per-node files first. Async fs throughout — this runs on edge
@@ -151,9 +158,11 @@ async function writeLinkFiles(map: ContextLinkMap, revision: number): Promise<vo
   // Resolve each linked node's transcript once (hook-fed for claude, locator-by-sessionId
   // for codex/gemini), so buildLinkDoc stays pure and sync.
   const resolved = new Map<string, string>()
+  const verified = new Map<string, string>()
   for (const links of Object.values(map)) {
     for (const n of links) {
       if (n.note != null || resolved.has(n.id)) continue
+      const identity = transcriptIdentity(n)
       resolved.set(
         n.id,
         await resolveLinkTranscript(n, {
@@ -162,6 +171,8 @@ async function writeLinkFiles(map: ContextLinkMap, revision: number): Promise<vo
           isRemote: deps.isRemoteNode
         })
       )
+      if (identity === transcriptIdentity(n)) verified.set(identity, resolved.get(n.id)!)
+      else resolved.set(n.id, '')
     }
   }
   if (revision !== linkRevision) return
@@ -175,6 +186,7 @@ async function writeLinkFiles(map: ContextLinkMap, revision: number): Promise<vo
     docs.set(nodeId, doc)
   }
   // Publish all enriched documents together; never expose a partially rebuilt map.
+  verifiedPaths = verified
   linkDocs = docs
   try {
     for (const f of await fs.promises.readdir(d)) {
@@ -297,8 +309,22 @@ export function setContextLinks(map: ContextLinkMap): Promise<void> {
   const revision = ++linkRevision
   // Authorization changes immediately, before transcript discovery or debug-file I/O. A slow
   // locator must neither hide a new edge from list nor retain a removed read permission.
+  const retained = new Map<string, string>()
+  const paths = new Map<string, string>()
+  for (const links of Object.values(snapshot)) {
+    for (const n of links) {
+      if (n.note != null) continue
+      // Dependency lookup can fail; leave discovery to report the failure asynchronously.
+      try {
+        const identity = transcriptIdentity(n)
+        const prior = verifiedPaths.get(identity)
+        if (prior) { retained.set(identity, prior); paths.set(n.id, prior) }
+      } catch { /* no verified path */ }
+    }
+  }
+  verifiedPaths = retained
   linkDocs = new Map(Object.entries(snapshot).map(([nodeId, links]) => [nodeId, buildLinkDoc(
-    nodeId, links, { transcriptOf: () => '', tmuxBin: pty?.getTmuxBin() ?? null, tmuxSocket: TMUX_SOCKET }
+    nodeId, links, { transcriptOf: (id) => paths.get(id) ?? '', tmuxBin: pty?.getTmuxBin() ?? null, tmuxSocket: TMUX_SOCKET }
   )]))
   const write = () => writeLinkFiles(snapshot, revision)
   writeChain = writeChain.then(write, write)
@@ -331,6 +357,7 @@ export function initContextLink(
   deps = platformDeps
   linkRevision++
   linkDocs.clear()
+  verifiedPaths.clear()
   hookServer.setContextLinkHandler(handleContextLinkRequest)
   try {
     const d = contextLinkDir()

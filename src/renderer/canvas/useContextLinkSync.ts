@@ -23,6 +23,7 @@ export function useContextLinkSync(live: LiveContextLinks): void {
 
   useEffect(() => {
     let last = ''
+    let pending: ReturnType<typeof setTimeout> | undefined
     const update = () => {
       const { projects, activeProjectId } = useProjects.getState()
       const local = projects.filter((p) => sessionForProject(p.id).api === window.nodeTerminal)
@@ -61,11 +62,18 @@ export function useContextLinkSync(live: LiveContextLinks): void {
         console.warn('[context-link] publish failed', error)
       })
     }
-    publish.current = update
-    const offProjects = useProjects.subscribe(update)
-    const offStatus = useAgentStatus.subscribe(update)
-    update()
+    // A fixed task boundary coalesces renders and hook bursts BEFORE rebuilding the workspace.
+    // Never reset the timer: continuous drag/status traffic must not starve publication.
+    const schedule = () => {
+      if (pending !== undefined) return
+      pending = setTimeout(() => { pending = undefined; update() }, 0)
+    }
+    publish.current = schedule
+    const offProjects = useProjects.subscribe(schedule)
+    const offStatus = useAgentStatus.subscribe(schedule)
+    schedule()
     return () => {
+      clearTimeout(pending)
       offProjects()
       offStatus()
       publish.current = () => {}
