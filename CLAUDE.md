@@ -3758,12 +3758,17 @@ or browser nodes means adding the draw and the set together, in one change.
   picker), so no new IPC was added and nothing is stubbed. **Mobile**: N/A for v1 — *nodeterm mobile*
   attaches to tmux sessions over the transport protocol and carries no per-node icon concept;
   surfacing one means extending that protocol (follow-up in the iOS repo).
-## Desktop wallpaper + glass terminals (Settings → Appearance)
+## Desktop wallpaper + Liquid Glass (Settings → Appearance)
 
-Two opt-in settings, both default OFF so an update changes nothing on screen:
+Two opt-in choices, both off by default so an update changes nothing on screen:
 `settings.desktopWallpaper` (`none | {preset, id} | {image, path}`, read through
-`normalizeWallpaper` in `@shared/wallpaper` — hand-editable, unknown ⇒ `none`) and
-`settings.glassTerminals`.
+`normalizeWallpaper` in `@shared/wallpaper` — hand-editable, unknown ⇒ `none`) and the
+**Liquid Glass appearance**, which is the fourth value of `settings.appTheme` (`'liquid-glass'`,
+`isLiquidGlass` in `renderer/lib/appTheme.ts`) rather than a separate switch: it is a look, and its
+light/dark base follows the terminal theme exactly like `auto`. Choosing it with no wallpaper picks
+one (`defaultWallpaper`: the first macOS still, Sonoma Horizon when present, else a gradient) so
+glass never sits over plain black; a wallpaper the user chose is never replaced. The pre-release
+`glassTerminals: true` maps to it once in `settings-store` (only over `auto`).
 
 - **The wallpaper is painted on the React Flow ROOT** (`Canvas.tsx`), which is viewport-sized and
   never transformed, so it stays put while the canvas pans and zooms; the dot grid is faded to 30%
@@ -3788,7 +3793,7 @@ Two opt-in settings, both default OFF so an update changes nothing on screen:
   image the user chose. Only hash-named full-size files are candidates; thumbnails, temps and
   foreign files are never touched, nor is a conversion in flight. A failed renderer load is not
   cached (the file may appear).
-- **Glass is terminal nodes only.** The node fill is the terminal theme's background at an alpha
+- **Terminal nodes use their OWN theme's tint** (the chrome fill is for everything else). The node fill is the terminal theme's background at an alpha
   from `glassTintAlpha` (`renderer/lib/glassContrast.ts`): the smallest alpha at which the theme
   foreground keeps 4.5:1 over ANY backdrop. Checking white and black suffices because composite
   luminance is monotone in each backdrop channel — except when the text's luminance falls INSIDE
@@ -3809,6 +3814,33 @@ Two opt-in settings, both default OFF so an update changes nothing on screen:
   mounted (it paints text BELOW the nodes, so a tint would cover it), and the blur is dropped while
   the camera moves (`.canvas-moving`, toggled by `onMoveStart`/`onMoveEnd` via classList so a pan
   does not re-render Canvas) — the tint alone carries the contrast guarantee.
+- **Liquid Glass chrome** (`:root[data-nt-glass='on']`, set by App.tsx only for that appearance, so
+  every other look is byte-identical). ONE chrome fill, `--glass-chrome-bg` = the resolved `--panel`
+  at `glassChromeAlpha(--text, --panel)` — **dark 0.70, light 0.745** on the shipped palettes. The
+  app's `--text` is itself TRANSLUCENT (`rgba(var(--tint-rgb), 0.85)`), so the ink moves with the
+  backdrop and the white/black endpoint argument does not hold; the backdrop is SAMPLED (6×6×6 grid +
+  grey ramp) and the test re-checks a fine sweep against the real tokens of both themes. App.tsx
+  reads the tokens with the glass attribute removed first — under it `--panel` IS the fill, and a
+  theme switch would compute from the old fill. `--muted` has no guarantee (0.9 dark / 0.965 light
+  would be needed). Coverage: surface TOKENS (`--panel`, `--panel-header`, `--panel-2`,
+  `--surface-deep|raised|overlay`, `--tabbar-bg`) are redefined to the fill, which reaches every
+  panel that paints them; nesting only stacks the same tint, and every alpha above the computed one
+  also passes, so a nested surface cannot break the guarantee. The floating containers that
+  hard-code `rgba(var(--menu-rgb), .98)` & co. are LISTED in the block at the end of styles.css — a
+  new floating container owes an entry there. **Blur goes on outermost containers only** (a blur
+  inside a blurred element re-blurs its parent's pixels at double cost); nested pieces (dock menus,
+  sidebar icon buttons) take the fill alone. Node blur pauses during camera moves; chrome is static
+  and keeps it. **Left opaque, deliberately:** Monaco, `<webview>` and `<video>` bodies (another
+  renderer's surface), sticky notes (the colour is the note), the kanban board (opaque overlay), and
+  the `surface-sunken`/`--bg` wells. The tab bar is a row above the canvas, so its glass shows the
+  window background rather than the wallpaper.
+- **No window accents under Liquid Glass.** A terminal window's per-node colour arrives as INLINE
+  styles (`borderTopColor`, the colour dot's background), so the overrides carry `!important`: a
+  neutral `--glass-edge` border, the dot as a neutral ring (it is still the colour-picker button),
+  neutral resize handles. State survives without the colour: selection is an ink (`--text`) outline,
+  unread keeps its accent border + glow, working/attention keep their `::after` glows and header
+  badges. The sessions list and the kanban board keep node colours. `styles.liquid-glass.test.ts`
+  pins the gate and every neutralising override.
 - **Surfaces.** Desktop: full. Server Edition: gradients + glass; the stills list is empty (not
   macOS) and "Choose image…" is hidden (a picker there browses the SERVER's disk). Relay tabs keep
   a stub (no stills, import refused). Mobile: N/A (no canvas). Kanban: N/A (the board is opaque).
