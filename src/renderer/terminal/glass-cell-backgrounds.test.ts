@@ -3,8 +3,24 @@ import fs from 'fs'
 import path from 'path'
 import type { Terminal } from '@xterm/xterm'
 import type { WebglAddon } from '@xterm/addon-webgl'
-import { glassRectAlpha, installGlassCellBackgrounds, setGlassCellAlpha } from './glass-cell-backgrounds'
-import { relativeLuminance } from '../lib/glassContrast'
+import {
+  classifyRun,
+  glassPanelFill,
+  installGlassCellBackgrounds,
+  oklab,
+  setGlassCellAlpha
+} from './glass-cell-backgrounds'
+import {
+  composite,
+  contrastRatio,
+  GLASS_READABLE_TICK,
+  glassSliderAlpha,
+  glassTintAlpha,
+  parseHex
+} from '../lib/glassContrast'
+import { resolveTerminalTheme } from './themes'
+
+type Rgb = readonly [number, number, number]
 
 const INVERSE = 0x4000000
 const CM_P256 = 0x2000000
@@ -13,43 +29,121 @@ const DIM = 0x8000000
 const ITALIC = 0x4000000
 const HAS_EXTENDED = 0x10000000
 
-const BG_LUM = relativeLuminance([30, 30, 30]) // nodeterm-dark background
-const FG_LUM = relativeLuminance([212, 212, 212])
-const L = (v: number): number => relativeLuminance([v, v, v])
+const grey = (v: number): Rgb => [v, v, v]
+const DARK = { bg: grey(30), fg: grey(230) } // nodeterm-dark
+const WHITE: Rgb = [255, 255, 255]
+const BLACK: Rgb = [0, 0, 0]
 
-describe('glassRectAlpha', () => {
+describe('classifyRun', () => {
   const grok = CM_RGB | 0x141414
   it.each([
-    ['inverse video / fake cursor', INVERSE, CM_RGB | 0x3a3a3a, CM_RGB | 0x3a3a3a, L(58), 1],
-    ['inverse on the default bg', INVERSE, 0, 0, FG_LUM, 1],
-    ['DIM on the default bg', 0, DIM, DIM, BG_LUM, 0],
-    ['ITALIC on the default bg', 0, ITALIC, ITALIC, BG_LUM, 0],
-    ['hyperlink / underline style on the default bg', 0, HAS_EXTENDED, HAS_EXTENDED, BG_LUM, 0],
-    ['app panel (truecolor)', 0, grok, grok, L(20), 0.4],
-    ['app panel (256-colour, Claude bubble)', 0, CM_P256 | 237, CM_P256 | 237, L(58), 0.4],
-    ['dim text on an app panel', 0, grok | DIM, grok | DIM, L(20), 0.4],
-    ['selection / block cursor / search highlight (renderer override)', 0, CM_RGB | 0x264f78, grok, relativeLuminance([38, 79, 120]), 1],
-    ['override where the buffer cell was unreadable', 0, grok, NaN, L(20), 1],
-    ['light panel on a dark theme', 0, CM_RGB | 0xe0e0e0, CM_RGB | 0xe0e0e0, L(224), 1]
-  ])('%s', (_name, fg, bg, cellBg, runLum, want) => {
-    expect(glassRectAlpha(fg, bg, cellBg, 0.4, 0, runLum, BG_LUM, FG_LUM)).toBe(want)
+    ['inverse video / fake cursor', INVERSE, CM_RGB | 0x3a3a3a, CM_RGB | 0x3a3a3a, 'stock'],
+    ['inverse on the default bg', INVERSE, 0, 0, 'stock'],
+    ['DIM on the default bg', 0, DIM, DIM, 0],
+    ['ITALIC on the default bg', 0, ITALIC, ITALIC, 0],
+    ['hyperlink / underline style on the default bg', 0, HAS_EXTENDED, HAS_EXTENDED, 0],
+    ['app panel (truecolor)', 0, grok, grok, 'panel'],
+    ['app panel (256-colour, Claude bubble)', 0, CM_P256 | 237, CM_P256 | 237, 'panel'],
+    ['dim text on an app panel', 0, grok | DIM, grok | DIM, 'panel'],
+    ['selection / block cursor / search highlight (renderer override)', 0, CM_RGB | 0x264f78, grok, 'stock'],
+    ['override where the buffer cell was unreadable', 0, grok, NaN, 'stock']
+  ])('%s', (_name, fg, bg, cellBg, want) => {
+    expect(classifyRun(fg, bg, cellBg, 0)).toBe(want)
   })
 
   it('an attribute-only run takes the theme background alpha, whatever it is', () => {
-    expect(glassRectAlpha(0, DIM, DIM, 0.4, 1, BG_LUM, BG_LUM, FG_LUM)).toBe(1)
-  })
-
-  it('Reduce Transparency (node alpha 1) leaves app panels opaque', () => {
-    expect(glassRectAlpha(0, CM_RGB | 0x141414, CM_RGB | 0x141414, 1, 0, L(20), BG_LUM, FG_LUM)).toBe(1)
+    expect(classifyRun(0, DIM, DIM, 1)).toBe(1)
   })
 })
 
+describe('glassPanelFill: a lift or sink of the glass, never a second slab of tint', () => {
+  it("Claude's #3a3a3a bubble on #1e1e1e is a subtle white-ish lift, the same at every slider position", () => {
+    for (const t of [0.2, 0.539, 0.675, 0.95]) {
+      const f = glassPanelFill(grey(58), DARK, t, [WHITE])!
+      expect(f.alpha).toBeGreaterThanOrEqual(0.08)
+      expect(f.alpha).toBeLessThanOrEqual(0.12)
+      expect(f.rgb[0]).toBeGreaterThan(30) // lighter than the tint: a lift
+    }
+  })
+
+  it("Grok's full-screen #141414 is a faint black sink (≈ the theme bg)", () => {
+    const f = glassPanelFill(grey(20), DARK, 0.675, [grey(200)])!
+    expect(f.rgb).toEqual(BLACK)
+    expect(f.alpha).toBeGreaterThanOrEqual(0.04)
+    expect(f.alpha).toBeLessThanOrEqual(0.06)
+  })
+
+  it('a panel that IS the theme background draws nothing', () => {
+    expect(glassPanelFill(grey(31), DARK, 0.675, [])).toEqual({ rgb: grey(31), alpha: 0 })
+  })
+
+  it('Reduce Transparency (node alpha 1) keeps the app panel opaque', () => {
+    expect(glassPanelFill(grey(58), DARK, 1, [])).toBeNull()
+  })
+
+  it('a coloured status bar keeps its own hue', () => {
+    const f = glassPanelFill([0, 90, 200], DARK, 0.675, [WHITE])!
+    expect(f.rgb).toEqual([0, 90, 200])
+    expect(f.alpha).toBe(0.22)
+  })
+
+  it('a light bar carrying dark text on a dark theme stays opaque (the panel is what makes it readable)', () => {
+    for (const t of [0.2, 0.675, 0.95]) expect(glassPanelFill(grey(224), DARK, t, [BLACK])).toBeNull()
+  })
+
+  it('decoration under 3:1 on the opaque panel (a dim prompt chevron) does not force it opaque', () => {
+    expect(glassPanelFill(grey(58), DARK, 0.675, [grey(78)])).not.toBeNull()
+  })
+
+  it('is continuous at the Readable tick', () => {
+    const r = glassTintAlpha('#e6e6e6', '#1e1e1e')
+    const at = glassPanelFill(grey(58), DARK, r, [])!.rgb[0]
+    const below = glassPanelFill(grey(58), DARK, r - 1e-4, [])!.rgb[0]
+    expect(Math.abs(at - below)).toBeLessThan(0.5) // no jump: the step shrinks with the slider step
+  })
+})
+
+/**
+ * The guarantee: at or right of the Readable tick, the theme foreground on a lifted/sunk panel
+ * keeps 4.5:1 over ANY backdrop — the same promise as the plain glass. Swept over grey panels on
+ * both default themes, backdrops 0..255 plus saturated corners.
+ */
+describe('theme text on a panel keeps the Readable guarantee', () => {
+  const backdrops: Rgb[] = [
+    ...Array.from({ length: 52 }, (_, i) => grey(i * 5)),
+    [255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0], [0, 255, 255], [255, 0, 255]
+  ]
+  it.each(['nodeterm-dark', 'nodeterm-light'])('%s', (id) => {
+    const theme = resolveTerminalTheme(id).theme
+    const bg = parseHex(theme.background!)!
+    const fg = parseHex(theme.foreground!)!
+    const readable = glassTintAlpha(theme.foreground!, theme.background!)
+    for (const t of [readable, glassSliderAlpha((GLASS_READABLE_TICK + 1) / 2, readable), glassSliderAlpha(1, readable)]) {
+      for (let v = 0; v <= 255; v += 5) {
+        const f = glassPanelFill(grey(v), { bg, fg }, t, [fg])
+        if (!f) continue // opaque: the app's own panel
+        for (const x of backdrops) {
+          const shown = composite(f.rgb, composite(bg, x, t), f.alpha)
+          expect(contrastRatio(fg, shown), `${id} t=${t} panel=${v} backdrop=${x}`).toBeGreaterThanOrEqual(4.5 - 1e-6)
+        }
+      }
+    }
+  })
+})
+
+it('OKLab is the reference transform (white L=1, black L=0, grey is achromatic)', () => {
+  expect(oklab(WHITE)[0]).toBeCloseTo(1, 4)
+  expect(oklab(BLACK)[0]).toBeCloseTo(0, 6)
+  const [, a, b] = oklab(grey(128))
+  expect(Math.hypot(a, b)).toBeLessThan(1e-4)
+})
+
 it('(c·√k, √k) blended SRC_ALPHA over a cleared premultiplied canvas stores exactly (c·k, k)', () => {
-  for (const k of [0.2, 0.675, 0.95]) {
-    const c = 20 / 255
+  for (const k of [0.04, 0.11, 0.22]) {
+    const c = 188 / 255
     const s = Math.sqrt(k)
-    expect(c * s * s).toBeCloseTo(c * k, 12) // rgb: src·srcAlpha
-    expect(s * s).toBeCloseTo(k, 12) // alpha channel blends the same way
+    expect(c * s * s).toBeCloseTo(c * k, 12)
+    expect(s * s).toBeCloseTo(k, 12)
   }
 })
 
@@ -62,20 +156,25 @@ it('setGlassCellAlpha reports only real changes', () => {
   expect(setGlassCellAlpha(t, null)).toBe(false)
 })
 
+type FakeCell = { bg: number; fg?: number; ch?: string }
+
 /** A structural fake of the addon's RectangleRenderer, doing what the real `_updateRectangle`
  *  does with the attribute array (colour, then `$a = 1`). One class per test: the wrap patches the
  *  prototype, like it does the real shared one. */
-function fakeAddon(cells: Record<number, number>) {
+function fakeAddon(cells: Record<number, FakeCell>) {
   class RectangleRenderer {
-    _themeService = { colors: { background: { rgba: 0x1e1e1e00 }, foreground: { rgba: 0xd4d4d4ff } } }
+    _themeService = { colors: { background: { rgba: 0x1e1e1e00 }, foreground: { rgba: 0xe6e6e6ff }, ansi: [] } }
     _terminal = {
       buffer: {
         active: {
           viewportY: 0,
-          getNullCell: () => ({ bg: 0 }),
+          getNullCell: () => ({ bg: 0, fg: 0, getChars: () => '' }),
           getLine: () => ({
-            getCell: (x: number, cell: { bg: number }) => {
-              cell.bg = cells[x] ?? 0
+            getCell: (x: number, cell: { bg: number; fg: number; getChars: () => string }) => {
+              const c = cells[x] ?? { bg: 0 }
+              cell.bg = c.bg
+              cell.fg = c.fg ?? 0
+              cell.getChars = () => c.ch ?? ''
               return cell
             }
           })
@@ -90,32 +189,42 @@ function fakeAddon(cells: Record<number, number>) {
   }
   const rr = new RectangleRenderer()
   const addon = { _renderer: { _rectangleRenderer: { value: rr } } } as unknown as WebglAddon
-  const draw = (fg: number, bg: number, x = 0): number[] => {
+  const draw = (fg: number, bg: number, x = 0, endX = x + 1): number[] => {
     const v = { attributes: new Float32Array(8) }
-    rr._updateRectangle(v, 0, fg, bg, x, x + 1, 0)
+    rr._updateRectangle(v, 0, fg, bg, x, endX, 0)
     return Array.from(v.attributes)
   }
-  return { addon, rr, draw, proto: RectangleRenderer.prototype }
+  return { addon, rr, draw }
 }
 
 describe('installGlassCellBackgrounds', () => {
-  const panel = CM_RGB | 0x141414
+  const panel = CM_RGB | 0x3a3a3a
 
-  it('glass: an app panel is premultiplied to the node alpha, a dim run vanishes, an override stays', () => {
-    const { addon, rr, draw } = fakeAddon({ 0: panel })
+  it('glass: an app panel becomes its premultiplied lift, a dim run vanishes, overrides stay', () => {
+    const { addon, rr, draw } = fakeAddon({ 0: { bg: panel } })
     expect(installGlassCellBackgrounds(addon)).toBe(true)
-    setGlassCellAlpha(rr._terminal, 0.25)
+    setGlassCellAlpha(rr._terminal, 0.675)
+    const want = glassPanelFill(grey(58), DARK, 0.675, [])!
     const p = draw(0, panel)
-    expect(p[7]).toBeCloseTo(0.5, 6) // √0.25
-    expect(p[4]).toBeCloseTo((20 / 255) * 0.5, 6)
+    expect(p[7]).toBeCloseTo(Math.sqrt(want.alpha), 6)
+    expect(p[4]).toBeCloseTo((want.rgb[0] / 255) * Math.sqrt(want.alpha), 6)
     expect(draw(0, DIM)[7]).toBe(0)
     expect(draw(0, CM_RGB | 0x264f78)[7]).toBe(1) // rendered bg ≠ buffer bg: selection
     expect(draw(INVERSE, panel)[7]).toBe(1)
   })
 
+  it("reads the run's text, not just its first cell: a light bar with dark text stays opaque", () => {
+    const bar = CM_RGB | 0xe0e0e0
+    const text = CM_RGB | 0x000000
+    const { addon, rr, draw } = fakeAddon({ 0: { bg: bar }, 1: { bg: bar, fg: text, ch: 'x' } })
+    installGlassCellBackgrounds(addon)
+    setGlassCellAlpha(rr._terminal, 0.675)
+    expect(draw(0, bar, 0, 2)[7]).toBe(1)
+  })
+
   it('non-glass terminals are byte-identical to the stock renderer', () => {
-    const stock = fakeAddon({ 0: panel })
-    const wrapped = fakeAddon({ 0: panel })
+    const stock = fakeAddon({ 0: { bg: panel } })
+    const wrapped = fakeAddon({ 0: { bg: panel } })
     installGlassCellBackgrounds(wrapped.addon)
     for (const [fg, bg] of [[0, panel], [0, DIM], [INVERSE, panel], [0, CM_RGB | 0x264f78]]) {
       expect(wrapped.draw(fg, bg)).toEqual(stock.draw(fg, bg))
@@ -123,11 +232,14 @@ describe('installGlassCellBackgrounds', () => {
   })
 
   it('a re-install (hot reload) wraps the original, never the wrap', () => {
-    const { addon, rr, draw } = fakeAddon({ 0: panel })
-    installGlassCellBackgrounds(addon)
-    installGlassCellBackgrounds(addon)
-    setGlassCellAlpha(rr._terminal, 0.25)
-    expect(draw(0, panel)[7]).toBeCloseTo(0.5, 6) // applied once, not √√
+    const once = fakeAddon({ 0: { bg: panel } })
+    installGlassCellBackgrounds(once.addon)
+    setGlassCellAlpha(once.rr._terminal, 0.675)
+    const twice = fakeAddon({ 0: { bg: panel } })
+    installGlassCellBackgrounds(twice.addon)
+    installGlassCellBackgrounds(twice.addon)
+    setGlassCellAlpha(twice.rr._terminal, 0.675)
+    expect(twice.draw(0, panel)).toEqual(once.draw(0, panel))
   })
 
   it('fails open when the internals are missing', () => {

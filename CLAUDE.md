@@ -3858,18 +3858,30 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   live in the bg word and the run gets a theme-background rectangle at alpha 1 (Codex's all-dim
   header box). No xterm option exists, so the private method is wrapped on the shared prototype
   (installed from `acquireWebgl`, original kept under a `Symbol.for` key so a hot reload never
-  double-wraps; fail-open). Per run: inverse → opaque; attribute-only (default bg) → the theme bg's
-  alpha (0 under glass); rendered bg ≠ the buffer cell's raw bg = a renderer override (selection,
-  block cursor, search/decoration) → opaque; a panel nearer the theme fg than its bg (light bar on a
-  dark theme) → opaque; else the node's tint alpha (`GlassTint.alpha`, so the slider and Reduce
-  Transparency apply). Written premultiplied as `(c·√k, √k)` — the canvas is premultiplied and the
-  addon blends alpha with SRC_ALPHA, so this stores exactly `(c·k, k)`. Only terminals registered
-  through `setGlassCellAlpha` (TerminalNode, `glassOn` only) are touched — others are byte-identical;
-  an alpha change calls `term.clearTextureAtlas()` because backgrounds only rebuild for changed
-  cells. The test pins addon-webgl 0.18.0 and every private name — an upgrade must re-derive them
-  (or delete the wrap if upstream honours bg alpha). Ceilings: panels stack on the node tint
-  (Grok reads denser than a shell); the DOM-renderer fallback keeps explicit backgrounds opaque
-  (inline truecolor `background-color`).
+  double-wraps; fail-open). `classifyRun`: inverse → stock opaque; attribute-only (default bg) → the
+  theme bg's alpha (0 under glass); rendered bg ≠ the buffer cell's raw bg = a renderer override
+  (selection, block cursor, search/decoration) → stock opaque; else an app PANEL → `glassPanelFill`.
+  **A panel is a vibrancy LIFT or SINK of the glass, never the panel colour at the node's tint
+  alpha** — that first version stacked a second tint on the node's own, and #3a3a3a over a bright
+  wallpaper read as a dark smudge. Overlay alpha = `PANEL_K`(1) × OKLab distance(panel, theme bg),
+  clamped [0.04, 0.22], dead zone < 0.02 (= draw nothing), INDEPENDENT of the slider (Claude's
+  #3a3a3a on #1e1e1e → 0.11, Grok's #141414 → 0.044). Colour: the panel's own hue when OKLab chroma
+  > 0.04, else white (lift) / black (sink). A move TOWARD the text (dark-theme lift, light-theme
+  sink) at or right of the Readable tick uses the glass composite over the extreme backdrop
+  (`B·t + white·(1−t)`) instead of pure white — the lift then never passes the glass's own worst
+  case, so the theme fg keeps exactly the plain glass's 4.5:1; left of the tick it slides toward pure
+  white by `(4.5 − glassWorst)/3.5`, continuous at the tick. Text check over the WHOLE run (the fg
+  the renderer passes is only the first cell's): inverted-polarity text (dark text on a light bar,
+  dark theme) must keep min(4.5, its opaque contrast) or the panel stays opaque; other text, while
+  the guarantee is on, must fare no worse than on plain glass; glyphs under 3:1 on the opaque panel
+  are decoration. Reduce Transparency (t = 1) → opaque. Written premultiplied as `(c·√k, √k)` — the
+  canvas is premultiplied and the addon blends alpha with SRC_ALPHA, so this stores exactly `(c·k, k)`.
+  Only terminals registered through `setGlassCellAlpha` (TerminalNode, `glassOn` only) are touched —
+  others are byte-identical; an alpha change calls `term.clearTextureAtlas()` because backgrounds
+  only rebuild for changed cells. The test pins addon-webgl 0.18.0 and every private name, and
+  sweeps both default themes to prove the Readable guarantee on panels. Ceilings: Increase Contrast
+  does not strengthen panels (it pins the node to Tinted already); the DOM-renderer fallback keeps
+  explicit backgrounds opaque (inline truecolor `background-color`).
 - **Liquid Glass chrome** (`:root[data-nt-glass='on']`, set by App.tsx only for that appearance, so
   every other look is byte-identical). ONE chrome fill, `--glass-chrome-bg` = the resolved `--panel`
   at `glassChromeAlpha(--text, --panel)` — **dark 0.70, light 0.745** on the shipped palettes. The
