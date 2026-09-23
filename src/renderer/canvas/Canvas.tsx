@@ -8446,6 +8446,10 @@ export function Canvas() {
                     }
                   ] as MenuItem[])
                 : []),
+            ]
+            // Switch model / account stay FIRST-level rows: they are everyday choices, not recovery
+            // restarts, and burying them under Restart ▸ cost an extra hover each time.
+            const switchRows: MenuItem[] = [
               ...(switchCapable
                 ? compatibleModels.length
                   ? ([
@@ -8586,14 +8590,15 @@ export function Canvas() {
                 : []),
             ]
             return [
-              // Every quit-and-resume action — plain restart, fresh shell, subscription, reopen as
-              // another agent, switch model / account — behind ONE row.
+              // The restart variants — plain restart, fresh shell, subscription, reopen as another
+              // agent — behind ONE row.
               {
                 type: 'submenu',
                 label: 'Restart',
                 icon: <IconPower />,
                 children: tidySeparators(restartRows)
               },
+              ...switchRows,
               // Pause session: quit the CLI (and, for the deeper choice, also end the tmux
               // session) so it does NOT auto-resume on the next reveal or reopen — only an
               // explicit Resume brings it back. Same eligibility as Restart above (`why`): a node
@@ -12883,7 +12888,7 @@ export function Canvas() {
       ]
       // For the ACTIVE project, reuse the SAME single-node menu the canvas right-click builds —
       // full parity (Color, Group, Duplicate, Branch, Collapse, Markdown view, Refresh terminal,
-      // Transfer ▸ with its nested model submenus, Restart ▸ with every restart variant) so the two
+      // Transfer ▸ with its nested model submenus, Restart ▸, Switch model ▸ / account ▸) so the two
       // surfaces can't drift. `selectionItems` reads the live
       // node from `nodesRef.current` (active-project only), which is exactly why this is gated.
       // `at` is undefined: the row has no flow position, so spawned nodes (Duplicate/Branch/

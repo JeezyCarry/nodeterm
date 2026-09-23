@@ -3625,10 +3625,11 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   disabled with a hint while the session is busy or has no id yet), delete. Actions live
   in `Canvas.tsx`, operate on `targetIds`. **Conversation actions are grouped** so an agent node's
   menu fits on screen: **Transfer conversation ▸** holds one row per target (a model-capable target
-  nests its gateway models one level further), and **Restart ▸** holds every quit-and-resume
-  variant — restart, restart + fresh shell, restart on subscription, then Reopen as / Switch model /
-  Switch account. `ContextMenu` renders submenus to any depth (`MenuRows` is recursive); a flyout
-  that hosts a submenu drops its scroll (`.ctx-submenu--host` — `overflow: auto` would clip the
+  nests its gateway models one level further), and **Restart ▸** holds the restart variants —
+  restart, restart + fresh shell, restart on subscription, then Reopen as. Switch model ▸ and Switch
+  account ▸ stay first-level rows beside it (everyday choices, not recovery restarts).
+  `ContextMenu` renders submenus to any depth (`MenuRows` is recursive); a flyout that hosts a
+  submenu drops its scroll (`.ctx-submenu--host` — `overflow: auto` would clip the
   nested flyout) and `useSubmenuFlip` lifts a flyout that would run off the bottom. The non-destructive rows are user-hideable from
   **Settings → Appearance** ("Node menu items" / "Terminal header buttons"), stored as HIDDEN
   lists in `settings.hiddenNodeMenuItems` / `settings.hiddenHeaderButtons` (empty = everything
