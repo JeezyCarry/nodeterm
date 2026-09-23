@@ -16,6 +16,7 @@ import { TMUX_SOCKET, sessionName } from './tmux-naming'
 import { DEFAULT_SETTINGS } from '../shared/types'
 import { AUTH_ENV_STRIP, isReservedSpawnEnvKey } from './claude-accounts-core'
 import { MODEL_GATEWAY_ENV_KEYS } from '../shared/agents/model-gateway'
+import { setCustomAgentBaseResolver } from '../shared/agents/config'
 import { hookServer } from './agents/hook-server'
 import type { ProjectSpawnOverrides } from './project-spawn-overrides'
 
@@ -358,6 +359,8 @@ describe('project settings at the spawn — SSH leg', () => {
   afterEach(() => {
     setRemoteSessionEnvWriter(null)
     resetPlatformForTests()
+    setCustomAgentBaseResolver(null)
+    vi.restoreAllMocks()
   })
 
   const sshRemote = {
@@ -388,21 +391,50 @@ describe('project settings at the spawn — SSH leg', () => {
     expect(spawns).toHaveLength(0)
   })
 
-  it.each([undefined, '', 'relative/home', 'C:\\Users\\remote'])('refuses a remote Codex system scope with home %s', async (remoteHome) => {
-    await manager(null)
-    const result = await create({ agentId: 'codex', persistKey: NODE, sshRemote: { ...sshRemote, remoteHome } })
-    expect(result).toMatchObject({ unavailable: 'codex-account' })
-    expect(spawns).toHaveLength(0)
-  })
+  describe.each(['codex', 'custom:codex'])('%s remote scope', (agentId) => {
+    async function codexManager() {
+      const mgr = await manager(null)
+      mgr.init(() => ({
+        ...DEFAULT_SETTINGS,
+        customAgents: [{ id: 'custom:codex', label: 'Codex wrapper', baseAgent: 'codex', launchCmd: 'codex' }]
+      }))
+      return mgr
+    }
 
-  it('writes explicit remote system Codex scope into tmux, without Claude scope', async () => {
-    await manager(null)
-    await create({ agentId: 'codex', persistKey: NODE, sshRemote })
-    expect(spawns).toHaveLength(1)
-    const command = spawns[0].args.join(' ')
-    expect(command).toContain('CODEX_HOME=/home/u/.codex')
-    expect(command).toContain('NODETERM_CODEX_ACCOUNT_ID=')
-    expect(command).not.toContain('CLAUDE_CONFIG_DIR=')
+    it.each(['remote-account', 'missing-account', '../unsafe'])(
+      'refuses managed id %s even before home discovery', async (accountId) => {
+        await codexManager()
+        const result = await create({ agentId, accountId, persistKey: NODE, sshRemote: { ...sshRemote, remoteHome: undefined } })
+        expect(result).toMatchObject({ unavailable: 'codex-account' })
+        expect(spawns).toHaveLength(0)
+        expect(staged).toHaveLength(0)
+      }
+    )
+
+    it.each([undefined, '', 'relative/home', 'C:\\Users\\remote', '/home/u'])(
+      'allows system scope with home %s without overriding host credentials', async (remoteHome) => {
+        await codexManager()
+        const result = await create({ agentId, persistKey: NODE, sshRemote: { ...sshRemote, remoteHome } })
+        expect(result).not.toHaveProperty('unavailable')
+        expect(spawns).toHaveLength(1)
+        expect(spawns[0].file).toBe('/usr/bin/ssh')
+        const command = spawns[0].args.join(' ')
+        expect(command).not.toMatch(/(?:CODEX_HOME|HOME|NODETERM_CODEX_ACCOUNT_ID|CLAUDE_CONFIG_DIR)=/)
+        expect(staged).toHaveLength(0)
+      }
+    )
+
+    it('attaches a confirmed existing session before home discovery', async () => {
+      const mgr = await codexManager()
+      vi.spyOn(mgr as unknown as { remoteSessionVerdict: () => Promise<string> }, 'remoteSessionVerdict').mockResolvedValue('present')
+      const result = await create({ agentId, persistKey: NODE, requireRemote: true, sshRemote: { ...sshRemote, remoteHome: undefined } })
+      expect(result).toMatchObject({ fresh: false })
+      expect(result).not.toHaveProperty('unavailable')
+      expect(spawns).toHaveLength(1)
+      expect(spawns[0].file).toBe('/usr/bin/ssh')
+      expect(spawns[0].args.join(' ')).toContain(sessionName(NODE))
+      expect(spawns[0].args.join(' ')).not.toContain('CODEX_HOME=')
+    })
   })
 
   it("stages the project's env in the 0600 file — never on the ssh argv", async () => {

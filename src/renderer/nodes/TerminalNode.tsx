@@ -1,4 +1,8 @@
 import { ptyRefusal } from '@shared/pty-refusal'
+import { deliverRelayInitialLaunch } from '../terminal/relay-initial-launch'
+import { commitLaunch } from '../terminal/launch-attempt'
+import { isLaunchShell } from '@shared/agents/pane'
+import { createLaunchWriter, deliverInitialLaunch, launchCommand, registerLaunchWriter } from '../terminal/launch-command'
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { NODE_MIN_SIZES } from '../lib/nodeSizing'
 import {
@@ -69,7 +73,8 @@ import { loseWebglContexts, registerWebglClient, type WebglClientHandle } from '
 import { quantizeCharSize } from '../terminal/char-size-quantize'
 import { resyncDomRendererSpacing } from '../terminal/dom-renderer-spacing'
 import {
-  PARK_MAX,
+  parkCap,
+  parkWindowMs,
   armParkExpiry,
   canDisposeParkedEntry,
   disposableParks,
@@ -457,13 +462,13 @@ export function setSshRetryHandler(
 /**
  * Parked terminals: when a node unmounts (project switch), its xterm instance and live PTY
  * session are kept — the `.xterm` element is detached from the DOM and held here — so a remount
- * within TERM_PARK_MS re-adopts them instead of respawning. This makes switching back to a
- * project instant AND exact: the tmux client never detaches, so the full terminal state
+ * within the park window (`settings.terminalParkMinutes`) re-adopts them instead of respawning.
+ * This makes switching back to a project instant AND exact: the tmux client never detaches, so the full terminal state
  * (alternate screen, mouse-tracking modes, scrollback, cursor) carries over with no redraw and
  * no mode re-negotiation to get wrong. After the window the entry is disposed for real (the
  * PTY client detaches; the tmux session itself keeps running, as always). The park is bounded in
- * COUNT as well as time — beyond `PARK_MAX` the oldest entries are evicted early (see
- * `terminal/park-budget.ts`), so a remount past the cap is the same warm reattach as one past the
+ * COUNT as well as time — beyond `settings.terminalParkMax` the oldest entries are evicted early,
+ * local before remote (see `terminal/park-budget.ts`), so a remount past the cap is the same warm reattach as one past the
  * window.
  *
  * "The PTY client detaches; the session keeps running" is true ONLY with tmux underneath. On the
@@ -503,9 +508,15 @@ interface ParkedTerminal {
   life: SessionLife & { killed: boolean }
   /** The park window, which RE-ARMS while the entry is protected (see `armParkExpiry`). */
   timer: ParkTimer
+  /** Rebuilding this session costs a network round trip — an SSH-project node (remote tmux over
+   *  the ControlMaster) or a relay tab. The LRU cap evicts these LAST (`planParkEviction`). */
+  remote: boolean
 }
 const parkedTerminals = new Map<string, ParkedTerminal>()
-const TERM_PARK_MS = 5 * 60 * 1000
+// The park window is `settings.terminalParkMinutes` (default 5 = the historical TERM_PARK_MS; 0 =
+// until the app quits) and the count cap `settings.terminalParkMax` (default PARK_MAX = 20), both
+// read at PARK time through their validators (`parkWindowMs` / `parkCap`), so a change applies to
+// the next switch-away without touching entries already parked. Issue #886.
 
 /** May the BUDGET levers dispose this park? The entry carries both halves of the answer: the
  *  session's tmux-backedness, and a live read of the node's OWN agent-status store with the
@@ -546,7 +557,7 @@ export function disposeParkedTerminal(key: string): void {
   disposeParked(p)
 }
 
-/** Memory-pressure lever: drop EVERY parked terminal now, without waiting out `TERM_PARK_MS`. The
+/** Memory-pressure lever: drop EVERY parked terminal now, without waiting out the park window. The
  *  park is a cache, not state — each dropped entry costs only its warm re-adopt, and the node
  *  re-mounts as an ordinary warm reattach (tmux redraws; the session and its scrollback are
  *  untouched). Idempotent; iterates a copy because `disposeParkedTerminal` mutates the map.
@@ -1079,7 +1090,7 @@ export function wakeHibernatedNode(nodeId: string): void {
 /**
  * The mounted instance publishes its copy-feedback sink here, for the same reason as
  * `restartSubs`: the OSC 52 handler is registered ONCE per xterm instance and that instance
- * SURVIVES A PARK (project switch → remount within TERM_PARK_MS), so a handler holding this
+ * SURVIVES A PARK (project switch → remount within the park window), so a handler holding this
  * component's `setState` would be feeding a component that unmounted two projects ago. Looked up
  * at call time instead. No entry = nobody is mounted = nothing to show.
  */
@@ -1827,7 +1838,9 @@ export function TerminalNode({
   // ordinary case (still waiting on a dependency); the two states it can carry are the ones that
   // used to be invisible — see the store. Selected by id so an unarmed node never re-renders on
   // another node's delivery.
-  const launchDelivery = useLaunchDelivery((s) => s.byId[id])
+  const observedLaunchDelivery = useLaunchDelivery((s) => s.byId[id])
+  const launchDelivery = observedLaunchDelivery ?? (pendingLaunch?.manualOnly
+    ? { kind: 'failed' as const, attempts: 1, at: 0 } : undefined)
   const pendingWaitingOn = [
     ...(pendingLaunch?.after ?? []).map(
       (depId) => ((getNode(depId) as CanvasNode | undefined)?.data.title as string) || depId
@@ -2077,7 +2090,7 @@ export function TerminalNode({
       agentId ? binariesFor(agentId, useSettings.getState().settings.customAgents) : null
 
 
-    // Adopt-or-create: a parked terminal (this node unmounted less than TERM_PARK_MS ago) is
+    // Adopt-or-create: a parked terminal (this node unmounted within the park window) is
     // re-adopted with its live PTY session and full xterm state intact; otherwise a fresh
     // xterm + session are built. `myNonce` vs the render-updated ref tells the cleanup below
     // whether it runs for a respawn (worktree move — must NOT park) or a plain unmount.
@@ -3435,6 +3448,17 @@ export function TerminalNode({
             unsub()
           })
         }
+        const launchWriterOptions = {
+          io: { write: (d: string) => transport.write(sid, d), onData: (cb: (data: string) => void) => transport.onData(sid, cb) },
+          // A fresh shell is known at spawn; subsequent/manual deliveries must recheck the pane.
+          shellReady: async (manual: boolean) =>
+            (!manual && fresh && !sessionPersistent) || isLaunchShell(await queryPaneWithin(() => api.pty.paneCommand(id), RESTART_EXIT_TIMEOUT_MS)),
+          killLine: getTerminalKillLine(),
+          cleanup: (cancel: () => void) => { cleanups.push(cancel) }
+        }
+        const launchWriter = createLaunchWriter({ ...launchWriterOptions,
+          claimAttempt: (manual, command) => commitLaunch(api, id, command, manual)
+        })
         const writeWhenShellReady = (cmd: string): void => {
           whenShellSettled(() => {
             cleanups.push(
@@ -3463,7 +3487,10 @@ export function TerminalNode({
         // comes out mangled. Published unconditionally (not only for an armed node): whether this
         // node is armed is Canvas's question, it can change after the spawn resolves, and the
         // subscribers filter by id anyway.
-        whenShellSettled(() => setSessionReady(id, true))
+        whenShellSettled(() => {
+          cleanups.push(registerLaunchWriter(id, launchWriter, api))
+          setSessionReady(id, true)
+        })
         // Paused (see agentStatus.paused) is the ONE exception to the "a cold start always resumes"
         // rule below: it exists precisely to survive a cold restart, so it must NOT be dropped, and
         // the auto-resume branch must be skipped — only an explicit Resume (which reuses the same
@@ -3482,7 +3509,7 @@ export function TerminalNode({
         // resume, not armed, not paused. A plain terminal has no conversation to lose, and paying
         // a probe to tell it so would be the channel pressure this whole area exists to reduce.
         const canColdRestore =
-          !!agentId && canResume(agentId) && !data.pendingLaunch && shouldColdResume(pausedNow)
+          session.source !== 'relay' && !!agentId && canResume(agentId) && !data.pendingLaunch && shouldColdResume(pausedNow)
         let coldStart = fresh
         if (!fresh && freshUnverified && !data.initialCommand && canColdRestore) {
           // After the shell has settled, not at this instant: the attach is a network round trip
@@ -3534,8 +3561,26 @@ export function TerminalNode({
         // Run a one-shot command on first open (e.g. "gh auth login" or the agent CLI), then
         // forget it.
         if (data.initialCommand) {
-          writeWhenShellReady(data.initialCommand)
-          updateNodeData(id, { initialCommand: undefined })
+          const command = data.initialCommand
+          if (session.source === 'relay') {
+            deliverRelayInitialLaunch({ scope: api, id, fresh, pending: data.pendingLaunch, command,
+              consume: () => updateNodeData(id, { initialCommand: undefined }),
+              whenReady: whenShellSettled, writer: launchWriterOptions,
+              onFailure: (outcome) => {
+                useLaunchDelivery.getState().markFailed(id, 1)
+                if (outcome === 'line-too-long') setCo(termKey, { launchTooLongBytes: lineBytes(command) })
+              }
+            })
+          } else deliverInitialLaunch(command, {
+            pending: data.pendingLaunch,
+            whenReady: whenShellSettled,
+            write: launchWriter,
+            update: (patch) => updateNodeData(id, patch),
+            onFailure: (outcome) => {
+              useLaunchDelivery.getState().markFailed(id, 1)
+              if (outcome === 'line-too-long') setCo(termKey, { launchTooLongBytes: lineBytes(command) })
+            }
+          })
         } else if (coldStart && canColdRestore) {
           // Cold restart of an agent node: the live agent is gone, so re-launch it. Resume the
           // prior conversation by its session id when we have one; otherwise start the agent
@@ -3777,7 +3822,7 @@ export function TerminalNode({
     }
     const unregisterRestart = registerAgentRestart(
       id,
-      guardConcurrentRestart(id, async (targetAgentId?: AgentId, targetModel?: string, restartShell?: boolean, clearEnv?: boolean) => {
+      guardConcurrentRestart(id, async (targetAgentId?: AgentId, targetModel?: string, restartShell?: boolean, clearEnv?: boolean, beforeRecycle?: () => Promise<Record<string, unknown> | void>) => {
         const st = useAgentStatus.getState().byId[id]
         const currentNode = getNode(id)
         const agentSessionId = restartSessionId(st?.sessionId, currentNode?.data.agentSessionId)
@@ -3883,8 +3928,12 @@ export function TerminalNode({
             isLive: restartTarget
           })
           if (exited !== 'exited') return exited
+          // Swallowed: a failed step must not strand the pane at a bare shell — the recycle below
+          // still brings the conversation back (on whatever account the node is bound to).
+          const patch = beforeRecycle ? await beforeRecycle().catch(() => undefined) : undefined
           transport.recycle(id)
           updateNodeData(id, (node) => ({
+            ...(patch ?? {}),
             agentId: target,
             respawnNonce: ((node.data.respawnNonce as number | undefined) ?? 0) + 1
           }))
@@ -4452,7 +4501,7 @@ export function TerminalNode({
       const co = getCo(termKey)
       if (sessionId && !isRespawn && !co.closed && !co.ended && !noParkIds.delete(termKey)) {
         // Park = "subscribed, but not viewing": report no size at all, so this window's (possibly
-        // small) grid stops clamping every other subscriber's terminal for the next five minutes.
+        // small) grid stops clamping every other subscriber's terminal for as long as it stays parked.
         // The subscription itself stays — output keeps streaming into the parked xterm — and the
         // adopting mount re-reports its size (sentCols/sentRows are NOT carried over; see above).
         transport.resize(sessionId, null, null)
@@ -4482,8 +4531,9 @@ export function TerminalNode({
                 disposeParked(entry)
               }
             },
-            TERM_PARK_MS
-          )
+            parkWindowMs(useSettings.getState().settings.terminalParkMinutes)
+          ),
+          remote: sshRemoteTmux || session.source === 'relay'
         }
         disposeParkedTerminal(termKey) // defensive: never stack two entries for one node
         parkedTerminals.set(termKey, entry)
@@ -4498,7 +4548,14 @@ export function TerminalNode({
         // re-adopt. A microtask is what defers past the whole synchronous passive-effect flush
         // (cleanups AND mounts); adoption has removed its entries from the map by then.
         queueMicrotask(() => {
-          for (const k of planParkEviction([...parkedTerminals.keys()], PARK_MAX, parkDisposable)) {
+          const cap = parkCap(useSettings.getState().settings.terminalParkMax)
+          const remoteKey = (k: string): boolean => parkedTerminals.get(k)?.remote ?? false
+          for (const k of planParkEviction(
+            [...parkedTerminals.keys()],
+            cap,
+            parkDisposable,
+            remoteKey
+          )) {
             if (k !== termKey) disposeParkedTerminal(k)
           }
         })
@@ -5509,23 +5566,24 @@ export function TerminalNode({
             className={`term-node__status term-node__status--queued nodrag${
               launchDelivery ? ' term-node__status--queued-warn' : ''
             }`}
-            title={launchTooltip(launchDelivery, pendingWaitingOn, pendingLaunch.command, pendingErroredOn)}
+            title={launchTooltip(launchDelivery, pendingWaitingOn, pendingLaunch.command, pendingErroredOn, session.source === 'relay')}
           >
             <span className="term-node__status-dot" />
             {launchDelivery ? '⚠ ' : ''}QUEUED
             <button
               className="term-node__queued-run"
-              title="Run now without waiting"
+              disabled={session.source === 'relay'}
+              title={session.source === 'relay' ? "Open the host to run this command" : pendingLaunch.manualOnly ? "Retry launch at a shell prompt" : "Run now without waiting"}
               onClick={(e) => {
                 e.stopPropagation()
                 // Disarm only on a delivery that actually landed. Dropping `pendingLaunch`
                 // unconditionally threw the command away whenever the session was not up yet —
                 // and "not up yet" is precisely the state a user reaches for this button in, so
                 // the one escape hatch could destroy the thing it exists to rescue.
-                void api.pty.sendText(id, pendingLaunch.command).then((ok) => {
-                  if (ok) {
+                void launchCommand(id, pendingLaunch.command, true, api).then((outcome) => {
+                  if (outcome === 'submitted') {
                     useLaunchDelivery.getState().clear(id)
-                    updateNodeData(id, { pendingLaunch: undefined })
+                    updateNodeData(id, { initialCommand: undefined, pendingLaunch: undefined })
                   } else {
                     useLaunchDelivery.getState().markFailed(id, 1)
                   }
