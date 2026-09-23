@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import WebSocket from 'ws'
 import { build } from 'esbuild'
 import { expect, it } from 'vitest'
@@ -64,7 +65,7 @@ it.skipIf(!existsSync(chrome))('keeps refresh clickable beside/above the real do
           }
           ws.on('message', listener)
         })
-        await call('Page.navigate', { url: `file://${resolve(dir, 'index.html')}` }, sessionId)
+        await call('Page.navigate', { url: pathToFileURL(join(dir, 'index.html')).href }, sessionId)
         await loaded
         const value = await call('Runtime.evaluate', {
           expression: `new Promise(resolve => { const timer = setInterval(() => {
