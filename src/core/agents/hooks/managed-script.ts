@@ -184,6 +184,15 @@ export function buildManagedScript(
     NODE_TOKEN_READ_SH,
     'nt_read_node_token',
     HOOK_CURL_HEADERS_SH,
+    // Report the effective Claude process env, including env from --settings. Always send
+    // an empty value too: removing an override must invalidate a prior observation.
+    ...(agentId === 'claude'
+      ? [
+          'nt_context_window="$CLAUDE_CODE_MAX_CONTEXT_TOKENS"',
+          'case "$nt_context_window" in *[!0-9]*) nt_context_window="" ;; esac',
+          '[ "${#nt_context_window}" -le 16 ] || nt_context_window=""'
+        ]
+      : ['nt_context_window=""']),
     'payload=$(cat)',
     'if [ -z "$payload" ]; then',
     '  exit 0',
@@ -278,6 +287,7 @@ export function buildManagedScript(
     '      -H "Content-Type: application/x-www-form-urlencoded" \\',
     '      --data-urlencode "nodeId=${NODETERM_NODE_ID}" \\',
     '      --data-urlencode "version=${NODETERM_HOOK_VERSION}" \\',
+    '      --data-urlencode "nodeterm_context_window=${nt_context_window}" \\',
     '      --data-urlencode "nodeterm_pending_id=${nt_pending}" \\',
     '      --data-urlencode "payload@${nt_payload_arg}" >/dev/null 2>&1',
     '  elif [ -n "$NODETERM_HOOK_PORT" ]; then',
@@ -287,6 +297,7 @@ export function buildManagedScript(
     '      -H "Content-Type: application/x-www-form-urlencoded" \\',
     '      --data-urlencode "nodeId=${NODETERM_NODE_ID}" \\',
     '      --data-urlencode "version=${NODETERM_HOOK_VERSION}" \\',
+    '      --data-urlencode "nodeterm_context_window=${nt_context_window}" \\',
     '      --data-urlencode "nodeterm_pending_id=${nt_pending}" \\',
     '      --data-urlencode "payload@${nt_payload_arg}" >/dev/null 2>&1',
     '  else',
@@ -379,6 +390,7 @@ export function buildManagedScript(
     '            -H "Content-Type: application/x-www-form-urlencoded" \\',
     '            --data-urlencode "nodeId=${NODETERM_NODE_ID}" \\',
     '            --data-urlencode "version=${NODETERM_HOOK_VERSION}" \\',
+    '            --data-urlencode "nodeterm_context_window=${nt_context_window}" \\',
     '            --data-urlencode "nodeterm_pending_id=${nt_pending}" \\',
     '            --data-urlencode "nodeterm_answered=${nt_decision}" \\',
     '            --data-urlencode "payload@${nt_payload_arg}" >/dev/null 2>&1; rm -f "$nt_payload_file" 2>/dev/null || :; } &',
@@ -390,6 +402,7 @@ export function buildManagedScript(
     '            -H "Content-Type: application/x-www-form-urlencoded" \\',
     '            --data-urlencode "nodeId=${NODETERM_NODE_ID}" \\',
     '            --data-urlencode "version=${NODETERM_HOOK_VERSION}" \\',
+    '            --data-urlencode "nodeterm_context_window=${nt_context_window}" \\',
     '            --data-urlencode "nodeterm_pending_id=${nt_pending}" \\',
     '            --data-urlencode "nodeterm_answered=${nt_decision}" \\',
     '            --data-urlencode "payload@${nt_payload_arg}" >/dev/null 2>&1; rm -f "$nt_payload_file" 2>/dev/null || :; } &',
