@@ -56,6 +56,21 @@ handler needs something only Electron has (an SSH ControlMaster, a native dialog
 **injected dep** whose absence is a documented degrade — see `registerTranscriptIpc` /
 `registerContextEnsureIpc` — rather than a reason to keep the whole handler in `src/main`.
 
+**Windows agent messaging:** direct ConPTY terminals are looked up by the runtime node index,
+not the persistence key. `NativeWindowsPane` checks console membership, the unambiguous native
+process chain and process birth times, and frames paste only after the terminal requested it.
+Do not replace that read with a stored `agentId` or the restart heuristic's deepest descendant.
+An interpreter such as `node` is named by its script's package `bin` entry, never as `node`, so
+npm-installed CLIs such as Codex are recognized. A session released by park expiry or offscreen
+release is still messageable: existence and routing ask the backend, not the attached client.
+Never put the submitting Enter in the same write as a message paste: `core/settled-submit.ts`
+pastes, waits for the envelope to render, then submits separately, on every backend.
+The persistent session-host transport has its own versioned messaging extension: the host checks
+its session generation, OS process identity and emulator before writing. An older live host keeps
+its terminals and refuses the extension; never restart it automatically or fall back to sendKeys.
+Message dispatch publishes pending canvas edits before main resolves scope, without overwriting
+an unresolved file conflict. See `docs/windows-session-host.md`.
+
 Claude usage identity is scoped to the same config directory as its credentials. Read organization
 metadata even when credentials already include an email, and degrade to the email-only row when
 metadata cannot be read. Managed usage must never fall back to an unscoped system Keychain token:
@@ -831,6 +846,14 @@ Two files, two audiences:
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
 
+**Windows text submission waits for the composer.** Use `core/settled-text.ts` for native PTY and
+session-host `sendText`: adjacent paste/Enter writes can be consumed in one read. The bounded
+screen check may leave text unsubmitted; propagate `pasted-not-submitted` all the way to the
+caller and tell the user to inspect the terminal. Never treat that truthy string as success or
+automatically retry the paste. True means the requested writes completed, not that a turn began.
+The versioned `sendKeysV2` host request refuses old hosts without fallback or restart. Collapsed
+or hidden pastes may need manual Enter; device testing remains necessary.
+
 An unanswered Claude `AskUserQuestion` is correlated by session and tool-use ID in the core
 mirror, independently of its short-lived display stash. Ordinary hooks, subagent activity and
 unrelated transcript results must not clear attention or archive its inbox card. Both shells
@@ -884,3 +907,9 @@ Held approval attention must not replace subagent, recurring or background-task 
 state evidence from those lifecycle hooks. A parent may ask several questions while a child ticket
 is outstanding: track each new picker and preserve child approval cards independently, including
 when their display titles match. Answering either resolves only that question or ticket.
+
+Delayed Windows message submission must recheck the attested child process/birth AND emulator
+paste mode immediately before Enter, not just the surviving PTY root. A missing host reply after
+a transmitted text request is uncertain delivery, never a pre-paste refusal; show the no-resend
+warning. SessionStart idle rescue is scoped to that same nonempty session and agent identity,
+and a foreign idle must not broadcast fresh state proof to the renderer.

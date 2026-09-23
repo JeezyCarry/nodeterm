@@ -1,3 +1,4 @@
+import type { TextDeliveryResult } from '../shared/text-delivery'
 import { isLaunchShell } from '../shared/agents/pane'
 import { randomBytes, randomUUID } from 'node:crypto'
 import path from 'node:path'
@@ -59,7 +60,7 @@ export interface HeadlessPty {
   /** Probe only. Boot reconciliation must never turn absence into a fresh session. */
   paneCommand(persistKey: string): Promise<string | null>
   sessionExists(persistKey: string): Promise<boolean>
-  sendText(nodeId: string, text: string, opts?: { enter?: boolean }): Promise<boolean>
+  sendText(nodeId: string, text: string, opts?: { enter?: boolean }): Promise<TextDeliveryResult>
   destroySession(
     clientId: number | null,
     persistKey: string,
@@ -1245,7 +1246,7 @@ export class HeadlessNodeFactory {
           const command = commands.get(node.id)
           if (command) {
             if (isLaunchShell(await this.deps.ptyManager.paneCommand(node.id)) &&
-                await this.deps.ptyManager.sendText(node.id, command)) node.pendingLaunch = undefined
+                (await this.deps.ptyManager.sendText(node.id, command)) === true) node.pendingLaunch = undefined
             else failed.push(node.id)
           }
         } catch {
@@ -1423,7 +1424,7 @@ export class HeadlessNodeFactory {
           await this.deps.workspaceStore.save(workspace)
           markChanged()
           if (!isLaunchShell(await this.deps.ptyManager.paneCommand(node.id).catch(() => null))) continue
-          if (!(await this.deps.ptyManager.sendText(node.id, pending.command).catch(() => false))) continue
+          if ((await this.deps.ptyManager.sendText(node.id, pending.command).catch(() => false)) !== true) continue
           node.pendingLaunch = undefined
           markChanged()
         }

@@ -71,6 +71,43 @@ means — and what you may assume when writing a feature — is three tiers, not
 
 ## Commands
 
+**Direct Windows agent messaging:** `core/native-windows-pane.ts` owns a headless screen for
+non-persistent native PTYs. Lookup uses the runtime node index, and the console identity probe
+uses `GetConsoleProcessList` plus OS executable paths/birth times. A single process reached
+through an unambiguous shell chain is required; detached or ambiguous candidates refuse. This
+is not a POSIX foreground-process-group claim. **An interpreter (`node`, `bun`, `python`, …) is
+named by its script, never by its own executable**: every npm-installed agent CLI on Windows is
+`cmd` → `node <package>\bin\<cli>.js`, and naming that pane `node` made Codex and every npx
+custom agent `not-agent`. The probe keeps only the interpreter's FIRST positional argument
+(`CommandLineToArgvW`, inside PowerShell; the rest of the command line, prompt text included, never
+leaves the probe) and `scriptCommandName` maps it to the key of its package's `bin` map, which is
+the table npm generated the `.cmd` shim from, falling back to the script basename exactly as the
+POSIX predicate does. The interpreter is the leaf, never a hop, so a CLI's own children (Codex's
+native `codex.exe`, MCP servers) cannot make the pane ambiguous.
+**A RELEASED session is still a messaging target.** Park expiry and the offscreen release drop the
+`Session`, but the host keeps it running, so `targetLive` asks `PtyManager.sessionExists` (attached,
+else tmux, else the host, with a failed read answering "exists") and the owner/paste/envelope probes
+route through `sessionHostOwns`, which falls back to the release record. Asking only for an attached
+client answered `targetGone`, terminal and never queued, about a live agent in another project. The project/verified-hook/idle/receipt gates still
+apply, paste mode must be observed, and the exact generation/process is checked before writing.
+`PtyManager.sendText` (the confirmed `write` verb, rename, note push, dictation) also routes a
+direct native PTY through `NativeWindowsPane.sendText` — framed only when paste mode was requested,
+no process attestation. It used to fall through to the session-host backend, which has no entry for
+a direct PTY, so every `write` to such a pane failed.
+Do not route the persistent session-host backend through this direct-PTY adapter. Its independently
+versioned `messageOwnerV1` / `messagePasteReadyV1` / `messageEnvelopeV1` extension runs in the host:
+the OS probe is bound to `HostSession.generation`, the session registry is rechecked after every
+await, and the emulator's paste mode is checked again immediately before the synchronous write.
+**The Enter is a SECOND write, sent only once the pane shows the envelope** — every backend
+(Server Edition tmux, session host, direct PTY) runs the one `core/settled-submit.ts`. Measured on
+the installed build (2026-09-14): with the `\r` in the same write as the paste, Codex rendered the
+whole envelope in its composer and never submitted it, so the delivery reported `stalled`; a
+separate Enter moments later sent it. A pane that never shows the envelope gets no Enter at all.
+An older live host refuses these unknown commands while keeping the v1/v2 terminal contract intact;
+never replace it automatically or fall back to name-only input to enable messaging. Windows OpenCode
+context exports go through `directExecutableInvocation` like every other app-owned subprocess (see
+Platform support), never a bare `execFile('opencode')`, which cannot execute the npm shim.
+
 ```bash
 npm install        # deps + rebuilds node-pty against Electron's ABI (postinstall hook)
 npm run dev        # dev mode with renderer HMR
@@ -567,8 +604,16 @@ Lifecycle, by intent:
   identical call kills it and everything under it — an agent CLI mid-turn included. Issue #126: a
   project switch terminated a working Claude agent, which then auto-resumed from wherever the kill
   landed. The predicate is deliberately the narrowest one that closes it — a tmux-backed session is
-  never protected (the kill costs a redraw), and neither is a plain terminal, a finished agent or
-  an unknown state (nothing is running to lose). **A fifth lever owes the same gate.**
+  never protected (the kill costs a redraw), and neither is a plain terminal. **An IDLE agent CLI on
+  a non-persistent pty IS protected** (`agentProcess`, `agentProcessInPane`; not once hibernated,
+  paused, dropped, or once its CLI announced a SessionEnd, `sessionEnded`, which is its own
+  transient flag because `state: undefined` alone is also what an idle agent looks like): killing it looked free because cold restore `--resume`s it on revive, but the
+  resumed CLI fires `SessionStart:resume` and idles with no further hook event, the status mirror
+  leaves it unverified, and agent messaging refused it for as long as it stayed idle — measured
+  2026-09-13 on Windows native ptys. The mirror now also lets a verified `idle_prompt` right after a
+  verified `SessionStart` commit a verified non-inferred `done` (`MirrorEntry.sessionStarted`), and
+  the decider reports a proven node reset by a boundary as `targetNotIdleUnknown`, not
+  `targetStatusStale`. **A fifth lever owes the same gate.**
   The fifth is the offscreen release of an ARMED node (`shouldDeferReleaseForHeldLaunch`):
   held launches now require the attached transport for echo verification, on every backend.
   Keep that transport until delivery or recovery; a blind paste by session name loses the
@@ -1046,13 +1091,22 @@ emulator: a `?2004h` it sees was written by the app itself, which is exactly the
 `paste-buffer -p` asks tmux for. `HostSession.bracketedPasteRequested()` reads it (behind
 `outputTail`, like `serialize` — xterm applies writes asynchronously, so an early read answers "no"
 for the turn that just enabled it) and `sendKeysWrites` (`session-host/send-keys-delivery.ts`)
-mirrors the tmux plan: `sanitizePasteText` ALWAYS, the frame only when the app asked, and the Enter
-as its own write AFTER the close marker — never inside the framed burst, which is the shape #453
-measured as mangled. Unframed it stays one write, byte-identical to the pre-fix path. Before this
-the host answered `sendKeys` with a single raw `text + '\r'`, so an injected prompt landed in a
-paste-aware composer (Codex, Claude) and was never submitted. **NOT verified on a device**: whether
-ConPTY re-emits an app's `?2004h` into the pty stream the host reads. If it does not, the mode is
-always false and every write is the old one — no fix, never a regression.
+sanitizes ALWAYS and frames only when the app asked. Separate writes alone can still be read
+as one burst (#780). Both native Windows `sendText` and host `sendKeys` now execute through
+`core/settled-text.ts`: capture a baseline, paste without Enter, then poll at 40 ms for at most
+15 polls for a changed, stable screen containing the sanitized text. Only then write one Enter,
+after rechecking liveness/generation and paste mode. Unknown capture, unchanged output or timeout
+leaves the paste unsubmitted and returns `pasted-not-submitted`, never `true`. The discriminant
+survives IPC/WS and `sendKeysV2`; canvas writes name the partial delivery, trigger runs record
+a terminal miss (including queue flush), and one-way UI writers raise a visible warning. Test
+success with `=== true`, never truthiness. Do not retry an unconfirmed submit and duplicate the paste. Overlapping sendText operations on the same pane
+are refused before input; insert-only, empty Enter and unframed input retain their contracts.
+A collapsed/hidden/oversize paste may require manual Enter. This is an observed-screen heuristic,
+not an application acknowledgement. Linux fake-PTY tests cover a 150 ms busy reader; real Windows
+Codex/Claude, context-link/write, dictation and rename device checks remain required. Existing
+hosts refuse the additive `sendKeysV2` command until they retire; no raw-write fallback or
+automatic host restart is performed. Legacy clients still use the existing `sendKeys` command.
+
 
 **The actual fix is older than the problem: `paste-buffer -p`.** From tmux's own man page — *"If
 `-p` is specified, paste bracket control codes are inserted around the buffer **if the application
@@ -1515,6 +1569,16 @@ the wire never see any of it):
   husks, nothing to preserve). Mobile: N/A (no canvas).
 
 ## Agent support (Claude / Codex / Gemini / Copilot / opencode / Grok / custom)
+
+**Message scope publication:** desktop `send`/`reply`/`notify` wait for pending active-canvas edits
+to be saved when either endpoint is on that canvas (`renderer/lib/messageScopeSync.ts`). `list`
+and context links can already see a newly opened node while main's `persistedCanvases()` cannot;
+the scope resolver reports that absent target as `cross-project`. The publication barrier never
+travels, never overrides an external-edit conflict, and does not authorize anything: main still
+checks unique project membership, runtime ownership, consent, verified status and the native pane.
+An unrelated active canvas is not saved for a background message. Server control already writes
+its nodes through the authoritative store; the renderer barrier is a desktop concern. Mobile is
+not an agent-message sender.
 
 The app is a pluggable multi-agent system: Claude Code is one builtin of
 several. Extra terminal-node behavior is driven per agent by a registry + capability lists, a
@@ -5064,3 +5128,13 @@ Pin/revoke mutations use `updateApprovedDevices` to queue the entire read/modify
 unique-temp atomic rename alone cannot prevent lost updates. Non-ENOENT reads and malformed JSON
 reject rather than overwrite unknown trust state. The queue is not a cross-process lock. A click
 accepted before host stop may finish its disk save, but must never open the now-closed session.
+
+Windows messaging final-submit checks cross a second OS identity probe and emulator barrier:
+`NativeWindowsPane.sendEnvelope` and `hostMessagePane.send` retain accepted-paste semantics when
+the child has changed or paste mode is off, but withhold Enter. The root PTY can outlive the CLI.
+`SessionHostClient.sendKeys` tracks whether its V2 frame was handed to the socket separately
+from an explicit negative host reply; loss of the reply after transmission returns conservative
+partial/unknown delivery, with no resend. The SessionStart idle rescue latch stores its session,
+agent and receive time; foreign/missing idle identity never creates proof or changes the
+renderer-visible session. These boundaries have behavioral regressions in
+`core/windows-delivery-safety.test.ts` and the mirror/client suites.

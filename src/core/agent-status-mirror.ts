@@ -143,6 +143,15 @@ export interface MirrorEntry {
    * renderer re-reports its persisted set at boot, and a wake (or `clearNode`) drops the flag.
    */
   hibernated?: true
+  /**
+   * The CURRENT stateless entry was committed by a VERIFIED `SessionStart` this run, and nothing
+   * has committed a state since. A CLI that has just started or resumed and taken no turn cannot
+   * be holding an approval, so its `idle_prompt` is allowed to commit a verified, non-inferred
+   * `done` (see `reduceEffectiveEntry`). Without that, a resumed CLI idling at its prompt was
+   * unmessageable forever: the boundary left it unverified and only a turn could re-verify it.
+   * Runtime-only (not in `buildFile`'s allowlist); cleared by every state commit.
+   */
+  sessionStarted?: { sessionId: string; agentId: NormalizedAgentEvent['agentId']; at: number }
 }
 
 /** This host's Server-Edition install metadata (spec: server-update). Written by the installer
@@ -444,12 +453,23 @@ export function reduceEntry(
   return reduceEffectiveEntry(prev, resolveGrokStopCancelled(ev), now)
 }
 
+function uncorrelatedStartIdle(prev: MirrorEntry | undefined, ev: NormalizedAgentEvent, now: number): boolean {
+  const started = prev?.sessionStarted
+  return !!started && ev.kind === 'state' && !!ev.idle &&
+    (ev.sessionId !== started.sessionId || ev.agentId !== started.agentId ||
+     prev.sessionId !== started.sessionId || now < started.at)
+}
+
 function reduceEffectiveEntry(
   prev: MirrorEntry | undefined,
   ev: NormalizedAgentEvent,
   now: number
 ): MirrorEntry {
   const next: MirrorEntry = prev ? { ...prev } : { updatedAt: now }
+  // Ignore foreign idle proof before generic identity capture can overwrite the session.
+  const started = prev?.sessionStarted
+  if (uncorrelatedStartIdle(prev, ev, now)) return next
+
   /**
    * Commit a state onto `next` — and everything that must move WITH it. One function rather than
    * the same four lines at each branch, because the alternative was measured: of the three branches
@@ -462,16 +482,23 @@ function reduceEffectiveEntry(
    * `proof` is the evidence for THIS transition, passed in rather than read off `ev` so the one
    * caller that means something different has to say so out loud.
    */
-  const commitState = (state: AgentState | undefined, proof: boolean): void => {
+  const commitState = (
+    state: AgentState | undefined,
+    proof: boolean,
+    idleAfterSessionStart = false
+  ): void => {
     next.state = state
     next.updatedAt = now
     next.stateVerified = proof
     if (proof) next.verifiedAt = now
     next.clientRevision = ev.clientRevision
+    delete next.sessionStarted
     // Which KIND of `done` this is, recorded on the same edge as the state itself. `idle` is only
     // ever meaningful on a `done`; assigning (not merging) is the point — a later, genuine turn-end
     // `done` must clear the marker, or a node would stay tainted for the rest of its session.
-    if (state === 'done' && ev.idle) next.idleInferred = true
+    // The one idle `done` that is NOT inferred is the one right after a verified session start:
+    // no turn has run, so no approval can be pending behind the prompt (see `sessionStarted`).
+    if (state === 'done' && ev.idle && !idleAfterSessionStart) next.idleInferred = true
     else delete next.idleInferred
     // The entry's STATE now comes from this run, so it is no longer the one restored off disk.
     // Cleared HERE and only here: an event that commits no state — a context/usage event, a
@@ -528,7 +555,15 @@ function reduceEffectiveEntry(
     // An `idle` done (Claude went quiet at its prompt) is a RESCUE, not a turn end: it may only
     // move a node that is still `working`. A node that is blocked/waiting is ALSO idle at the
     // prompt — clearing it there would drop a live approval — and one already done needs nothing.
-    if (ev.idle && prev?.state !== 'working') return next
+    // ONE exception: a verified idle right after a verified session start, with no state committed
+    // in between. A just-started or just-resumed CLI at its prompt is genuinely idle — and without
+    // this it stays unverified until a turn it can only get from a message it cannot receive.
+    const idleAfterSessionStart =
+      ev.idle === true &&
+      ev.verified === true &&
+      !!started &&
+      prev.state === undefined
+    if (ev.idle && prev?.state !== 'working' && !idleAfterSessionStart) return next
     // An unanswered Codex `request_user_input`: the ask arrives as waiting+awaitingInput and the
     // turn's OWN Stop follows as `done` before the user answers (the ask ends the turn; the answer
     // opens a new one). That done must not flip the node green over a live question — hold
@@ -559,7 +594,7 @@ function reduceEffectiveEntry(
     // working did not change the state whose proof this describes. `clientRevision` is ASSIGNED
     // rather than merged — an event with no stamp is a report that this node is running a script
     // that cannot send one, which is exactly what a stale entry would hide.
-    if (!heldOff) commitState(ev.state, ev.verified === true)
+    if (!heldOff) commitState(ev.state, ev.verified === true, idleAfterSessionStart)
   } else if (ev.kind === 'session') {
     // SessionStart / SessionEnd both reset the node to idle (renderer: setState(id, undefined)).
     // The proof goes with the state it was about, and `false` is passed EXPLICITLY rather than
@@ -568,6 +603,11 @@ function reduceEffectiveEntry(
     // and is what makes a refusal retryable.
     commitState(undefined, false)
     next.awaitingInput = undefined
+    // The boundary proves nothing about a state (and leaves `verifiedAt` alone), but a VERIFIED
+    // start arms the idle rescue above.
+    if (ev.sessionPhase === 'start' && ev.verified === true && ev.sessionId) {
+      next.sessionStarted = { sessionId: ev.sessionId, agentId: ev.agentId, at: now }
+    }
   }
   // subagent-start / subagent-end / recurring: identity captured above, main state untouched.
   return next
@@ -1441,6 +1481,10 @@ export function recordAgentEvent(rawEvent: NormalizedAgentEvent): NormalizedAgen
   const now = Date.now()
   const prev = state.get(nodeId)
   const prevState = prev?.state
+  if (uncorrelatedStartIdle(prev, ev, now)) {
+    // Broadcast no state proof either: a renderer must not show this stale done as fresh.
+    return { nodeId, kind: 'state', agentId: prev?.sessionStarted?.agentId ?? ev.agentId, sessionId: prev?.sessionId }
+  }
   const next = reduceEffectiveEntry(prev, ev, now)
   state.set(nodeId, next)
   const questionAnswered = !!prev?.pendingQuestion && !next.pendingQuestion &&

@@ -106,7 +106,8 @@ describe('initServerCanvasControl', () => {
       destroySession: vi.fn(async () => undefined),
       paneOwner,
       sendEnvelope,
-      hasLiveSession: () => true
+      hasLiveSession: () => true,
+      sessionExists: async () => true
     } as unknown as PtyManager
     const settings = (): Settings => ({ ...DEFAULT_SETTINGS })
 
@@ -254,7 +255,8 @@ describe('initServerCanvasControl', () => {
         pids: [200]
       })),
       sendEnvelope: legacySendEnvelope,
-      hasLiveSession: () => true
+      hasLiveSession: () => true,
+      sessionExists: async () => true
     } as unknown as PtyManager
 
     runtime = await initServerCanvasControl({
@@ -342,7 +344,8 @@ describe('initServerCanvasControl', () => {
       destroySession: vi.fn(async () => undefined),
       paneOwner: vi.fn(async () => null),
       sendEnvelope: vi.fn(async () => true),
-      hasLiveSession: () => true
+      hasLiveSession: () => true,
+      sessionExists: async () => true
     } as unknown as PtyManager
 
     runtime = await initServerCanvasControl({
