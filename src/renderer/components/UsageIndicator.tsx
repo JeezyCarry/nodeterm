@@ -132,7 +132,11 @@ function AccountUsageBlock({
       {u?.limits.map((l) => (
         <LimitRow key={limitKey(l)} limit={l} mode={mode} />
       ))}
-      {u && u.limits.length === 0 && <div className="usage-popover__empty">No usage data.</div>}
+      {u && u.limits.length === 0 && (
+        <div className="usage-popover__empty">
+          {u.status === 'error' ? 'Could not read usage.' : 'No usage data.'}
+        </div>
+      )}
       {!u && <div className="usage-popover__empty usage-pill__pulse">···</div>}
     </div>
   )
@@ -525,13 +529,19 @@ export function UsageIndicator({
                 <>
                   {/* Claude's rows are bare when it is the only provider; once others share the
                       panel they need a heading of their own to stay attributable. */}
-                  {enabled.length > 0 && limits.length > 0 && (
+                  {enabled.length > 0 && (limits.length > 0 || isError) && (
                     <div className="usage-account__label">Claude</div>
                   )}
                   {limits.map((l) => (
                     <LimitRow key={limitKey(l)} limit={l} mode={percentMode} />
                   ))}
-                  {!hasData && <div className="usage-popover__empty">No usage data.</div>}
+                  {/* Another provider's data must not hide a failed Claude read. Keep any
+                      last-known Claude bars instead of replacing them with the empty state. */}
+                  {(!hasData || (isError && limits.length === 0)) && (
+                    <div className="usage-popover__empty">
+                      {isError ? 'Could not read usage.' : 'No usage data.'}
+                    </div>
+                  )}
                   {claudeUsage?.email && (
                     <div className="usage-account">
                       <div className="usage-account__label">Claude Account</div>

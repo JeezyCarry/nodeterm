@@ -611,6 +611,10 @@ examples). If the same effect also WRITES, latch its first run: otherwise switch
 mid-session applies stored state to whatever the user is doing right then, which is a different
 feature from the one they asked for.
 
+**Usage readouts distinguish failed reads from empty data.** For Claude, show the failure when
+`status` is `error` and limits are empty, including beside other providers; preserve last-known
+bars when limits remain. Keep both single-account and multi-account views covered.
+
 ## Testing
 
 `npm test` must pass, and `npm run typecheck` is the fastest gate.
