@@ -1251,7 +1251,11 @@ export function TerminalNode({
     if (!glass) return null
     const tint = glassTint(resolveTerminalTheme(visual.terminalTheme).theme)
     return tint
-      ? ({ '--term-glass-bg': tint.background, '--term-glass-header-bg': tint.header } as React.CSSProperties)
+      ? ({
+          '--term-glass-bg': tint.background,
+          '--term-glass-header-bg': tint.header,
+          '--term-glass-fg': tint.foreground
+        } as React.CSSProperties)
       : null
   }, [glass, visual.terminalTheme])
   // The account list, for the chip and for the READERS below: a config dir the user links while

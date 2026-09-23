@@ -1476,6 +1476,13 @@ body,
     0 1px 3px rgba(0, 0, 0, calc(0.25 * var(--shadow-k)));
 }
 .term-node--glass .term-node__header {
+  /* The header sits on the TERMINAL theme's tint, so its text takes the terminal's foreground:
+     with the app's own --text, a light app theme over a dark terminal theme measured 1.31:1.
+     Redefined as tokens so every header child that reads them (title, session chip, icons)
+     follows; the header layer only adds tint, so the foreground's 4.5:1 holds here too. */
+  --text: var(--term-glass-fg);
+  --muted: color-mix(in srgb, var(--term-glass-fg) 75%, transparent);
+  color: var(--term-glass-fg);
   background: var(--term-glass-header-bg);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),

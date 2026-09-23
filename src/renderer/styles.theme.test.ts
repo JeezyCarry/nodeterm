@@ -108,6 +108,7 @@ describe('every CSS variable resolves', () => {
     '--term-bg', // App.tsx, from the terminal theme
     '--term-glass-bg', // TerminalNode, glass tint per node theme (lib/glassContrast.ts)
     '--term-glass-header-bg',
+    '--term-glass-fg',
     '--peer-color', // presence chips, per peer
     '--group-label-boost', // GroupNode, zoom-compensated label size
     '--mascot-w',

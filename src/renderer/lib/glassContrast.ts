@@ -95,16 +95,21 @@ export interface GlassTint {
   background: string
   /** The header's extra layer on top of it — slightly more opaque in total. */
   header: string
+  /** The theme foreground: header text sits on the TERMINAL's tint, so it takes the terminal's
+   *  text colour, not the app's (a light app theme over a dark terminal theme measured 1.31:1). */
+  foreground: string
 }
 
 /** CSS for a theme's glass, or null when its background is not a colour we can parse. */
 export function glassTint(theme: { background?: string; foreground?: string }): GlassTint | null {
   const bg = theme.background ? parseHex(theme.background) : null
   if (!bg) return null
-  const alpha = glassTintAlpha(theme.foreground ?? '#ffffff', theme.background!)
+  const foreground = theme.foreground ?? '#ffffff'
+  const alpha = glassTintAlpha(foreground, theme.background!)
   const rgb = bg.join(', ')
   return {
     background: `rgba(${rgb}, ${alpha.toFixed(3)})`,
-    header: `rgba(${rgb}, 0.35)`
+    header: `rgba(${rgb}, 0.35)`,
+    foreground
   }
 }
