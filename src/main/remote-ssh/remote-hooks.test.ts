@@ -34,7 +34,8 @@ function harness(
     }
     // resolve the remote $HOME probe → absolute remote paths build from this.
     if (joined.includes('$HOME')) return { code: 0, stdout: '/home/u' }
-    if (joined.includes('cat /home/u/.claude/settings.json')) return { code: 0, stdout: '{}' }
+    if (joined.includes("cat '/home/u/.claude/settings.json'")) return { code: 0, stdout: '{}' }
+    if (joined.includes('else exit 44; fi')) return { code: 44, stdout: '' }
     // the end-to-end tunnel verification curl (runs in ARGS, unlike the script's stdin curl).
     if (joined.includes('%{http_code}')) return { code: 0, stdout: verifyAnswers.shift() ?? '204' }
     return { code: 0, stdout: '' }
@@ -75,7 +76,7 @@ describe('RemoteHooks.setup', () => {
     ).toBe(true)
     // managed script written to the absolute path + config merged with the guarded command.
     expect(joined.some((j) => j.includes(`cat > '/home/u/.nodeterm/agent-hooks/claude.sh'`))).toBe(true)
-    expect(joined.some((j) => j.includes(`cat > '/home/u/.claude/settings.json'`))).toBe(true)
+    expect(joined.some((j) => j.includes(`mv -f -- "$nt_stage/publish" '/home/u/.claude/settings.json'`))).toBe(true)
     expect(calls.some((c) => (c.stdin ?? '').includes('--unix-socket'))).toBe(true)
     // The merged command guards on the script still existing — a removed ~/.nodeterm must not
     // make every prompt fail the hook (a non-zero UserPromptSubmit hook blocks the prompt).
@@ -197,7 +198,7 @@ describe('RemoteHooks.setup', () => {
       if (joined.includes('$HOME')) return { code: 0, stdout: '/home/u' }
       if (joined.includes('-O forward')) return { code: ++forwards === 1 ? 1 : 0, stdout: '' }
       if (joined.includes('%{http_code}')) return { code: 0, stdout: '204' }
-      if (joined.includes('cat /home/u/.claude/settings.json')) return { code: 0, stdout: '{}' }
+      if (joined.includes("cat '/home/u/.claude/settings.json'")) return { code: 0, stdout: '{}' }
       return { code: 0, stdout: '' }
     })
     const rh = new RemoteHooks({ run })
@@ -254,7 +255,7 @@ describe('RemoteHooks.setup — a hostile remote $HOME', () => {
         (j) => j.includes('cat > ') && j.includes("/Users/Enes K/.nodeterm/hook-endpoint-p1.env'")
       )
     ).toBe(true)
-    expect(joined.some((j) => j.includes(`cat > '/Users/Enes K/.claude/settings.json'`))).toBe(true)
+    expect(joined.some((j) => j.includes(`mv -f -- "$nt_stage/publish" '/Users/Enes K/.claude/settings.json'`))).toBe(true)
     // No path derived from $HOME survives UNQUOTED in any remote SHELL LINE (the last argv element
     // of an ssh child is the command the remote shell parses; the `-R` forward spec is an ssh
     // OPTION, not a shell word, so it is excluded by construction).
@@ -495,7 +496,7 @@ describe('RemoteHooks.ensureFullscreenTui', () => {
     await rh.ensureFullscreenTui(conn, '/s.sock', '/home/u')
     const write = calls.find((c) => isWriteTo(c.args, target))
     expect(write).toBeTruthy()
-    expect(JSON.parse(write!.stdin!)).toEqual({ hooks: { Stop: [] }, tui: 'fullscreen' })
+    expect(JSON.parse(write!.stdin!.slice(JSON.stringify({ hooks: { Stop: [] } }).length))).toEqual({ hooks: { Stop: [] }, tui: 'fullscreen' })
   })
 
   it('never overwrites an existing tui value (write-if-absent) — no write issued', async () => {
@@ -887,7 +888,7 @@ describe('RemoteHooks.setup — the host $HOME is data, not truth', () => {
     const res = await rh.setup('p1', conn, '/s.sock', { port: 51234, token: 'tok', version: '1' })
     expect(res?.endpointPath).toBe('/home/gökhan/.nodeterm/hook-endpoint-p1.env')
     const joined = calls.map((c) => c.args.join(' '))
-    expect(joined.some((j) => j.includes(`cat > '/home/gökhan/.claude/settings.json'`))).toBe(true)
+    expect(joined.some((j) => j.includes(`mv -f -- "$nt_stage/publish" '/home/gökhan/.claude/settings.json'`))).toBe(true)
   })
 })
 

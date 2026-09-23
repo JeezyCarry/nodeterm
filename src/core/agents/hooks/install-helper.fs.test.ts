@@ -81,3 +81,13 @@ describe('removeHooksFrom — uninstall also matched raw before the fix', () => 
     expect(readConfig().hooks.Stop).toEqual([FOREIGN])
   })
 })
+
+describe('issue #851: shared settings are never healed by replacing user data', () => {
+  it.each(['{broken', '', 'null', '[]', '{"model":"keep","hooks":{"Stop":{}}}'])('preserves %s through install and uninstall', (raw) => {
+    writeFileSync(configPath(), raw)
+    install()
+    expect(readFileSync(configPath(), 'utf8')).toBe(raw)
+    removeHooksFrom({ configPath: configPath(), events: CLAUDE_HOOK_EVENTS, scriptFileName: 'claude.sh' })
+    expect(readFileSync(configPath(), 'utf8')).toBe(raw)
+  })
+})
