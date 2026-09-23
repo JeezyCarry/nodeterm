@@ -7,6 +7,7 @@ import { SshProjectManager, lastSshErrorLine } from './ssh-project'
 import { AskpassServer } from './ssh-askpass'
 import { AppSshAgent } from './ssh-agent'
 import { controlPathFor } from '../../core/remote-ssh/control-master'
+import { remoteCodexSocket } from '../../core/codex-accounts-core'
 import type { SshConnection } from '@shared/ssh'
 
 const conn: SshConnection = { host: 'h', user: 'u' }
@@ -2899,6 +2900,34 @@ describe('SshProjectManager — remote Codex account lifecycle (Task 6.1, Proper
     await expect(
       cm.mgr.remoteCodexExposeThread(controlPath, undefined, 'thread1', ['acc1'])
     ).rejects.toThrow(/unavailable or ambiguous/)
+  })
+})
+
+describe('SshProjectManager.remoteCodexSwitchThread — the SSH leg of a running-node switch', () => {
+  it('exposes the thread to the target ON the host, resolving it across every host account', async () => {
+    const cm = await makeCodexMgr()
+    await cm.mgr.remoteCodexSwitchThread('p1', 'thread1', 'acc2', ['acc1', 'acc2'])
+    const expose = cm.runCalls.find((c) => c.cmd.includes('expose-thread'))!.cmd
+    // Target socket first, then the thread, then every catalog: system + both managed accounts.
+    expect(expose).toContain(`expose-thread '${remoteCodexSocket(cm.home, 'acc2')}' 'thread1'`)
+    for (const id of [undefined, 'acc1', 'acc2']) {
+      expect(expose).toContain(`'${remoteCodexSocket(cm.home, id)}'`)
+    }
+  })
+
+  it('refuses a bad id, an unconnected project, and passes the host refusal through', async () => {
+    const cm = await makeCodexMgr({
+      handler: (cmd) => (cmd.includes('expose-thread') ? { code: 69 } : undefined)
+    })
+    await expect(cm.mgr.remoteCodexSwitchThread('p1', 'bad id!', 'acc1', ['acc1'])).rejects.toThrow(
+      /Invalid Codex thread id/
+    )
+    await expect(cm.mgr.remoteCodexSwitchThread('nope', 'thread1', 'acc1', ['acc1'])).rejects.toThrow(
+      /not connected/
+    )
+    await expect(cm.mgr.remoteCodexSwitchThread('p1', 'thread1', 'acc1', ['acc1'])).rejects.toThrow(
+      /unavailable or ambiguous/
+    )
   })
 })
 

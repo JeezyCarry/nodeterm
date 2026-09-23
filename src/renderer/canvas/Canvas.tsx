@@ -6488,6 +6488,7 @@ export function Canvas() {
         cwd?: string
         accountId?: string
         ssh?: boolean
+        hostKey?: string
         sessionId?: string
         state?: string
       } => {
@@ -6498,6 +6499,7 @@ export function Canvas() {
           cwd: n?.data.cwd as string | undefined,
           accountId: (n?.data.accountId as string | undefined) || undefined,
           ssh: !!n?.data.ssh,
+          hostKey: n?.data.ssh ? sshHostKey(n.data.ssh as SshServer) : undefined,
           sessionId: restartSessionId(st?.sessionId, n?.data.agentSessionId),
           state: st?.state
         }
@@ -6522,6 +6524,78 @@ export function Canvas() {
         return
       }
       const { plan } = decision
+      // SSH node: its conversation and account homes are on the HOST. One host-side exposure
+      // (hardlink the rollout into the target home, verified discoverable there) replaces the
+      // local three-phase reservation, then the same recycle resumes the SAME thread id under the
+      // target's CODEX_HOME (the remote spawn scopes it by provider).
+      const hostKey = snapshot().hostKey
+      if (hostKey) {
+        const active = useProjects.getState().getProject(useProjects.getState().activeProjectId)
+        const projectId =
+          (active?.ssh &&
+          sshHostKey(active.ssh.server) === hostKey &&
+          useSshConn.getState().byProject[active.id]
+            ? active.id
+            : undefined) ?? connectedProjectIdForHost(hostKey)
+        if (!projectId) {
+          setNotice({
+            kind: 'error',
+            text: `${hostKey} is not connected — reconnect the project, then switch. Nothing was changed.`
+          })
+          return
+        }
+        const hostAccountIds = useSettings
+          .getState()
+          .settings.codexAccounts.filter((a) => a.host === hostKey && !a.pending)
+          .map((a) => a.id)
+        try {
+          await codexApi.switchThreadRemote(plan.sessionId, plan.targetAccountId, hostAccountIds, {
+            projectId
+          })
+        } catch {
+          setNotice({
+            kind: 'error',
+            text:
+              `The Codex account switch failed on ${hostKey} — the conversation could not be made ` +
+              'available to that account (is Codex set up on the host?). Nothing was changed.'
+          })
+          return
+        }
+        // The exposure took seconds. The linked rollout is harmless on its own (both accounts now
+        // see the same conversation), but the pane is only recycled if it is STILL the exact idle
+        // conversation the user chose.
+        if (!codexAccountSwitchStillEligible(plan.expected, snapshot())) {
+          setNotice({
+            kind: 'error',
+            text: 'This session changed while the switch was preparing — nothing was changed.'
+          })
+          return
+        }
+        const fn = agentRestartFn(nodeId)
+        // The rebind rides the closure's own node update (`beforeRecycle`), so the respawn is
+        // guaranteed to launch under the target account — a separate setNodes in the same tick can
+        // be dropped by React Flow's update queue.
+        const outcome = fn
+          ? await settleRestart(() =>
+              fn(undefined, undefined, true, undefined, async () => ({
+                accountId: plan.targetAccountId
+              }))
+            )
+          : 'not-eligible'
+        if (outcome === 'restarted') markDirty()
+        setNotice(
+          outcome === 'restarted'
+            ? { kind: 'info', text: 'Codex account switched — conversation resumed.' }
+            : {
+                kind: 'error',
+                text:
+                  outcome === 'not-eligible'
+                    ? 'Switch skipped: this session is busy or not attached — try again once its turn is done.'
+                    : 'Switch skipped: Codex did not quit in time. Nothing was changed.'
+              }
+        )
+        return
+      }
       let token: string | undefined
       try {
         const res = await codexApi.switchThread(
@@ -6817,24 +6891,12 @@ export function Canvas() {
             (a) => !a.pending && (hostKey ? a.host === hostKey : !a.host)
           )
           if (onMachine.length === 0) return []
-          // The three-phase switch (`switchThread`) plans and links rollouts in LOCAL
-          // homes only; for a node on an SSH host it could only fail. Say so instead of
-          // offering rows that roll back — the host-side switch is a follow-up.
-          if (hostKey)
-            return [
-              {
-                label: 'Switch Codex account',
-                icon: <IconSwitch />,
-                disabled: true,
-                hint: 'Switching Codex accounts is not available for SSH sessions yet.',
-                onClick: () => {}
-              }
-            ] as MenuItem[]
           const currentAccountId = (n?.data.accountId as string | undefined) || undefined
-          const systemCodexLabel = systemAccountDisplay(
-            undefined,
-            useSystemCodexAccount.getState().email
-          )
+          // The system row names ITS machine: an SSH node's is the host's own `~/.codex`, whose
+          // login this machine's system email says nothing about.
+          const systemCodexLabel = hostKey
+            ? (useSystemCodexAccount.getState().remoteEmails[hostKey] ?? `System account (${hostKey})`)
+            : systemAccountDisplay(undefined, useSystemCodexAccount.getState().email)
           const row = (
             id: string | undefined,
             label: string
