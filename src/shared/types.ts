@@ -2806,13 +2806,16 @@ export interface ClaudeAccountsApi {
   /**
    * Copy a conversation's transcript from one LOCAL account's config dir into another's (`undefined`
    * = the system `~/.claude`), so a node switched onto the target account resumes the SAME
-   * conversation there with no `/login`. Called only after the CLI has exited. Never overwrites a
+   * conversation there with no `/login`. With an SSH `ctx` the same copy runs on that project's host,
+   * between REMOTE accounts pinned to it. Called only after the CLI has exited. Never overwrites a
    * diverged copy (`diverged`); never throws — every refusal is a reason.
    */
   copySession(
     sessionId: string,
     sourceAccountId: string | undefined,
-    targetAccountId: string | undefined
+    targetAccountId: string | undefined,
+    /** An SSH project's node: the copy runs ON THAT HOST, between its remote account dirs. */
+    ctx?: AccountSshCtx
   ): Promise<ClaudeSessionCopyResult>
 }
 
