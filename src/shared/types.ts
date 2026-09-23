@@ -892,9 +892,12 @@ export const EMPTY_WORKSPACE: Workspace = {
 
 // ---- Contract for the API exposed to the renderer via preload ----
 
-/** Wire shape of pty:tmux-status — behind the "tmux not found" banner. */
+/** Local core backend discovery, not a runtime health check or a promise about existing sessions. */
 export interface TmuxStatus {
+  /** tmux discovery only; retained for older callers and install polling. */
   available: boolean
+  /** Absent on older peers; null when discovery could not be read. */
+  persistence?: { enabled: boolean; backend: 'tmux' | 'session-host' | null } | null
   /** One-shot install command for a terminal node; null = no known installer (text-only banner). */
   installCommand: string | null
   /** Button caption for installCommand (e.g. "Install Homebrew + tmux" when brew must come first). */
@@ -2783,7 +2786,26 @@ export interface ClaudeAccountsApi {
    * (the account's `skills/` resolves to the system one) and `failed` (an EPERM, a vanished skill).
    */
   setSkillSharing(id: string, enabled: boolean): Promise<ClaudeSkillShareResult>
+  /**
+   * Copy a conversation's transcript from one LOCAL account's config dir into another's (`undefined`
+   * = the system `~/.claude`), so a node switched onto the target account resumes the SAME
+   * conversation there with no `/login`. Called only after the CLI has exited. Never overwrites a
+   * diverged copy (`diverged`); never throws — every refusal is a reason.
+   */
+  copySession(
+    sessionId: string,
+    sourceAccountId: string | undefined,
+    targetAccountId: string | undefined
+  ): Promise<ClaudeSessionCopyResult>
 }
+
+/** What `claudeAccounts.copySession` did. `copied: false` = the target already held this exact copy. */
+export type ClaudeSessionCopyResult =
+  | { ok: true; copied: boolean }
+  | {
+      ok: false
+      reason: 'bad-request' | 'unknown-account' | 'no-transcript' | 'diverged' | 'failed'
+    }
 
 /** What one `setSkillSharing` / launch reconcile did. Counts, never an exception. */
 export interface ClaudeSkillShareResult {

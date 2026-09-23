@@ -218,8 +218,8 @@ reads as disarmed until armed on this machine). A node's `data`
 carries `title, color, group, tags, collapsed, expandedHeight, shell, cwd, text,
 initialCommand, filePath, diffStaged`, `icon` (a user-chosen emoji or picture — see **Node icons**
 below), `agentId` (which agent CLI a terminal node runs —
-persisted), and `accountId` (which managed Claude account a terminal node runs under — immutable,
-resolved at creation, persisted; see **Managed Claude accounts**). `nodeStatesToFlow` defaults a
+persisted), and `accountId` (which managed Claude account a terminal node runs under — resolved
+at creation, changed ONLY by the explicit account-switch actions, persisted; see **Managed Claude accounts**). `nodeStatesToFlow` defaults a
 missing `kind` to `terminal` for backward compat and migrates the legacy `tags:['claude']` marker
 to `data.agentId = 'claude'`. The SDK **chat node** was removed (2026-07); `nodeStatesToFlow` also
 migrates a persisted `chat` node into a **sticky tombstone** in place, reading its legacy
@@ -1173,8 +1173,8 @@ session.
   fall through would reach the pty as `\x03` (SIGINT). Ctrl+Insert exists because Chromium reserves
   Ctrl+Shift+C for the inspector and a page cannot `preventDefault()` it — which is where Server
   Edition users land. Plain **Ctrl+C** is never intercepted.
-  **PASTE is the platform's, never ours** (`isPasteShortcut` → the `'native'` action): we own no
-  paste path — ⌘V on mac reaches the Edit menu's `{role:'paste'}`, whose `paste` event xterm frames
+  **Text paste uses the platform event** (`isPasteShortcut` → the `'native'` action): ⌘V on
+  mac reaches the Edit menu's `{role:'paste'}`, whose `paste` event xterm frames
   as a bracketed paste. All the terminal does is stop CANCELLING the chord, and that is a
   **Windows-only** claim: xterm's keymap turns Ctrl+V into `\x16` with `cancel`, which suppressed
   Chromium's paste command *and* the Ctrl+V accelerator behind it, so Ctrl+V pasted nothing at all
@@ -1184,6 +1184,13 @@ session.
   key nor a cancel for them, so the platform already pastes. To select in **xterm** instead of tmux
   (or inside an app that grabs the mouse, like vim/htop), hold **Option** (mac —
   xterm's `macOptionClickForcesSelection`) or **Shift** (Linux/Windows) while dragging.
+  **Screenshot paste (#712):** the capture handler in both TerminalNode and ModalTerminal
+  owns files/images: save/upload, then paste the path, suppressing accompanying text. A
+  macOS Ctrl+V may instead let a local foreground agent read its own system clipboard.
+  Configured agent identity proves neither foreground state nor clipboard support, and a
+  PTY write has no image receipt. Never synthesize that key or fall back between routes.
+  The macOS shortcuts reference explains both keys; its Server Edition copy explicitly
+  says Ctrl+V cannot transfer the viewer's clipboard to the host. SSH keeps remote uploads.
   **Copying now says so**: the OSC 52 handler floats a transient `Copied N lines` pill over the
   terminal's BOTTOM-RIGHT corner (`.term-copy-pill`, the same class on the canvas node and the
   kanban card modal — one session seen twice must not speak in two voices; bottom-right because
@@ -1616,6 +1623,19 @@ else, and its context links must keep classifying across restarts).
     because `/quit --delete` exits *and permanently deletes* the session history, i.e. exactly what the
     restart exists to resume (pinned by its own test).
   Full picture, measurements, gaps and a device checklist: **`docs/gemini-agent.md`**.
+- **SSH context polling is a bounded byte protocol** (issue #816). The initial snapshot reads
+  only the last 1 MiB and records the absolute end offset; subsequent polls process at most
+  1 MiB. `core/remote-ssh/transcript-window.ts` measures size and uses block-aligned POSIX `dd`
+  with base64, transferring less than 1.6 MiB including alignment/framing; idle replies contain
+  only the size/range header. The encoded dd exit status must survive the shell pipeline:
+  pipeline success alone can hide a failed read. Short/malformed replies and SSH failures throw,
+  retain the cursor, and back off from 2s to 60s with payload-free diagnostics. Bootstrap and
+  detected truncation restore usage without replaying historical task notifications/tool results,
+  including a historical partial line completed later. A changed remote reference replaces its
+  tracking generation so stale in-flight replies cannot publish. Server Edition uses the local
+  core tail on its host (no SSH-project manager); mobile has its own direct-SSH implementation,
+  so this desktop fix makes no claim about that separate path. Real `/bin/sh` fixtures cover
+  >20 MiB idle files and a new notification split inside UTF-8; BSD/macOS SSH remains a device check.
 - **Context-meter rehydration (`context:ensure`)** — the meter is fed by hook events, and a tmux
   session outlives the app, so a continuing session that is idle after a restart emits nothing and
   its meter stays blank until the user's next prompt. The mount-time read that exists to close that
@@ -1910,6 +1930,14 @@ else, and its context links must keep classifying across restarts).
   - The claude/gemini loop body became `installJsonAgentRemote`, with the same fail-open try/catch
     its three siblings already had. Its three steps stay strictly ordered inside: the merge reads
     the file the write then replaces.
+
+**Command-bearing terminal opens (issue #653):** the shared hook-server route requires verified
+node identity whenever `open-terminal` carries `cmd`, including an empty value or a dry run.
+The strict-policy override and foreign-instance fallback cannot release this gate. Desktop plain
+terminal opens keep their existing identity policy; Server Edition still requires verification
+for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
+command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
+
 - **Per-node hook identity** (`src/core/agents/node-auth-*.ts`, `node-token-*.ts`,
   `node-identity-policy.ts` — full write-up in **`docs/node-identity.md`**) — the shared bearer proves
   "a session on this machine", never *which* session, so every node also gets a capability derived
@@ -2719,7 +2747,8 @@ else, and its context links must keep classifying across restarts).
   --version`, `isSupportedClaudeVersion`).
   - **`data.accountId` (terminal nodes)** — resolved **once at node creation**
     (`resolveNewNodeAccount`: explicit submenu pick → `project.defaultAccountId` → system default
-    `~/.claude`), then **immutable** and **persisted** (serializers). `undefined` = system default
+    `~/.claude`), then **persisted** (serializers) and changed ONLY by an explicit **account switch**
+    (below). `undefined` = system default
     = **bit-for-bit legacy behavior** (no env touched). Inherited by **Branch** (the
     terminal→chat fork it also fed is gone — the SDK chat node was removed 2026-07). Two #419
     rules inside the resolver: the submenu's **System row passes `null`** (an EXPLICIT system
@@ -2727,6 +2756,21 @@ else, and its context links must keep classifying across restarts).
     the project-default account), and validation runs against `accountsForProject`, not the raw
     list, so a **pending** account or one **pinned to another machine's host** is never stamped
     onto a node it cannot run on (both used to reach the missing-dir fallback at spawn).
+  - **Switch Claude account (running node, local only)** — node right-click → *Switch Claude
+    account ▸* moves the conversation onto another account **already logged in** on this machine,
+    with no `/login` in the pane. It works because a transcript carries **no account identity**
+    (measured on 2.1.280: under a config dir lacking the file `--resume` says "No conversation found";
+    with the file copied into `<configDir>/projects/<encoded cwd>/<id>.jsonl` only the login is
+    missing). Choreography = "Restart agent and shell" with a `beforeRecycle` step
+    (`agent-restart.ts`): exit the CLI (refused while working/blocked) → core
+    `claudeAccounts.copySession` (`core/claude-session-copy.ts`) → rebind `accountId` → recycle, whose
+    respawn gets the new `CLAUDE_CONFIG_DIR` and whose cold restore resumes the same id. Two rules:
+    the copy runs **after** the exit, so the source is final and a target that is a byte-**prefix**
+    of it is just an older copy (A→B→A) and may be replaced, while a **diverged** target is never
+    overwritten; and the rebind is **returned** by `beforeRecycle` and merged into the closure's own
+    `updateNodeData`, never set by a separate Canvas `setNodes` in the same tick (React Flow's update
+    queue rebuilds the node from the store's copy and can drop it). Builtin `claude` only (the
+    `boundAccountId` rule below). SSH / relay: shown disabled — the host-side copy is a follow-up.
   - **`boundAccountId(accountId, agentId)` (`shared/agents/account-binding.ts`) is the ONE rule for
     whether a node is account-bound at all**, and it feeds `data.accountId` *and* the account color
     from a single decision — split them and a node carries an account it is not painted for, or is
@@ -3568,7 +3612,13 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   right-click; nothing running is interrupted), restart-agent
   (single agent node — the in-place CLI restart above; absent for a CLI we cannot quit + resume,
   disabled with a hint while the session is busy or has no id yet), delete. Actions live
-  in `Canvas.tsx`, operate on `targetIds`. The non-destructive rows are user-hideable from
+  in `Canvas.tsx`, operate on `targetIds`. **Conversation actions are grouped** so an agent node's
+  menu fits on screen: **Transfer conversation ▸** holds one row per target (a model-capable target
+  nests its gateway models one level further), and **Restart ▸** holds every quit-and-resume
+  variant — restart, restart + fresh shell, restart on subscription, then Reopen as / Switch model /
+  Switch account. `ContextMenu` renders submenus to any depth (`MenuRows` is recursive); a flyout
+  that hosts a submenu drops its scroll (`.ctx-submenu--host` — `overflow: auto` would clip the
+  nested flyout) and `useSubmenuFlip` lifts a flyout that would run off the bottom. The non-destructive rows are user-hideable from
   **Settings → Appearance** ("Node menu items" / "Terminal header buttons"), stored as HIDDEN
   lists in `settings.hiddenNodeMenuItems` / `settings.hiddenHeaderButtons` (empty = everything
   shows). `lib/ui-visibility.ts` owns the two inventories and `isHidden`, which only answers for

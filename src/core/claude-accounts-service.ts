@@ -29,6 +29,8 @@ import { applySkillShare, EMPTY_SKILL_SHARE } from './claude-skill-share'
 import { installClaudeHooksInto, ensureClaudeFullscreenTuiInto } from './agents/hooks/claude'
 import { findInLoginPath } from './pty-manager'
 import { platform } from './platform'
+import { copyClaudeSession, type ClaudeSessionCopyOutcome } from './claude-session-copy'
+import { resolveTranscriptPath, transcriptRoot, SESSION_ID_RE } from './transcript-reader'
 
 const execFileP = promisify(execFile)
 const LOGIN_POLL_MS = 2000
@@ -273,6 +275,59 @@ export function registerClaudeAccountsIpc(deps: ClaudeAccountsDeps = {}): void {
     // hand-edited `configDir` of `~/.claude` from turning this into a self-link.
     return applySkillShare(claudeConfigDirFor(id), enabled)
   })
+
+  /**
+   * Copy a conversation into another LOCAL account so a switched node resumes it there (the
+   * running-node "Switch Claude account" menu). The renderer runs it between the CLI's exit and the
+   * pane recycle, so the source transcript is final; see `claude-session-copy.ts` for the
+   * never-overwrite-a-diverged-copy rule.
+   *
+   * The renderer is not the boundary: the target must be a settled LOCAL account from the live
+   * settings list (or `undefined` = the system `~/.claude`). A remote or pending account, or an id
+   * nothing lists, is refused — a switch onto a dir with no login would only trade one `/login`
+   * for another, and a remote account's dir is on another machine entirely.
+   */
+  platform().handle(
+    IPC.claudeAccountsCopySession,
+    async (
+      sessionId: unknown,
+      sourceAccountId: unknown,
+      targetAccountId: unknown
+    ): Promise<ClaudeSessionCopyOutcome> => {
+      if (typeof sessionId !== 'string' || !SESSION_ID_RE.test(sessionId))
+        return { ok: false, reason: 'bad-request' }
+      const optId = (v: unknown): v is string | undefined =>
+        v === undefined || v === null || typeof v === 'string'
+      if (!optId(sourceAccountId) || !optId(targetAccountId)) return { ok: false, reason: 'bad-request' }
+      const source = sourceAccountId || undefined
+      const target = targetAccountId || undefined
+      if (source === target) return { ok: true, copied: false }
+      const localSettled = (id: string): boolean =>
+        claudeAccountsSnapshot().some((a) => a.id === id && !a.host && !a.pending)
+      if (target !== undefined && !localSettled(target)) return { ok: false, reason: 'unknown-account' }
+      // A source that is not a local account (removed, remote) has no local transcript to move.
+      if (source !== undefined && !claudeAccountsSnapshot().some((a) => a.id === source && !a.host))
+        return { ok: false, reason: 'unknown-account' }
+      let sourceRoot: string
+      let targetRoot: string
+      try {
+        // Both resolve through the id-alphabet gate (`accountConfigDir`), which throws on a bad id.
+        sourceRoot = transcriptRoot(source)
+        targetRoot = transcriptRoot(target)
+      } catch {
+        return { ok: false, reason: 'bad-request' }
+      }
+      const sourceFile = await resolveTranscriptPath(sessionId, source)
+      if (!sourceFile) return { ok: false, reason: 'no-transcript' }
+      return copyClaudeSession({
+        sessionId,
+        sourceFile,
+        targetProjectsRoot: targetRoot,
+        sourceConfigDir: path.dirname(sourceRoot),
+        targetConfigDir: path.dirname(targetRoot)
+      })
+    }
+  )
 }
 
 /**

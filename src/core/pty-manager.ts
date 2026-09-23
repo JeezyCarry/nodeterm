@@ -1781,10 +1781,7 @@ export class PtyManager {
     )
   }
 
-  /** Feeds the renderer's "tmux not found" banner. Without tmux the app silently degrades to a
-   *  plain shell (no cross-restart continuity, no mobile attach) — users never discover that on
-   *  their own, so the banner surfaces it with a one-click install command when a known package
-   *  manager is present (run in a terminal node, gh-sign-in style). */
+  /** Discover the backend for NEW local terminals without starting a session host. */
   tmuxStatus(): TmuxStatus {
     // Re-probe when unavailable: the banner polls this while its install command runs, and a
     // successful probe here is what makes new sessions tmux-backed without a restart.
@@ -1792,12 +1789,19 @@ export class PtyManager {
     const available = !!this.tmuxPath
     const hint = available
       ? null
-      : tmuxInstall(process.platform, (cmd) => findCommand(cmd, process.env, fs.existsSync))
+      : tmuxInstall(this.runtimePlatform, (cmd) => findCommand(cmd, process.env, fs.existsSync))
     return {
       available,
       installCommand: hint?.command ?? null,
       installLabel: hint?.label ?? null,
-      platform: process.platform
+      platform: this.runtimePlatform,
+      persistence: {
+        enabled: this.getSettings().tmuxEnabled,
+        backend:
+          this.runtimePlatform !== 'win32' && available
+            ? 'tmux'
+            : sessionHostSupported() ? 'session-host' : null
+      }
     }
   }
 

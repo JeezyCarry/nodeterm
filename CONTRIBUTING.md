@@ -350,6 +350,11 @@ come from git-shared JSON and can end up interpolated into a shell command line.
 `/bin/sh` against a fixture tree. A composed fixture will not tell you that `echo ##MEM` prints an
 empty line because `#` starts a comment.
 
+**Remote context polling must bound bytes before SSH transports them.** Bootstrap from the
+file's measured end, keep offsets in raw bytes, and distinguish an idle read from failure so
+the poller can back off. Bootstrap history restores usage only, never task/result events.
+`core/remote-ssh/transcript-window.ts` and the real-shell remote-context tests pin this contract.
+
 **A shared agent daemon is live-session infrastructure.** Codex's app-server control socket is
 shared by every `--remote` TUI in an account scope, so stopping or replacing one daemon disconnects
 every attached canvas node. A managed launcher must keep the already-bound thread under a bounded
@@ -615,7 +620,20 @@ feature from the one they asked for.
 `status` is `error` and limits are empty, including beside other providers; preserve last-known
 bars when limits remain. Keep both single-account and multi-account views covered.
 
+**Command-bearing terminal opens (issue #653):** the shared hook-server route requires verified
+node identity whenever `open-terminal` carries `cmd`, including an empty value or a dry run.
+The strict-policy override and foreign-instance fallback cannot release this gate. Desktop plain
+terminal opens keep their existing identity policy; Server Edition still requires verification
+for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
+command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
+
 ## Testing
+
+**Screenshot paste has one route per gesture.** On macOS, Cmd+V saves/uploads a file and
+pastes its path; Ctrl+V belongs to the foreground program. A node's configured agent is not
+proof of foreground clipboard-image support. Keep shell/SSH/Server file routing and capture
+suppression of accompanying text; do not synthesize Ctrl+V or try both routes without a
+capability and receipt protocol. The shortcuts panel documents this distinction (#712).
 
 `npm test` must pass, and `npm run typecheck` is the fastest gate.
 
@@ -694,3 +712,7 @@ Two files, two audiences:
 **If you change or discover something other contributors must know, update this file too.** An
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
+
+Managed Codex login terminals are agent-less: core identifies their provider from the saved
+account list. Before opening one, await `useSettings.getState().flush()` after adding the account.
+The normal 300 ms coalesced save is too late: an unknown id can launch against the system home.

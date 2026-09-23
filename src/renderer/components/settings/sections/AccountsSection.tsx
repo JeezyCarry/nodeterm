@@ -437,6 +437,9 @@ export function AccountsSection({ isActive }: { isActive: boolean }): React.JSX.
       const added = await window.nodeTerminal.codexAccounts.add()
       const account: CodexAccount = { id: added.id, label: 'New Codex account', pending: true }
       applyCodexAccounts((accs) => [...accs, account])
+      // PTY scoping identifies this agent-less login by the core's account list. The ordinary
+      // settings save is coalesced for 300 ms; launching before it lands uses the system home.
+      await useSettings.getState().flush()
       window.dispatchEvent(
         new CustomEvent('nodeterm:add-codex-account-login', { detail: { accountId: added.id } })
       )
