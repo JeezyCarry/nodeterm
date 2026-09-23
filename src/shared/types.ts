@@ -337,6 +337,10 @@ export type NodeKind = 'terminal' | 'sticky' | 'group' | 'editor' | 'diff' | 'vi
  * a stalled station must never be a dead end.
  */
 export interface PendingLaunch {
+  /** false proves no input attempt; true/absent require explicit recovery after reload. */
+  attempted?: boolean
+  /** An attempted/uncertain delivery requires explicit Run now; never replay on hooks. */
+  manualOnly?: boolean
   /**
    * Node ids to wait for. Only nodes running a hook-reporting agent may appear here — a plain
    * terminal never reports `done`, so waiting on one would stall forever (refused at creation).

@@ -1,3 +1,6 @@
+import { createControlOpenBatch } from '../lib/controlOpenBatch'
+import { commitOwnedLaunchAttempt, registerLaunchCommit } from '../terminal/launch-attempt'
+import { launchCommand } from '../terminal/launch-command'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { playSfx, primeSfx } from '@renderer/lib/sfx'
@@ -266,6 +269,7 @@ import {
   offScreenRefusal,
   sourceIsControlCapable,
   storedNodeListing,
+  controlListingText,
   answerBrowserResolve,
   type BrowserResolveProject
 } from '../lib/controlRouting'
@@ -461,8 +465,7 @@ import {
 import { buildBackgroundLinkMaps, buildContextLinkNote, buildLinkMap, buildNotePushMessage, classifyLink, hiddenLinkIds, linkIdsCoveredByRopes, pairKey, planBridges, type LinkEndpoint } from '../lib/noteLink'
 import {
   launchesToFire,
-  launchRetryDelay,
-  unmetDeps,
+  queueControlLaunch,
   LAUNCH_STALL_MS,
   type ArmedNode
 } from '../lib/pendingLaunch'
@@ -1890,7 +1893,8 @@ export function Canvas() {
       nodes as unknown as ArmedNode[],
       useAgentStatus.getState().byId,
       live,
-      setupDoneForGroup
+      setupDoneForGroup,
+      useLaunchDelivery.getState().byId
     ).filter((f) => !launchInFlight.current.has(f.id))
     // Anything we were reporting on that is no longer an armed node — delivered, run by hand with
     // ▶, or deleted — stops being reported. Timers go with it: a stall warning for a node that has
@@ -1939,8 +1943,8 @@ export function Canvas() {
       launchInFlight.current.add(f.id)
       const attempt = (launchAttempts.current.get(f.id) ?? 0) + 1
       launchAttempts.current.set(f.id, attempt)
-      void api.pty.sendText(f.id, f.command).then((ok) => {
-        if (ok) {
+      void launchCommand(f.id, f.command, false, activeSession.api).then((outcome) => {
+        if (outcome === 'submitted') {
           setNodes((ns) =>
             ns.map((n) => (n.id === f.id ? { ...n, data: { ...n.data, pendingLaunch: undefined } } : n))
           )
@@ -1948,19 +1952,18 @@ export function Canvas() {
           markDirty()
           return
         }
-        // Refused although the session reported ready — a narrow residual race now, not the
-        // whole cold-start window. Let it back out of flight and re-run after the backoff; a
-        // launch that silently vanishes is worse than a late one.
-        launchInFlight.current.delete(f.id)
-        const delay = launchRetryDelay(attempt)
-        if (delay !== null) {
-          setTimeout(() => setLaunchNudge((v) => v + 1), delay)
+        if (outcome === 'deferred') {
+          // No claim/input occurred while this project's canvas was parked. A later project
+          // activation can retry; do not turn never-attempted intent into manual recovery.
+          launchInFlight.current.delete(f.id)
           return
         }
-        // Out of attempts against a session that IS up. Nothing else will retry this, so it is
-        // reported where the person looking at the node can see it — the QUEUED badge turns into
-        // a warning pointing at the manual ▶. The log line stays for a bug report; it is no
-        // longer the only place the failure exists.
+        // The verified writer already exhausted its bounded echo repair. A failed launch
+        // needs an explicit retry; unrelated hooks and remounts must never inject it later.
+        setNodes((ns) => ns.map((n) => n.id === f.id && n.data.pendingLaunch
+          ? { ...n, data: { ...n.data, pendingLaunch: { ...n.data.pendingLaunch, attempted: true, manualOnly: true } } }
+          : n))
+        markDirty()
         useLaunchDelivery.getState().markFailed(f.id, attempt)
         console.warn('[pending-launch] gave up delivering held launch for', f.id)
       })
@@ -2595,7 +2598,7 @@ export function Canvas() {
       // keeps mirroring the previous project until the host's next edit. Gated like the effect:
       // without phone access on, the serialize itself is the waste (main would drop the payload).
       if (useSettings.getState().settings.phoneAccessEnabled) {
-        window.nodeTerminal.remoteHost.sendCanvasState({ nodes: flowToNodeStates(nodesRef.current) })
+        window.nodeTerminal.remoteHost.sendCanvasState({ nodes: flowToNodeStates(nodesRef.current, sessionForProject(nodesProjectIdRef.current ?? '').source !== 'relay') })
       }
       // Offer the resume card once per project per app run — and only when the user opted in
       // (settings.showResumeCard, default off): while disabled the one-shot slot is NOT spent,
@@ -2725,7 +2728,8 @@ export function Canvas() {
   // ephemeral-id set: it is read from a live store, so it is captured here, as of this call.
   const publishableLater = useCallback((flow: CanvasNode[]): (() => CanvasNodeState[]) => {
     const ephIds = new Set(Object.keys(useAgentNodes.getState().byId))
-    return () => publishableStates(flowToNodeStates(flow), ephIds)
+    const retainInitial = sessionForProject(nodesProjectIdRef.current ?? '').source !== 'relay'
+    return () => publishableStates(flowToNodeStates(flow, retainInitial), ephIds)
   }, [])
 
   // ---- persistence helpers ----
@@ -2740,7 +2744,7 @@ export function Canvas() {
         .getState()
         .commitCanvas(
           id,
-          flowToNodeStates(nodesRef.current),
+          flowToNodeStates(nodesRef.current, sessionForProject(nodesProjectIdRef.current ?? '').source !== 'relay'),
           viewportRef.current,
           linkEdgesRef.current.map((e) => ({ id: e.id, source: e.source, target: e.target })),
           controlEdgesRef.current.map((e) => ({ id: e.id, source: e.source, target: e.target }))
@@ -2781,6 +2785,31 @@ export function Canvas() {
     commitActiveToStore()
     await writeDisk()
   }, [commitActiveToStore, writeDisk])
+
+  // Persist the attempt before a writer can send even its first byte. React Flow remains the
+  // live source: update its ref synchronously before serializing, not after an async setNodes.
+  useEffect(() => registerLaunchCommit(activeSession.api, async (nodeId, command, manual) => {
+    const projectId = useProjects.getState().activeProjectId
+    if (!canCommitCanvas(nodesProjectIdRef.current, projectId)) return 'deferred'
+    const node = nodesRef.current.find((n) => n.id === nodeId)
+    if (!node) return 'deferred'
+    return commitOwnedLaunchAttempt(activeSession.api, api, {
+      pending: node.data.pendingLaunch,
+      command,
+      manual,
+      update: (pendingLaunch) => {
+        const next = nodesRef.current.map((n) => n.id === nodeId
+          ? { ...n, data: { ...n.data, pendingLaunch } } : n)
+        nodesRef.current = next
+        setNodes(next)
+        markDirty()
+        commitActiveToStore()
+      },
+      save: async () => {
+        await api.workspace.save(useProjects.getState().toWorkspace())
+      }
+    })
+  }), [activeSession.api, api, commitActiveToStore, markDirty, setNodes])
 
   // Global kanban reads ALL lanes from serialized `p.nodes`, but the active project's
   // live React Flow nodes may have uncommitted edits (title rename, new node). Commit
@@ -3071,7 +3100,7 @@ export function Canvas() {
   useEffect(() => {
     if (!phoneHosting || loadingRef.current) return
     const t = setTimeout(() => {
-      window.nodeTerminal.remoteHost.sendCanvasState({ nodes: flowToNodeStates(nodesRef.current) })
+      window.nodeTerminal.remoteHost.sendCanvasState({ nodes: flowToNodeStates(nodesRef.current, sessionForProject(nodesProjectIdRef.current ?? '').source !== 'relay') })
     }, 120)
     return () => clearTimeout(t)
   }, [nodes, phoneHosting])
@@ -3085,7 +3114,7 @@ export function Canvas() {
   useEffect(() => {
     return window.nodeTerminal.remoteHost.onApplyMutation((mutation) => {
       setNodes((ns) => {
-        const next = applyCanvasMutation(flowToNodeStates(ns), mutation)
+        const next = applyCanvasMutation(flowToNodeStates(ns, sessionForProject(nodesProjectIdRef.current ?? '').source !== 'relay'), mutation)
         return nodeStatesToFlow(next)
       })
       markDirty()
@@ -10075,14 +10104,16 @@ export function Canvas() {
           // The skill text names the workaround (open a reader agent inside the target project).
           if (tgActive) {
             // The human is looking at the target (the caller is a background orchestrator):
-            // live-canvas insertion, normal initialCommand — the session starts immediately.
-            setNodes((ns) => [...ns, ...tgMade])
+            // live insertion still precedes PTY readiness: keep the launch queued.
+            const tgQueuedIds = tgMade.filter((n) => !!n.data.initialCommand).map((n) => n.id)
+            setNodes((ns) => [...ns, ...tgMade.map((node) => queueControlLaunch(node))])
             markDirty()
             reply({
               ok: true,
-              message: `opened ${tgCount} ${tgWhat} session(s) in "${target.name}" (${tgIds.join(', ')})`,
-              // The target is on screen, so these started normally — nothing is queued.
-              result: { ids: tgIds, id: tgIds[0], projectId: target.id, queued: false, queuedIds: [] }
+              message: `opened ${tgCount} ${tgWhat} session(s) in "${target.name}" (${tgIds.join(', ')})` +
+                (tgQueuedIds.length ? ' — queued; awaiting launch delivery' : ''),
+              // Being on screen is not proof of launch delivery.
+              result: { ids: tgIds, id: tgIds[0], projectId: target.id, queued: tgQueuedIds.length > 0, queuedIds: tgQueuedIds }
             })
             return
           }
@@ -10229,11 +10260,11 @@ export function Canvas() {
             return
           }
           if (!needsLiveCanvas(verb)) {
-            const rows = storedNodeListing(projects.find((p) => p.id === route.projectId)?.nodes ?? [])
+            const rows = storedNodeListing(projects.find((p) => p.id === route.projectId)?.nodes ?? [], useAgentStatus.getState().byId, useLaunchDelivery.getState().byId)
             reply({
               ok: true,
               result: rows,
-              message: rows.map((n) => `${n.id} [${n.kind}] ${n.title}`).join('\n')
+              message: controlListingText(rows)
             })
             return
           }
@@ -10792,16 +10823,12 @@ export function Canvas() {
       // Hold a freshly-built node's launch instead of running it on open. The factories already
       // composed the exact command (agent CLI + permission-mode flag + prompt, or --cmd), so it
       // is MOVED rather than rebuilt — a second construction site is how the two drift apart.
-      // `extraLive` names nodes being created in this same tick — `verify` arms its judge on
-      // reviewers that are not on the canvas yet, and without this they would look DELETED,
-      // which counts as satisfied, and the judge would fire before a single review existed.
       // `intoGroup` adds the SECOND reason to hold a launch: the node is being opened into a
       // worktree frame whose project setup script is still preparing the checkout (and said
       // `waitForSetup`). Same mechanism, same escape hatch on the node — see `awaitSetupGroup`.
       const armAfter = (
         node: CanvasNode,
         after: string[],
-        extraLive?: Iterable<string>,
         intoGroup?: string | null
       ): CanvasNode => {
         const command = node.data.initialCommand as string | undefined
@@ -10815,27 +10842,9 @@ export function Canvas() {
             setupWaitGroupsRef.current.has(intoGroup)) &&
           !setupDoneForGroup(intoGroup)
         const awaitSetupGroup = holdsForSetup ? intoGroup ?? undefined : undefined
-        if (!after.length && !awaitSetupGroup) return node
-        // If the wait is ALREADY over, don't arm at all — leave the command as the node's
-        // `initialCommand` so its own mount path delivers it through `writeWhenShellReady`
-        // (which waits for the shell prompt and echo-verifies). Arming would instead hand
-        // delivery to the canvas effect, which would race the node's PTY into existence and
-        // could fire into a session that does not exist yet.
-        const live = new Set([...nodesRef.current.map((nd) => nd.id), ...(extraLive ?? [])])
-        const unmet = unmetDeps(
-          { id: node.id, data: { pendingLaunch: { after, command } } },
-          useAgentStatus.getState().byId,
-          live
-        )
-        if (!unmet.length && !awaitSetupGroup) return node
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            initialCommand: undefined,
-            pendingLaunch: { after, command, ...(awaitSetupGroup ? { awaitSetupGroup } : {}) }
-          }
-        }
+        // Always retain the command until the PTY-ready delivery loop acknowledges it.
+        // Node creation (even on screen) is not command delivery.
+        return queueControlLaunch(node, after, awaitSetupGroup)
       }
       // Open `count` nodes INTO a group frame: grow the frame FIRST (extent:'parent' would
       // clamp children landing outside it), then drop each node into the next grid slot
@@ -10882,23 +10891,11 @@ export function Canvas() {
             // separately would be seven round trips to learn the one thing that changes what it
             // does next.
             const st = useAgentStatus.getState().byId
-            const list = nodesRef.current.map((n) => ({
-              id: n.id,
-              kind: n.type,
-              title: n.data.title as string,
-              ...(st[n.id]?.lastTurnError ? { lastTurnErrored: true } : {})
-            }))
-            reply({
-              ok: true,
-              result: list,
-              message: list
-                .map(
-                  (n) =>
-                    `${n.id} [${n.kind}] ${n.title}` +
-                    (n.lastTurnErrored ? ' — LAST TURN ERRORED' : '')
-                )
-                .join('\n')
-            })
+            const list = storedNodeListing(nodesRef.current.map((n) => ({
+              id: n.id, kind: n.type, title: n.data.title as string,
+              pendingLaunch: n.data.pendingLaunch, agentId: n.data.agentId as string | undefined
+            })), st, useLaunchDelivery.getState().byId)
+            reply({ ok: true, result: list, message: controlListingText(list) })
             return
           }
           case 'open-terminal': {
@@ -10932,13 +10929,8 @@ export function Canvas() {
               })
               return
             }
-            // Which of the nodes we are about to open are actually ARMED — i.e. QUEUED rather
-            // than running. `armAfter` decides that per node (deps already satisfied leave the
-            // command as an ordinary `initialCommand`), so the answer is recorded as it builds
-            // them rather than inferred from the flags; `setNodes` has not landed by reply time,
-            // so the canvas cannot be asked either. Reported so a caller can tell "started" from
-            // "will start later" instead of assuming the first — see #569 item 1.
-            const queuedIds: string[] = []
+            // Every command is held until delivery, including a visible node with no deps.
+            const openBatch = createControlOpenBatch()
             const make = (i: number): CanvasNode => {
               const node = armAfter(
                 createTerminalNode(
@@ -10949,28 +10941,23 @@ export function Canvas() {
                   sshFor(termCwd)
                 ),
                 after ?? [],
-                undefined,
                 intoGroupId
               )
-              if (node.data.pendingLaunch) queuedIds.push(node.id)
-              return node
+              return openBatch.add(node)
             }
             const ids = intoGroupId
               ? addGrouped(intoGroupId, count, make)
               : Array.from({ length: count }, (_, i) => addAndConnect(make(i)))
             ropeDeps(ids, after)
+            const openResult = openBatch.result(after ?? [])
+            const { queuedIds } = openResult
             reply({
               ok: true,
               message:
                 `opened ${count} terminal(s): ${ids.join(', ')}` +
+                (queuedIds.length ? '\nqueued; awaiting launch delivery' : '') +
                 (after?.length ? `\nwaiting for ${after.join(', ')} before running` : ''),
-              result: {
-                ids,
-                id: ids[0],
-                after: after ?? [],
-                queued: queuedIds.length > 0,
-                queuedIds
-              }
+              result: openResult
             })
             return
           }
@@ -11068,7 +11055,7 @@ export function Canvas() {
             }
             // See the same list in open-terminal: which of these nodes end up ARMED is
             // `armAfter`'s per-node decision, recorded as it builds them.
-            const queuedIds: string[] = []
+            const openBatch = createControlOpenBatch()
             // A `--prompt` over the typed-line budget is spilled to a file and delivered through
             // the same `"$(cat …)"` substitution `--prompt-file` uses (#706). An explicit
             // `--prompt-file` already took that route and is passed through untouched.
@@ -11094,16 +11081,16 @@ export function Canvas() {
                   promptFile ?? promptLaunch.promptFile
                 ),
                 after ?? [],
-                undefined,
                 intoGroupId
               )
-              if (node.data.pendingLaunch) queuedIds.push(node.id)
-              return node
+              return openBatch.add(node)
             }
             const ids = intoGroupId
               ? addGrouped(intoGroupId, count, make)
               : Array.from({ length: count }, (_, i) => addAndConnect(make(i)))
             ropeDeps(ids, after)
+            const openResult = openBatch.result(after ?? [])
+            const { queuedIds } = openResult
             // Context-link the new session(s) back to the opener (same rationale as spawn-team:
             // the fan-out needs a fan-in). The nodes were added via setNodes in this tick, so
             // resolve their endpoints from `agentId` rather than the not-yet-updated canvas.
@@ -11126,17 +11113,15 @@ export function Canvas() {
               ok: true,
               message:
                 `opened ${count} ${agentId} session(s): ${ids.join(', ')}` +
+                (queuedIds.length ? '\nqueued; awaiting launch delivery' : '') +
                 (bridged.length ? `\ncontext-linked to you: ${bridged.join(', ')}` : '') +
                 (after?.length
                   ? `\nwaiting for ${after.join(', ')} before running` +
                     (depLinked.length ? ` (and linked to read them)` : '')
                   : ''),
               result: {
-                ids,
-                linked: bridged,
-                after: after ?? [],
-                queued: queuedIds.length > 0,
-                queuedIds
+                ...openResult,
+                linked: bridged
               }
             })
             return
@@ -11517,8 +11502,7 @@ export function Canvas() {
                     )
                     return { ...j, data: { ...j.data, title: 'Verify: verdict', titleAuto: false } }
                   })(),
-                  reviewerIds,
-                  reviewerIds // the reviewers exist only in this tick — see armAfter
+                  reviewerIds
                 )
               : null
             const panelIds = [...reviewerIds, ...(judge ? [judge.id] : [])]
