@@ -12989,7 +12989,8 @@ export function Canvas() {
             an.start(e.toolUseId, {
               parentNodeId: e.nodeId,
               type: e.subagentType,
-              label: e.taskLabel
+              label: e.taskLabel,
+              startedAt: e.subagentStartedAt
             })
           }
           break

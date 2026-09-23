@@ -693,3 +693,5 @@ who never saw it.
 
 - Media URLs live for the app run. Remote cache pruning must keep files already handed to
   players; the cache cap is soft until restart. Use the existing `video` node for audio too.
+- Subagent reload replay is display-only and current-host-only. Never replay status/permission
+  events or treat a replayed card as verified process ownership; subscribe before taking its snapshot.

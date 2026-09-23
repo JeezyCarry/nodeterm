@@ -1,3 +1,4 @@
+import { subagentReplay } from '../core/subagent-replay'
 import { grokHomeDir, grokSessionDir, grokSessionsDir } from '../core/agents/grok-paths'
 import { join, resolve, posix } from 'path'
 import { startSessionNameSweep, displayNodeTitle } from '../core/session-name-sweep'
@@ -2770,6 +2771,7 @@ app.whenReady().then(async () => {
   // just-read node's latest state is `done`. The mirror resolves the node's done inbox event(s)
   // (phone Inbox archives the card) and re-sends an 'end' live-update so the paired phone dismisses
   // its lingering DONE Live Activity. Fire-and-forget; the mirror no-ops with no unresolved done.
+  corePlatform.handle(IPC.agentSubagentSnapshot, () => subagentReplay.snapshot())
   corePlatform.handle(IPC.agentAckDone, (nodeId: string) => {
     ackDone(nodeId)
   })

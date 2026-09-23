@@ -1,3 +1,4 @@
+import { subagentReplay } from '../core/subagent-replay'
 import fs from 'fs'
 import { readAgentSessionName } from '../core/agent-session-name'
 import { startSessionNameSweep, displayNodeTitle } from '../core/session-name-sweep'
@@ -530,6 +531,7 @@ export async function startServer(
   // calls it when the just-read node's latest state is `done`. The mirror resolves the node's done
   // inbox event(s) + re-sends an 'end' live-update so the paired phone dismisses its lingering DONE
   // Live Activity. Fire-and-forget; no-op with no unresolved done.
+  platform.handle(IPC.agentSubagentSnapshot, () => subagentReplay.snapshot())
   platform.handle(IPC.agentAckDone, (nodeId: string) => {
     ackDone(nodeId)
   })
