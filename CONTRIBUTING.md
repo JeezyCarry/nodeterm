@@ -269,6 +269,12 @@ lane unaffected.
   the relay, so a key that works locks it onto a path that cannot work. CLAUDE.md, "Remote access",
   has the details.
 
+- **A relay channel that names a project needs a row in `relay-project-scope.ts`.** A relay guest
+  bound to one shared project must never reach another, and the jail is keyed on channel class:
+  anything named `githubIssues:*`, `board-log:*` or `projects.*` is refused on a scoped session
+  unless that table can read its projectId. Add the row in the same PR as the channel, or the verb
+  is refused for every scoped guest (and `relay-project-scope.test.ts` goes red telling you so).
+
 - **Normalize BOTH sides of a path comparison, through one function.** A marker normalized where
   it is built and matched raw where it is used is a no-op on the machine you wrote it on and a
   silent defect on Windows. That is issue #558: the managed-hook marker was folded to `/` while
