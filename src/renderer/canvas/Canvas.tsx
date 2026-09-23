@@ -1,3 +1,4 @@
+import { VisibleMiniMap } from './VisibleMiniMap'
 import { LINK_ENDPOINT_NOT_FOUND } from '@shared/canvas-link'
 import { createControlOpenBatch } from '../lib/controlOpenBatch'
 import { commitOwnedLaunchAttempt, registerLaunchCommit } from '../terminal/launch-attempt'
@@ -15,7 +16,6 @@ import {
   ControlButton,
   Controls,
   MarkerType,
-  MiniMap,
   ReactFlow,
   SelectionMode,
   useEdgesState,
@@ -207,6 +207,7 @@ import { CapabilityNotice } from '../components/CapabilityNotice'
 import { ClosedTranscriptDialog } from '../components/ClosedTranscriptDialog'
 import { SetupConsentDialog } from '../components/SetupConsentDialog'
 import { ConsentNotice } from '../remote/ConsentNotice'
+import { approvePhoneWithFeedback } from '../lib/phone-approval'
 import { peerApprovalView } from '@shared/remote/approval'
 import { promptDialog } from '../components/promptDialog'
 import { UpgradeDialog } from '../components/UpgradeDialog'
@@ -606,7 +607,7 @@ import {
   nodeSshFor,
   createVideoNode,
   createWebNode,
-  isVideoFile,
+  isMediaFile,
   duplicateNode,
   flowToNodeStates,
   addSelectionToGroup,
@@ -770,6 +771,7 @@ interface MergeState {
   hasOrigin: boolean
 }
 interface PendingPeerState {
+  standing?: boolean
   sas: string | null
   id: string
   /** Human-facing peer name, if the tunnel carries one. The relay `RelayPeerPending` payload does
@@ -997,7 +999,7 @@ function StatusAwareMiniMap({ onNodeDoubleClick }: { onNodeDoubleClick: (node: N
     [statusById]
   )
   return (
-    <MiniMap
+    <VisibleMiniMap
       className="minimap"
       position="bottom-right"
       pannable
@@ -3132,11 +3134,8 @@ export function Canvas() {
   // Host connection-approval gate: when a client finishes the handshake, prompt the host to
   // verify the SAS and allow/deny before any remote pty/fs RPC is served.
   //
-  // Sourced off the NEW relay tunnel (`relayHost`, Stage 4 Task 2), NOT the legacy
-  // `remoteHost.onPeerPending`. Migrating means the old standing-host (phone) path no longer raises
-  // THIS dialog — deliberate: the phone is being moved to the relay tunnel separately
-  // (docs/ios-protocol-migration.md) and Task 10 deletes the `remoteHost` dialect outright. So we
-  // fully migrate rather than keep both sources alive (which would only complicate that removal).
+  // Team relay and legacy phone handshakes share the SAS dialog until the mobile protocol
+  // migration is complete. Standing phone consent has a request/reply persistence outcome.
   useEffect(() => {
     return window.nodeTerminal.relayHost.onPeerPending((info) =>
       setPendingPeer({ ...info, source: 'relay' })
@@ -4180,7 +4179,7 @@ export function Canvas() {
       setNodes((ns) => [
         ...ns.map((n) => (n.selected ? { ...n, selected: false } : n)),
         {
-          ...(isVideoFile(filePath)
+          ...(isMediaFile(filePath)
             ? createVideoNode(ns.length, filePath, center ?? viewCenter(), sshFs)
             : createEditorNode(ns.length, filePath, center ?? viewCenter(), sshFs)),
           selected: true
@@ -13220,7 +13219,8 @@ export function Canvas() {
             an.start(e.toolUseId, {
               parentNodeId: e.nodeId,
               type: e.subagentType,
-              label: e.taskLabel
+              label: e.taskLabel,
+              startedAt: e.subagentStartedAt
             })
           }
           break
@@ -15211,7 +15211,12 @@ export function Canvas() {
           enterConfirms={false}
           danger
           onConfirm={() => {
-            if (pendingPeer.source === 'phone') {
+            if (pendingPeer.source === 'phone' && pendingPeer.standing) {
+              void approvePhoneWithFeedback(
+                () => window.nodeTerminal.remoteHost.approvePhone(pendingPeer.id, pendingPeer.pub ?? ''),
+                setCopyError
+              )
+            } else if (pendingPeer.source === 'phone') {
               window.nodeTerminal.remoteHost.approve(pendingPeer.id, pendingPeer.pub ?? undefined)
             } else {
               window.nodeTerminal.relayHost.confirm(peerApprovalView(pendingPeer).confirmId)

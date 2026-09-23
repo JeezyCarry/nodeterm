@@ -1,3 +1,4 @@
+import { subagentReplay } from '../core/subagent-replay'
 import { grokHomeDir, grokSessionDir, grokSessionsDir } from '../core/agents/grok-paths'
 import { join, resolve, posix } from 'path'
 import { startSessionNameSweep, displayNodeTitle } from '../core/session-name-sweep'
@@ -295,7 +296,7 @@ import { initStandingHost } from './remote/standing-host'
 import { killRelayHostsByPeerKey } from './remote/relay-host'
 import { initRelayHost } from './remote/relay-host-service'
 import { createRevoker } from './remote/revocation'
-import { loadApprovedDevices, saveApprovedDevices } from './remote/approved-devices'
+import { loadApprovedDevices, saveApprovedDevices, updateApprovedDevices } from './remote/approved-devices'
 import { publicKeyToB64 } from './remote/e2ee'
 import { connectRelayClient, type RelayClientSession } from './remote/relay-client'
 import { decodeOffer } from './remote/pairing'
@@ -1677,6 +1678,7 @@ app.whenReady().then(async () => {
   const peerRevoker = createRevoker({
     load: loadApprovedDevices,
     save: saveApprovedDevices,
+    update: updateApprovedDevices,
     onRevoke: (peerKeyB64) => killRelayHostsByPeerKey(peerKeyB64)
   })
   ipcMain.handle(IPC.remoteRevokePeer, (_e, peerKeyB64: string) =>
@@ -2771,6 +2773,7 @@ app.whenReady().then(async () => {
   // just-read node's latest state is `done`. The mirror resolves the node's done inbox event(s)
   // (phone Inbox archives the card) and re-sends an 'end' live-update so the paired phone dismisses
   // its lingering DONE Live Activity. Fire-and-forget; the mirror no-ops with no unresolved done.
+  corePlatform.handle(IPC.agentSubagentSnapshot, () => subagentReplay.snapshot())
   corePlatform.handle(IPC.agentAckDone, (nodeId: string) => {
     ackDone(nodeId)
   })

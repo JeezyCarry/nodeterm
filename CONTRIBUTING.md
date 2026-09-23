@@ -625,6 +625,11 @@ arrangement on screen both confirm first, because layout edits are not in the un
 does not, because it is. Whether a dialog claims the edit reaches other people comes from
 `layoutIsShared`, which is true for an SSH project as well as a folder one.
 
+**Keep-alive webview ghosts must stay mounted, but must not enter minimap geometry.**
+They use `display:none`, not React Flow's `hidden` (which unmounts the guest). Render canvas maps
+through `VisibleMiniMap`: it filters both drawing and bounds in a minimap-only store while sharing
+the live camera. A transparent rectangle alone still distorts the map's scale.
+
 **React Flow's `fitView` is queued, not immediate — never use it to frame something automatically.**
 Calling it sets `fitViewQueued` and the fit runs from a later `setNodes` (only once every node is
 measured) or the next `updateNodeInternals`, against whatever the node lookup holds by then; a fit
@@ -820,6 +825,27 @@ unrelated transcript results must not clear attention or archive its inbox card.
 use `recordQuestionResult` for transcript rescue (including Escape/decline), and broadcast the
 mirror's effective event. Keep result IDs through local and SSH tails; a boolean “some tool
 finished” is insufficient. Explicit new user turns, interrupts and session boundaries reset it.
+
+Remote Codex account safety (#736): managed SSH Codex sessions and agent-less login terminals
+require a known safe account id and a safe resolved remote home before spawning. The remote env
+builder supplies their private `CODEX_HOME`; never fall back to the system login when that scope
+is unavailable. System SSH Codex retains the host environment, including during early attach
+before home discovery; never inject a guessed `HOME` or `CODEX_HOME`. Custom Codex harnesses use
+the same guard. Desktop supports remote account lifecycle; the Server browser still explicitly
+rejects managed Codex account management.
+
+- Media URLs live for the app run. Remote cache pruning must keep files already handed to
+  players; the cache cap is soft until restart. Use the existing `video` node for audio too.
+- Subagent reload replay is display-only and current-host-only. Never replay status/permission
+  events or treat a replayed card as verified process ownership; subscribe before taking its snapshot.
+
+**Phone consent belongs to the verified handshake, not the browse socket.** A standing phone's
+SAS request survives transport closure only until its 120-second deadline; approval requires the
+issued id and displayed box key together. Keep request/reply outcomes distinct (stale request,
+failed pin save, missing IPC response, saved-but-disconnected). All production pin/revoke writers
+must use `updateApprovedDevices` for the whole read/modify/write, so concurrent updates cannot
+lose approvals or resurrect revoked keys. Server Edition does not host this legacy relay path.
+
 Managed Codex login terminals are agent-less: core identifies their provider from the saved
 account list. Before opening one, await `useSettings.getState().flush()` after adding the account.
 The normal 300 ms coalesced save is too late: an unknown id can launch against the system home.

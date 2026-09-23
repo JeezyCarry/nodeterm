@@ -156,6 +156,7 @@ export const IPC = {
    *  Edition's browser tab has no raw input stream and keeps the heuristics. */
   canvasTrackpadGesture: 'canvas:trackpad-gesture',
   agentStatus: 'agent:status',
+  agentSubagentSnapshot: 'agent:subagent-snapshot',
   /** Renderer → main/server: answer a held Claude permission hook (deterministic approvals).
    *  Payload: `{ nodeId, pendingId, decision: 'allow'|'deny' }`; resolves boolean. See
    *  docs/hook-reply-approvals.md. */
@@ -531,6 +532,7 @@ export const IPC = {
   remoteHostPeerPending: 'remote:host:peer-pending',
   remoteHostPeerPendingCleared: 'remote:host:peer-pending-cleared',
   remoteHostApprove: 'remote:host:approve',
+  remotePhoneApprove: 'remote:phone:approve',
   remoteHostReject: 'remote:host:reject',
   // Host canvas mirror: renderer pushes its serialized active-project canvas to main;
   // main pushes a client's mutation back to the host renderer to apply.

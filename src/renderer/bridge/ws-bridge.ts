@@ -1,3 +1,5 @@
+import type { NormalizedAgentEvent } from '../../shared/agents/normalize'
+import { subscribeAgentReplay } from '../../shared/agent-replay-subscription'
 // WebSocket bridge that reconstructs `window.nodeTerminal` in the browser (Server Edition).
 //
 // Under Electron the preload already defines `window.nodeTerminal`; this module only runs when
@@ -667,7 +669,10 @@ export function buildAgentApi(
   | 'onAgentRenameNode'
 > {
   return {
-    onAgentStatus: (listener) => client.subscribe(IPC.agentStatus, listener as Listener),
+    onAgentStatus: (listener) => subscribeAgentReplay(
+      (cb) => client.subscribe(IPC.agentStatus, cb as Listener),
+      () => client.request(IPC.agentSubagentSnapshot) as Promise<NormalizedAgentEvent[]>, listener
+    ),
     // REAL forward: the Server Edition writes its own agent-status mirror, and the phone reads it
     // over its SSH browse path — a browser canvas hibernating a node must reach that file too.
     reportHibernated: (nodeId, on) => {

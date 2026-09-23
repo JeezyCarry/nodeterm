@@ -307,7 +307,8 @@ export interface PtyCreateResult {
    *
    * `'codex-account'` is the S6 fail-closed twin: a LOCAL Codex node that explicitly selected a
    * managed account whose home is missing refuses rather than spawning against the system login
-   * (§5 property 4). Same contract — nothing spawned, the renderer shows the node's refusal.
+   * (§5 property 4). Remote managed Codex accounts refuse unknown/unsafe ids or unresolved/unsafe homes.
+   * System SSH Codex may attach before remote home discovery. Nothing spawned on refusal.
    */
   unavailable?: 'ssh' | 'codex-account'
 }
@@ -3188,6 +3189,10 @@ export interface LicenseApi {
   releaseOthers(): Promise<LicenseDetail>
 }
 
+export type PhoneApprovalResult = {
+  status: 'persisted' | 'approved' | 'saved-disconnected' | 'stale' | 'persistence-failed'
+}
+
 export interface RemoteHostApi {
   /**
    * Enter host mode: mint a pairing token, connect to the relay as the host, and return the
@@ -3213,16 +3218,17 @@ export interface RemoteHostApi {
    * verification code to display. Returns an unsubscribe function.
    */
   onPeerPending(
-    listener: (info: { sas: string | null; id: string; pub?: string | null }) => void
+    listener: (info: { sas: string | null; id: string; pub?: string | null; standing?: boolean }) => void
   ): () => void
   /** The pending prompt expired host-side (120 s) — the dialog must drop or re-arm, else its
    *  Approve is a silent no-op against a dead id (issue #372). */
   onPeerPendingCleared(
     listener: (info: { id: string | null; pub?: string | null }) => void
   ): () => void
-  /** Approve the pending client → the host begins serving its pty/fs RPCs. `pub` (the peer's
-   *  stable box key) survives the phone's reconnect churn where the per-attach `id` does not —
-   *  pass both when known. */
+  /** Standing phone consent: persist the displayed handshake identity before granting access.
+   *  Both fields must match a bounded pending request. Desktop-only; Server rejects explicitly. */
+  approvePhone(id: string, pub: string): Promise<PhoneApprovalResult>
+  /** Legacy interactive (single-use offer) approval; does not persist a device pin. */
   approve(id: string, pub?: string): void
   /** Reject the pending client → the connection is dropped. Same id/pub matching as approve. */
   reject(id: string, pub?: string): void

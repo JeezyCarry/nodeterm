@@ -76,6 +76,8 @@ export interface NormalizedAgentEvent {
   // subagent
   toolUseId?: string
   subagentType?: string
+  /** Host-observed start time for display-only renderer reload replay. */
+  subagentStartedAt?: number
   // grok StopCancelled only: normalized state-less so the mirror can make the session-aware badge
   // decision (a subagent cancellation must not end its parent session).
   cancelReason?:

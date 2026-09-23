@@ -1294,6 +1294,10 @@ export class SshProjectManager {
     throw new Error('Could not reserve a download destination.')
   }
 
+  // URLs remain allowlisted until quit, so their cache files must live just as long.
+  private readonly retainedMedia = new Set<string>()
+  private readonly mediaPrunes = new Map<string, Promise<void>>()
+
   /**
    * Pull a remote FILE into the local media cache (for nt-media:// playback) and resolve its
    * cached absolute path. The entry is keyed by (host, remote path), see remoteMediaCacheName ,
@@ -1321,6 +1325,10 @@ export class SshProjectManager {
         childArgs(c.conn, c.controlPath, `wc -c < ${quoteRemotePath(remotePath)}`)
       )
       const remoteSize = sizeProbe.code === 0 ? parseInt(sizeProbe.stdout.trim(), 10) : NaN
+      // Pin before reading. A prune already in flight must settle before stat/reuse, or it
+      // could unlink the file just after we hand its URL to the player.
+      this.retainedMedia.add(path.basename(dest))
+      await this.mediaPrunes.get(dest)
       let cachedSize = -1
       try {
         cachedSize = (await fs.stat(dest)).size
@@ -1359,17 +1367,21 @@ export class SshProjectManager {
     }
   }
 
-  /** Best-effort, bounded cache: keep the newest MEDIA_CACHE_KEEP entries. An evicted entry that
-   *  is still playing in an open node stops being seekable, acceptable for a 20-deep cache of a
-   *  convenience copy; the node re-fetches on next open. */
+  /** The cap is soft for this run: an open player's next seek must still find its file.
+   * Prior-run entries are eligible again after restart. */
   private async pruneMediaCache(cacheDir: string, except: string): Promise<void> {
     try {
       const names = (await fs.readdir(cacheDir)).filter((n) => !n.endsWith('.part'))
       const entries = await Promise.all(
         names.map(async (n) => ({ name: n, mtimeMs: (await fs.stat(path.join(cacheDir, n))).mtimeMs }))
       )
-      for (const n of mediaCachePruneList(entries, except)) {
-        await fs.rm(path.join(cacheDir, n), { force: true }).catch(() => {})
+      for (const n of mediaCachePruneList(entries, except, undefined, this.retainedMedia)) {
+        if (this.retainedMedia.has(n)) continue
+        const file = path.join(cacheDir, n)
+        if (this.mediaPrunes.has(file)) continue
+        const removal = fs.rm(file, { force: true }).catch(() => {})
+        this.mediaPrunes.set(file, removal)
+        try { await removal } finally { this.mediaPrunes.delete(file) }
       }
     } catch {
       // pruning is best-effort, a fat cache is a nuisance, not a fault
