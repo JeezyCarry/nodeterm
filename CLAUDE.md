@@ -4708,3 +4708,11 @@ snapshot (bounded to 512 events / 3 seconds); live permission alerts are not del
 No disk restore, transcript backlog, completed-card replay, or authorization evidence is provided.
 A host restart or a missed original start is still outside this recovery.
 
+
+## IME mode switching (#680)
+
+`terminal/ime-mode-switch.ts` adapts xterm 5.5's composition helper after `open()` in both terminal
+surfaces. Caps Lock must not finalize an active composition: the subsequent native compositionend
+owns that commit. The test executes the dependency's real helper, with an unpatched double-send
+control. This pins one event ordering, not every native IME; macOS Chinese Caps Lock still needs a
+device run, including insertText and compositionend orderings. Revalidate the adapter on xterm upgrades.
