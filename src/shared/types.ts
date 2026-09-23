@@ -2907,6 +2907,18 @@ export interface CodexAccountsApi {
   finishSwitch(rollbackToken: string): Promise<void>
   /** Phase 3b: roll back a reservation (releases it; a committed link is left for cleanup). */
   rollbackSwitch(rollbackToken: string): Promise<void>
+  /**
+   * The SSH leg of a running node's account switch: expose the conversation to `targetAccountId`
+   * ON the connected host behind `ctx.projectId` (hardlink the rollout into the target home, verify
+   * the target discovers it). `hostAccountIds` = every managed account on that host (the catalogs
+   * the thread is resolved across). Resolves once the target can resume it; throws otherwise.
+   */
+  switchThreadRemote(
+    threadId: string,
+    targetAccountId: string | undefined,
+    hostAccountIds: string[],
+    ctx: AccountSshCtx
+  ): Promise<void>
   /** Source-side leg of moving an idle LOCAL conversation to an SSH account: validate strict source
    *  containment then hand the upload to the remote import path (PR 6). Local rollout untouched. */
   transferThreadToSsh(

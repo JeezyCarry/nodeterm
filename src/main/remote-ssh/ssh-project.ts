@@ -2096,6 +2096,27 @@ export class SshProjectManager {
   }
 
   /**
+   * The SSH leg of a running Codex node's account SWITCH: expose the node's conversation to
+   * `targetAccountId` ON THE HOST (`remoteCodexExposeThread` — hardlink the one authoritative
+   * rollout into the target home, verify the target's app-server discovers it, roll the link back
+   * if not). `hostAccountIds` are every managed account on this host: the thread is resolved
+   * across all of their catalogs, and more than one distinct rollout is refused as ambiguous.
+   * Throws when the host is not connected or cannot run the relay.
+   */
+  async remoteCodexSwitchThread(
+    projectId: string,
+    threadId: string,
+    targetAccountId: string | undefined,
+    hostAccountIds: string[]
+  ): Promise<void> {
+    if (targetAccountId) assertCodexAccountId(targetAccountId)
+    if (!ACCOUNT_ID_RE.test(threadId)) throw new Error('Invalid Codex thread id')
+    const c = this.conns.get(projectId)
+    if (!c) throw new Error('The SSH project is not connected')
+    await this.remoteCodexExposeThread(c.controlPath, targetAccountId, threadId, hostAccountIds)
+  }
+
+  /**
    * Atomic remote import (Property 2 + 11): copy one authoritative LOCAL rollout into a remote
    * account home so its conversation id survives the machine hop. The source stays untouched; the
    * remote write is STAGED under `~/.nodeterm/codex-imports/<token>.part` and installed into

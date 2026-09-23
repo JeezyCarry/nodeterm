@@ -3095,8 +3095,19 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     on an SSH host got a Claude dir that does not exist and NO `CODEX_HOME` — its codex silently ran
     as the host's system login (`remoteCodexTmuxEnvArgs` existed with no caller). The system Codex
     account is left to the host's own env (a remote `CODEX_HOME` of the user's — a snap remap — must
-    win). The running-node **Switch Codex account** is shown disabled on SSH nodes: its three-phase
-    switch plans rollouts in LOCAL homes only.
+    win).
+  - **Switch Codex account on an SSH node** (2026-09) does NOT use the local three-phase reservation
+    (it plans rollouts in LOCAL homes). It is one host-side exposure —
+    `codexAccounts.switchThreadRemote` → `SshProjectManager.remoteCodexSwitchThread` →
+    `remoteCodexExposeThread` (relay `expose-thread`): resolve the thread across every account
+    catalog on the host, hardlink the one authoritative rollout into the target home, verify the
+    target's app-server discovers it, roll the link back if not; an ambiguous thread is refused.
+    Then the usual still-eligible check and a restart-shell recycle, with the rebind riding
+    `beforeRecycle` (never a separate setNodes). A hardlink, not a copy: both accounts see ONE file,
+    so there is no diverged-copy case. Needs the relay runtime on the host (node + codex + curl);
+    without it the switch fails with a notice and nothing changes. `planCodexAccountSwitch` now
+    refuses a target on another machine than the node (`hostKey`) — the switch never crosses
+    machines (moving a local conversation to a host is `transferThreadToSsh`, a separate flow).
   - **Linked accounts** (`ClaudeAccount.configDir`) — a PRE-EXISTING local config
     dir the user already drives themselves (`export CLAUDE_CONFIG_DIR=~/.claude-2; claude …` in a
     plain terminal) adopted as a first-class account without a login node. Settings → Accounts →
