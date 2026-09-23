@@ -360,15 +360,13 @@ ${leadPaneHookLines(leadPaneWidth)}`
  * through the now-resolved tmux.
  */
 function findTmux(resourcesPath?: string): string | null {
-  // Windows has none of `tmuxCandidatePaths`' targets (Homebrew, MacPorts, Nix, the distro
-  // `/usr/bin` family — all POSIX filesystem layouts) and no bundled tmux (macOS-only, see
-  // `bundledTmuxPath`'s doc comment; `scripts/build-tmux.mjs` never runs for a Windows package).
-  // Walking either list would just be `existsSync` calls against paths that can never resolve on
-  // this platform — skip straight to the PATH probe, the one route that can find a real tmux a
-  // Windows user installed themselves (WSL's own tmux is a different filesystem entirely and is
-  // never on the Windows PATH; MSYS2/Cygwin tmux, if the user put it there, is).
+  // Windows has no native tmux. Even when a tmux-compatible executable is present on PATH (for
+  // example psmux, MSYS2, or Cygwin), it is not a safe persistence backend for this application:
+  // its process and console semantics differ from the Unix tmux contract used by the control
+  // client. The packaged session host owns the Windows PTY and provides the equivalent attach,
+  // capture, send, and restart behavior without opening helper consoles.
   if (os.platform() === 'win32') {
-    return findInPathString('tmux', shellPathNow() ?? process.env.PATH)
+    return null
   }
   // BOTH lookups inside the guard: `os.homedir()` throws the same SystemError as `userInfo()` when
   // there is no passwd entry and no $HOME (some containers), and a thrown probe here would take
@@ -2884,7 +2882,9 @@ export class PtyManager {
     // terminal, and every other agent, sees the PATH it always saw. The launcher itself falls back
     // to the bare CLI, so a session that gets the PATH but no identity is still a working session.
     if (options.agentId && hasSharedIdentity(options.agentId as AgentId) && !options.sshRemote) {
-      env.PATH = `${codexLauncherDir()}${path.delimiter}${env.PATH ?? ''}`
+      // Windows exposes the inherited variable as `Path`; reading only the POSIX spelling
+      // silently drops the user's PATH and leaves the managed launcher unable to find `codex`.
+      env.PATH = `${codexLauncherDir()}${path.delimiter}${env.PATH ?? env.Path ?? ''}`
     }
 
     // Managed Claude account: the whole session runs under the account's private config

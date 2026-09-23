@@ -3443,7 +3443,7 @@ export function TerminalNode({
           io: { write: (d: string) => transport.write(sid, d), onData: (cb: (data: string) => void) => transport.onData(sid, cb) },
           // A fresh shell is known at spawn; subsequent/manual deliveries must recheck the pane.
           shellReady: async (manual: boolean) =>
-            (!manual && fresh && !sessionPersistent) || isLaunchShell(await queryPaneWithin(() => api.pty.paneCommand(id), RESTART_EXIT_TIMEOUT_MS)),
+            (!manual && fresh) || isLaunchShell(await queryPaneWithin(() => api.pty.paneCommand(id), RESTART_EXIT_TIMEOUT_MS)),
           killLine: getTerminalKillLine(),
           cleanup: (cancel: () => void) => { cleanups.push(cancel) }
         }
