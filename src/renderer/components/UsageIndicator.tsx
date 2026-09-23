@@ -1,3 +1,4 @@
+import { usageDiagnosticText } from '../lib/usageDiagnostic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { IconReload } from './icons'
 import type { ClaudeUsage, ProviderUsage, RemoteAccountUsage, UsageLimit } from '@shared/types'
@@ -204,7 +205,12 @@ function ProviderBlock({ u, mode }: { u: ProviderUsage; mode: 'used' | 'remainin
       {u.limits.map((l) => (
         <LimitRow key={limitKey(l)} limit={l} mode={mode} />
       ))}
-      {u.limits.length === 0 && (
+      {u.diagnostics?.map((diagnostic, index) => (
+        <div className="usage-popover__empty" key={index}>
+          {usageDiagnosticText(label, diagnostic)}
+        </div>
+      ))}
+      {u.limits.length === 0 && !u.diagnostics?.length && (
         <div className="usage-popover__empty">
           {u.status === 'error' ? 'Could not read usage.' : 'No usage data.'}
         </div>
@@ -398,7 +404,8 @@ export function UsageIndicator({
   const status = claudeUsage?.status ?? visibleRemote[0]?.usage.status ?? 'unavailable'
   const hasData = limits.length > 0 || enabled.length > 0
   const fetching = refreshing
-  const isError = status === 'error'
+  const providerError = visibleProviders.some((p) => p.status === 'error')
+  const isError = status === 'error' || providerError
   // The pill leads with whatever is closest to biting, so a scoped model cap that is nearly
   // exhausted can't hide behind a comfortable 5h window. Considers every enabled provider, not
   // just Claude, so an exhausted Codex window drives the bar too.
@@ -531,7 +538,7 @@ export function UsageIndicator({
                   {limits.map((l) => (
                     <LimitRow key={limitKey(l)} limit={l} mode={percentMode} />
                   ))}
-                  {!hasData && <div className="usage-popover__empty">No usage data.</div>}
+                  {!hasData && !providerError && <div className="usage-popover__empty">No usage data.</div>}
                   {claudeUsage?.email && (
                     <div className="usage-account">
                       <div className="usage-account__label">Claude Account</div>
