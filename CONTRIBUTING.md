@@ -328,6 +328,10 @@ lane unaffected.
 These are the ones that come up in review most often. Each exists because its absence caused a real
 bug.
 
+**A project-scoped lookup cannot prove a node does not exist elsewhere.** Link refusals must
+name the project boundary and explain that cross-project linking is unsupported; do not scan other
+projects just to improve a missing-endpoint diagnostic.
+
 **A failed read is never evidence of absence.** "Could not measure" and "there is nothing" are
 different facts and must stay distinguishable at every layer. Collapsing them is how a panel ends up
 reporting "no sessions" on a host running thirty. When something ACTS on the negative, give it three

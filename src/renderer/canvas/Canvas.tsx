@@ -1,3 +1,4 @@
+import { LINK_ENDPOINT_NOT_FOUND } from '@shared/canvas-link'
 import { createControlOpenBatch } from '../lib/controlOpenBatch'
 import { commitOwnedLaunchAttempt, registerLaunchCommit } from '../terminal/launch-attempt'
 import { launchCommand } from '../terminal/launch-command'
@@ -11481,7 +11482,7 @@ export function Canvas() {
               return
             }
             if (!ctlLinkEndpointOf(from)) {
-              reply({ ok: false, error: `link: --from names no existing node (${from})` })
+              reply({ ok: false, error: `link: --from ${from}: ${LINK_ENDPOINT_NOT_FOUND}` })
               return
             }
             const { linked, skipped } = bridgeTo(from, targets)
