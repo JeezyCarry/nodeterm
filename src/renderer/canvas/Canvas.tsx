@@ -1,3 +1,4 @@
+import { VisibleMiniMap } from './VisibleMiniMap'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { playSfx, primeSfx } from '@renderer/lib/sfx'
@@ -10,7 +11,6 @@ import {
   ControlButton,
   Controls,
   MarkerType,
-  MiniMap,
   ReactFlow,
   SelectionMode,
   useEdgesState,
@@ -979,7 +979,7 @@ function StatusAwareMiniMap({ onNodeDoubleClick }: { onNodeDoubleClick: (node: N
     [statusById]
   )
   return (
-    <MiniMap
+    <VisibleMiniMap
       className="minimap"
       position="bottom-right"
       pannable

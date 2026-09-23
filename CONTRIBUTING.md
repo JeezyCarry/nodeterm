@@ -573,6 +573,11 @@ arrangement on screen both confirm first, because layout edits are not in the un
 does not, because it is. Whether a dialog claims the edit reaches other people comes from
 `layoutIsShared`, which is true for an SSH project as well as a folder one.
 
+**Keep-alive webview ghosts must stay mounted, but must not enter minimap geometry.**
+They use `display:none`, not React Flow's `hidden` (which unmounts the guest). Render canvas maps
+through `VisibleMiniMap`: it filters both drawing and bounds in a minimap-only store while sharing
+the live camera. A transparent rectangle alone still distorts the map's scale.
+
 **React Flow's `fitView` is queued, not immediate — never use it to frame something automatically.**
 Calling it sets `fitViewQueued` and the fit runs from a later `setNodes` (only once every node is
 measured) or the next `updateNodeInternals`, against whatever the node lookup holds by then; a fit

@@ -1462,6 +1462,14 @@ the wire never see any of it):
   every returning page until the fallback; live→ghost never did). A genuinely deleted node's entry
   is dropped at the deletion funnels (handleNodesChange's `remove`, `deleteNodes`, the peer-mutation
   remove, project deletion/prune), with the next retire as backstop — never by the merge.
+- **The minimap must exclude ghosts from BOTH its node list and its bounds lookup** (#850/#786).
+  React Flow's MiniMap ignores CSS `display:none`; setting `hidden` on the real node instead
+  unmounts the guest. `canvas/VisibleMiniMap.tsx` projects the live flow store into a provider
+  scoped to the map, preserving internal absolute positions, measured sizes and the original
+  panZoom instance. Only the map's node collections are filtered; persistence and pool lifecycle
+  are untouched. The real MiniMap regression tests cover ghost/live transitions, empty bounds,
+  removals, grouped geometry and camera interaction. When upgrading React Flow, keep those
+  tests: the projection deliberately mirrors the state fields consumed by MiniMap.
 - **Memory bounds** (same posture as park/WebGL: a lever must not end live work): a ghost is
   hidden, so the existing Browser Memory Saver discards its guest after `BROWSER_DISCARD_MS`
   unless loading/audible/agent-driven — `onGuestDiscarded` then drops the entry (a husk would hold
