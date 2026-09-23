@@ -78,6 +78,9 @@ it.skipIf(!existsSync(chrome))('keeps refresh clickable beside/above the real do
         console.log(result)
       } finally {
         await call('Browser.close')
+        // The CDP acknowledgement precedes profile flush/child shutdown. Wait for the process
+        // to finish normally before the fallback kill, or it can leave writers racing cleanup.
+        await exited
         ws.close()
       }
     } finally {
