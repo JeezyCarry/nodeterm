@@ -41,6 +41,7 @@ export const APPEARANCE_RESET_KEYS = [
   'hiddenNodeMenuItems',
   'hiddenHeaderButtons',
   'showResumeCard',
+  'canvasDots',
   'windowTitleActiveSession'
 ] as const satisfies readonly (keyof Settings)[]
 

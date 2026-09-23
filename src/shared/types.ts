@@ -1690,6 +1690,9 @@ export interface Settings {
    *  once-per-app-run popup). OFF by default — it interrupts every project switch, so it is
    *  opt-in. Cmd+[ / Cmd+] and the Dock buttons walk the trail regardless of this. */
   showResumeCard: boolean
+  /** Draw the canvas dot grid (Settings → Appearance). Display only — snapping and align-to-grid
+   *  are unchanged. Default ON in every appearance; read through `showCanvasDots`. */
+  canvasDots: boolean
   /** Whether usage percentages render as consumed ("32% used"), remaining ("68% left"), or raw
    *  token counts ("48k/200k tokens" — context-window surfaces only; provider quota surfaces
    *  have no token counts and fall back to 'used' display). 'remaining' is the historical
@@ -1934,6 +1937,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // Opt-in: the resume card pops over the canvas on every qualifying project activation, which
   // reads as noise to users who navigate by the trail chords/Dock buttons instead.
   showResumeCard: false,
+  canvasDots: true,
   usagePercentMode: 'remaining',
   defaultAgent: 'claude',
   // Sessions start in auto mode out of the box. Existing users pick this up on hydrate

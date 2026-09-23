@@ -646,6 +646,7 @@ import type { CodexAccount } from '@shared/codex-account'
 import { useSystemCodexAccount } from '../state/systemCodexAccount'
 import { toKanbanSession } from './toKanbanSession'
 import { useWallpaperBackground } from '../state/wallpaper'
+import { showCanvasDots } from '../lib/canvasDots'
 
 const isMac = /Mac/i.test(navigator.platform || navigator.userAgent)
 
@@ -14915,6 +14916,7 @@ export function Canvas() {
           snapToGrid={settings.snapToGrid}
           snapGrid={[settings.gridSize, settings.gridSize]}
         >
+          {showCanvasDots(settings.canvasDots) && (
           <Background
             variant={BackgroundVariant.Dots}
             gap={settings.gridSize || GRID}
@@ -14929,6 +14931,7 @@ export function Canvas() {
                token instead. On white the dark-mode grey reads as noise rather than as a grid. */
             color="var(--canvas-dot)"
           />
+          )}
           {/* The shared glyph canvas: a <ReactFlow> child (so it is a sibling of the background
               and of the node renderer) at z-index 0 — above the dot grid, below every node. Only
               mounted in the experimental 'shared' renderer mode; nothing about it exists for the

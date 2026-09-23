@@ -3774,7 +3774,11 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   tab bar row included, so Liquid Glass's tab bar is glass over the picture — and is never
   transformed, so it stays put while the canvas pans and zooms. React Flow's own root goes
   transparent over it (`.react-flow.has-wallpaper`); the dot grid is faded to 30%, not removed,
-  because snapping still aligns to it. The kanban overlay paints its own background and is
+  because snapping still aligns to it. **Settings → Appearance → Show grid dots**
+  (`settings.canvasDots`, default ON in every appearance, read through `showCanvasDots` — only a
+  literal `false` hides them) omits the React Flow `<Background>` entirely; it is display only, and
+  snap-to-grid / align-to-grid keep using `gridSize`. Pure renderer + settings.json, so the Server
+  Edition gets it unchanged. The kanban overlay paints its own background and is
   unaffected.
 - **`background-image` + longhands, never a `background` shorthand next to `var(--canvas-bg)`.**
   MEASURED live: Chromium drops a var()-containing value once it passes ~2 MB, and a still's data:

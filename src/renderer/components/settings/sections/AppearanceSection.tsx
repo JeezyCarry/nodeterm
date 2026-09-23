@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSettings } from '../../../state/settings'
 import { isLiquidGlass } from '@renderer/lib/appTheme'
+import { showCanvasDots } from '@renderer/lib/canvasDots'
 import {
   defaultWallpaper,
   GRADIENT_WALLPAPERS,
@@ -67,6 +68,10 @@ const ROWS = {
       'focused',
       'native'
     ]
+  },
+  canvasDots: {
+    title: 'Show grid dots',
+    keywords: ['grid', 'dots', 'dot', 'canvas', 'background', 'pattern']
   },
   resumeCard: {
     title: 'Resume card',
@@ -331,6 +336,7 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
   const hiddenNodeMenuItems = useSettings((s) => s.settings.hiddenNodeMenuItems)
   const hiddenHeaderButtons = useSettings((s) => s.settings.hiddenHeaderButtons)
   const showResumeCard = useSettings((s) => s.settings.showResumeCard)
+  const canvasDots = useSettings((s) => s.settings.canvasDots)
   const windowTitleActiveSession = useSettings((s) => s.settings.windowTitleActiveSession)
   const update = useSettings((s) => s.update)
   // Glass over plain black reads as a dark theme with smudges, so choosing Liquid Glass with no
@@ -424,6 +430,19 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
               checked={windowTitleActiveSession}
               onChange={(v) => update({ windowTitleActiveSession: v })}
               ariaLabel="Show the active session in the window title"
+            />
+          }
+        />
+      </SearchableRow>
+      <SearchableRow {...ROWS.canvasDots}>
+        <FieldRow
+          label="Show grid dots"
+          description="Draw the dot grid on the canvas. Only the dots: snapping and align to grid work the same either way."
+          control={
+            <Switch
+              checked={showCanvasDots(canvasDots)}
+              onChange={(v) => update({ canvasDots: v })}
+              ariaLabel="Show grid dots"
             />
           }
         />
