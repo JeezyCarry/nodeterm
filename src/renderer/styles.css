@@ -13809,7 +13809,9 @@ body.focus-mode .dock:hover {
     opacity: 0.8;
     will-change: auto;
   }
-  .term-node__status-dot,
+  /* The pulsing dots are styled at (0,2,0) (`.term-node__status--busy .term-node__status-dot`,
+     `--attention …`); a bare `.term-node__status-dot` here lost to them and they kept pulsing. */
+  .term-node__status .term-node__status-dot,
   .minimap .mm-working,
   .minimap .mm-attention,
   .minimap .mm-unread {

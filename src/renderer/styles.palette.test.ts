@@ -200,6 +200,11 @@ describe('Liquid Glass accessibility fallbacks', () => {
       expect(rule.slice(0, rule.indexOf('}')), state).toContain('animation: none')
     }
     expect(all).toMatch(/\.minimap \.mm-unread \{\s*animation: none/)
+    // Specificity: the pulsing dots are (0,2,0), so the stop must be at least that.
+    expect(all).toContain('.term-node__status .term-node__status-dot')
+    for (const m of CSS.matchAll(/^(\.term-node__status--[a-z-]+ \.term-node__status-dot) \{[^}]*animation:[^}]*infinite/gm)) {
+      expect(CSS.indexOf(m[1])).toBeLessThan(CSS.lastIndexOf('.term-node__status .term-node__status-dot'))
+    }
   })
 })
 
