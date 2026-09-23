@@ -625,7 +625,20 @@ storage. Other agents retain transcript-window persistence.
 Only an explicit ensure replays an unchanged live snapshot; repeated hook observations must not
 broadcast it again. Remote path, ControlMaster or connection changes replace the tracked generation.
 
+**Command-bearing terminal opens (issue #653):** the shared hook-server route requires verified
+node identity whenever `open-terminal` carries `cmd`, including an empty value or a dry run.
+The strict-policy override and foreign-instance fallback cannot release this gate. Desktop plain
+terminal opens keep their existing identity policy; Server Edition still requires verification
+for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
+command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
+
 ## Testing
+
+**Screenshot paste has one route per gesture.** On macOS, Cmd+V saves/uploads a file and
+pastes its path; Ctrl+V belongs to the foreground program. A node's configured agent is not
+proof of foreground clipboard-image support. Keep shell/SSH/Server file routing and capture
+suppression of accompanying text; do not synthesize Ctrl+V or try both routes without a
+capability and receipt protocol. The shortcuts panel documents this distinction (#712).
 
 `npm test` must pass, and `npm run typecheck` is the fastest gate.
 

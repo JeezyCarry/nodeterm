@@ -1173,8 +1173,8 @@ session.
   fall through would reach the pty as `\x03` (SIGINT). Ctrl+Insert exists because Chromium reserves
   Ctrl+Shift+C for the inspector and a page cannot `preventDefault()` it — which is where Server
   Edition users land. Plain **Ctrl+C** is never intercepted.
-  **PASTE is the platform's, never ours** (`isPasteShortcut` → the `'native'` action): we own no
-  paste path — ⌘V on mac reaches the Edit menu's `{role:'paste'}`, whose `paste` event xterm frames
+  **Text paste uses the platform event** (`isPasteShortcut` → the `'native'` action): ⌘V on
+  mac reaches the Edit menu's `{role:'paste'}`, whose `paste` event xterm frames
   as a bracketed paste. All the terminal does is stop CANCELLING the chord, and that is a
   **Windows-only** claim: xterm's keymap turns Ctrl+V into `\x16` with `cancel`, which suppressed
   Chromium's paste command *and* the Ctrl+V accelerator behind it, so Ctrl+V pasted nothing at all
@@ -1184,6 +1184,13 @@ session.
   key nor a cancel for them, so the platform already pastes. To select in **xterm** instead of tmux
   (or inside an app that grabs the mouse, like vim/htop), hold **Option** (mac —
   xterm's `macOptionClickForcesSelection`) or **Shift** (Linux/Windows) while dragging.
+  **Screenshot paste (#712):** the capture handler in both TerminalNode and ModalTerminal
+  owns files/images: save/upload, then paste the path, suppressing accompanying text. A
+  macOS Ctrl+V may instead let a local foreground agent read its own system clipboard.
+  Configured agent identity proves neither foreground state nor clipboard support, and a
+  PTY write has no image receipt. Never synthesize that key or fall back between routes.
+  The macOS shortcuts reference explains both keys; its Server Edition copy explicitly
+  says Ctrl+V cannot transfer the viewer's clipboard to the host. SSH keeps remote uploads.
   **Copying now says so**: the OSC 52 handler floats a transient `Copied N lines` pill over the
   terminal's BOTTOM-RIGHT corner (`.term-copy-pill`, the same class on the canvas node and the
   kanban card modal — one session seen twice must not speak in two voices; bottom-right because
@@ -1940,6 +1947,14 @@ else, and its context links must keep classifying across restarts).
   - The claude/gemini loop body became `installJsonAgentRemote`, with the same fail-open try/catch
     its three siblings already had. Its three steps stay strictly ordered inside: the merge reads
     the file the write then replaces.
+
+**Command-bearing terminal opens (issue #653):** the shared hook-server route requires verified
+node identity whenever `open-terminal` carries `cmd`, including an empty value or a dry run.
+The strict-policy override and foreign-instance fallback cannot release this gate. Desktop plain
+terminal opens keep their existing identity policy; Server Edition still requires verification
+for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
+command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
+
 - **Per-node hook identity** (`src/core/agents/node-auth-*.ts`, `node-token-*.ts`,
   `node-identity-policy.ts` — full write-up in **`docs/node-identity.md`**) — the shared bearer proves
   "a session on this machine", never *which* session, so every node also gets a capability derived
@@ -3609,7 +3624,13 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   right-click; nothing running is interrupted), restart-agent
   (single agent node — the in-place CLI restart above; absent for a CLI we cannot quit + resume,
   disabled with a hint while the session is busy or has no id yet), delete. Actions live
-  in `Canvas.tsx`, operate on `targetIds`. The non-destructive rows are user-hideable from
+  in `Canvas.tsx`, operate on `targetIds`. **Conversation actions are grouped** so an agent node's
+  menu fits on screen: **Transfer conversation ▸** holds one row per target (a model-capable target
+  nests its gateway models one level further), and **Restart ▸** holds every quit-and-resume
+  variant — restart, restart + fresh shell, restart on subscription, then Reopen as / Switch model /
+  Switch account. `ContextMenu` renders submenus to any depth (`MenuRows` is recursive); a flyout
+  that hosts a submenu drops its scroll (`.ctx-submenu--host` — `overflow: auto` would clip the
+  nested flyout) and `useSubmenuFlip` lifts a flyout that would run off the bottom. The non-destructive rows are user-hideable from
   **Settings → Appearance** ("Node menu items" / "Terminal header buttons"), stored as HIDDEN
   lists in `settings.hiddenNodeMenuItems` / `settings.hiddenHeaderButtons` (empty = everything
   shows). `lib/ui-visibility.ts` owns the two inventories and `isHidden`, which only answers for

@@ -3560,11 +3560,23 @@ body,
   left: auto;
   right: calc(100% - 4px);
 }
+/* A flyout that holds submenu rows of its own must not scroll: `overflow-y: auto` would clip
+   the nested (absolutely positioned) flyout to nothing. Only short action lists host submenus;
+   long data lists (models, accounts) are leaves and keep the scroll cap above. */
+.ctx-submenu--host {
+  overflow: visible;
+  max-height: none;
+}
 .ctx-submenu .ctx-item {
   /* Keep the label and its default ✓ on one line (labels ellipsize past max-width). */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* …except a submenu row inside a flyout: its own flyout is an absolutely positioned CHILD of the
+   row, and `overflow: hidden` would clip it away entirely. */
+.ctx-submenu .ctx-item--submenu {
+  overflow: visible;
 }
 
 .ctx-sep {
@@ -6046,6 +6058,13 @@ body,
   gap: 12px;
   padding: 5px 0;
   font-size: 13px;
+}
+
+.shortcuts__note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 .shortcut-label {
