@@ -412,9 +412,10 @@ describe('parseControlRequest', () => {
       // nodes cannot act on the answer.
       expect(body).toContain('queued')
       expect(body).toContain('queuedIds')
-      // The consequence is the whole point of the field: an armed node has no process, so an
+      // The consequence is the whole point of the field: an armed node has no delivered agent launch, so an
       // orchestrator must not route work to it. Without this sentence the flag reads as trivia.
-      expect(body.toLowerCase()).toContain('no process')
+      expect(body.toLowerCase()).toContain('launch has not been delivered')
+      expect(body).toContain('deliveredIds')
       // And the three ways a node ends up armed must all be named, or a caller learns the third
       // one by reporting a --project session as started when it has not begun.
       expect(body).toContain('--after')
