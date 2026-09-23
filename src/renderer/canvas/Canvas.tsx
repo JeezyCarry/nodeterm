@@ -1037,6 +1037,20 @@ export function Canvas() {
   // Desktop wallpaper (Settings → Appearance): painted on the React Flow root, which is
   // viewport-sized and never transformed, so it stays fixed while the canvas pans and zooms.
   const wallpaperBg = useWallpaperBackground()
+  // Memoised: Canvas re-renders on every drag frame, and a fresh style object would make React
+  // re-diff (and a multi-MB data: URL re-compare) the root's style each time.
+  const wallpaperStyle = useMemo<React.CSSProperties | undefined>(
+    () =>
+      wallpaperBg
+        ? {
+            backgroundImage: wallpaperBg,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat'
+          }
+        : undefined,
+    [wallpaperBg]
+  )
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>([])
   // Persistent context links between Claude nodes (separate from ephemeral subagent/loop edges).
   const [linkEdges, setLinkEdges, onLinkEdgesChange] = useEdgesState<Edge>([])
@@ -14801,16 +14815,7 @@ export function Canvas() {
         <SessionProvider session={sessionForProject(activeProjectId || '')} key={sessionForProject(activeProjectId || '').id}>
         <ReactFlow
           className={wallpaperBg ? 'has-wallpaper' : undefined}
-          style={
-            wallpaperBg
-              ? {
-                  backgroundImage: wallpaperBg,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat'
-                }
-              : undefined
-          }
+          style={wallpaperStyle}
           nodes={allNodes}
           edges={displayEdges}
           nodeTypes={nodeTypes}
