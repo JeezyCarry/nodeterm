@@ -2891,7 +2891,7 @@ else, and its context links must keep classifying across restarts).
     picks the account dir's `projects/`, composite cache key includes `accountId`); the same
     threading runs through the session-name poll, restart handoff, and `ChatPanel` (the ⌘M
     transcript view, `chat.readTranscript`). The **usage indicator** is per account (`claude-usage.ts`: scoped Keychain
-    service first, legacy unscoped fallback; popover lists a row per account with **System**
+    service only for managed accounts, then their credentials file; popover lists a row per account with **System**
     first). **Remote (SSH host) accounts are included** — see **Remote usage** below.
   - **Pickers** — New Claude exposes an account **submenu** (pane menu; flat entries in
     the dock; palette commands; TabBar sets the **per-project default**). A **local** project
@@ -2946,6 +2946,17 @@ else, and its context links must keep classifying across restarts).
     event). An unlinked dir is named by its last path segment (`.claude-2`, dashed chip) with a
     tooltip pointing at Settings → Accounts, where **Detected config dirs** lists it for one-click
     linking. Mobile: N/A (additive mirror fields).
+
+- **Active Claude organization** (#552) — local Desktop and Server usage snapshots carry optional
+  `organization` metadata from the SAME account's `.claude.json` (system, managed or linked).
+  Read it even if Keychain/file credentials already have an email; unreadable/missing metadata
+  preserves the email and usage. A known email mismatch drops metadata. Managed usage cannot use
+  an unscoped Keychain token: a matching email alone does not prove it belongs to the same org.
+  The popover names the org beneath the email; internal type/tier/id remain tooltip details.
+  Refresh re-reads metadata together with usage; normal cache/poll intervals still apply.
+  SSH's existing shell reader does not supply organization metadata and keeps its email-only
+  fallback. Mobile's usage mirror currently omits it; displaying orgs there needs a follow-up
+  mirror/iOS protocol change. No organization picker, credential writes or switching are added.
 
 - **The usage indicator is scoped to the ACTIVE project** (`renderer/lib/usageScope.ts`, pure +
   unit-tested) — it describes **the machine that project runs on**, and nothing else. A local
