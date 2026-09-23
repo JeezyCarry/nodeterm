@@ -12334,6 +12334,72 @@ button.group-node__setup:disabled {
   50% { transform: rotate(8deg) scale(1.07); }
 }
 
+/* -- shortcuts scene: the palette chord goes down (~5%), the palette drops open under it and the
+   query types in on the shared 8s timeline (onb-type) -- */
+.onb-palette {
+  width: 250px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--surface-deep);
+  border: 1px solid var(--border);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: onb-palette-drop 8s ease infinite;
+  animation-play-state: var(--nt-anim-state);
+}
+.onb-palette__input {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  margin-bottom: 4px;
+  border-radius: 7px;
+  background: rgba(var(--tint-rgb), 0.06);
+  font-size: 12.5px;
+}
+.onb-palette__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+}
+.onb-palette__row .onb-mini__bar {
+  flex: 1;
+}
+.onb-palette__row.is-hl {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+@keyframes onb-palette-drop {
+  0%, 6% { opacity: 0; transform: translateY(-8px) scale(0.97); }
+  12%, 94% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: none; }
+}
+
+/* ---- shortcuts step: the essentials list ---- */
+.onb-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.onb-keys__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: rgba(235, 235, 245, 0.8);
+}
+.onb-keys__chord {
+  display: inline-flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
 /* ---- reduced motion: freeze every scene to a readable final frame ---- */
 @media (prefers-reduced-motion: reduce) {
   .onb-ghost,
@@ -12345,7 +12411,8 @@ button.group-node__setup:disabled {
   .onb-wave span,
   .onb-caret,
   .onb-bell,
-  .onb-notif {
+  .onb-notif,
+  .onb-palette {
     animation: none;
   }
   .onb-menu {
