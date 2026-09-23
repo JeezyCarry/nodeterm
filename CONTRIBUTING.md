@@ -611,6 +611,11 @@ examples). If the same effect also WRITES, latch its first run: otherwise switch
 mid-session applies stored state to whatever the user is doing right then, which is a different
 feature from the one they asked for.
 
+Maximize placement and refocusing must use the same measured usable rectangle
+(`measureMaximizeInsets`): pinned side panels plus persistent top controls and bottom dock.
+Do not hardcode chrome heights or add the outer margin twice; transient menus must not resize
+terminals. Ordinary focus and zone snap keep their own policies.
+
 ## Testing
 
 `npm test` must pass, and `npm run typecheck` is the fastest gate.

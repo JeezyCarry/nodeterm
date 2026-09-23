@@ -152,23 +152,26 @@ export function viewportForRect(
   const freeWidth = containerWidth - insets.left - insets.right
   const originX = freeWidth > 0 ? insets.left : 0
   const width = freeWidth > 0 ? freeWidth : containerWidth
+  const freeHeight = containerHeight - (insets.top ?? 0) - (insets.bottom ?? 0)
+  const originY = freeHeight > 0 ? (insets.top ?? 0) : 0
+  const height = freeHeight > 0 ? freeHeight : containerHeight
   if (zoom !== undefined) {
     if (!(zoom > 0)) return null
     return {
       x: originX + width / 2 - (rect.x + rect.width / 2) * zoom,
-      y: containerHeight / 2 - (rect.y + rect.height / 2) * zoom,
+      y: originY + height / 2 - (rect.y + rect.height / 2) * zoom,
       zoom
     }
   }
   const fitted = getViewportForBounds(
     rect,
     width,
-    containerHeight,
+    height,
     FIT_NODE_OPTIONS.minZoom,
     FIT_NODE_OPTIONS.maxZoom,
     FIT_NODE_OPTIONS.padding
   )
-  return originX ? { ...fitted, x: fitted.x + originX } : fitted
+  return { ...fitted, x: fitted.x + originX, y: fitted.y + originY }
 }
 
 /** Whether React Flow already knows this node's on-screen size — i.e. whether `fitView` will

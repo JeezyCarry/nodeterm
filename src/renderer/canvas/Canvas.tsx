@@ -304,6 +304,7 @@ import {
 } from '../lib/nodeFocus'
 import { NODE_MAXIMIZE_MARGIN_PX, maximizeTargetRect } from '../lib/nodeMaximize'
 import { NO_INSETS, measurePinnedInsets, type ScreenInsets } from '../lib/pinnedInsets'
+import { measureMaximizeInsets, MAXIMIZE_CHROME_SELECTOR } from '../lib/maximizeInsets'
 import { ZONE_GUTTER_PX, ZONES, zoneTargetRect, type ZoneId } from '../lib/nodeZones'
 import {
   recordBreadcrumb,
@@ -7179,9 +7180,9 @@ export function Canvas() {
       // lands in the middle, only the rescale is dropped.
       const keepZoom = useSettings.getState().settings.focusZoomToNode ? undefined : getZoom()
       // A MAXIMIZED node is framed against the rectangle its own placement used (issue #743);
-      // everything else is centred in the whole pane, as it always was. `measurePinnedInsets`
+      // everything else is centred in the whole pane, as it always was. `measureMaximizeInsets`
       // reads the DOM, so it is asked only for the node that can use the answer.
-      const insets = isMaximized(node) ? measurePinnedInsets(box) : NO_INSETS
+      const insets = isMaximized(node) ? measureMaximizeInsets(box) : NO_INSETS
       const viewport = viewportForRect(rect, box.width, box.height, keepZoom, insets)
       if (viewport) void setViewport(viewport, { duration: 300 })
     },
@@ -7663,7 +7664,7 @@ export function Canvas() {
           wrap.width,
           wrap.height,
           NODE_MAXIMIZE_MARGIN_PX,
-          measurePinnedInsets(wrap)
+          measureMaximizeInsets(wrap)
         )
       : null
     if (!rect) return false
@@ -7673,7 +7674,7 @@ export function Canvas() {
   }, [placementTargetNode, setNodes, markDirty, getViewport])
 
   /**
-   * Keep a maximized node fitted to the area the pinned side panels leave over.
+   * Keep a maximized node fitted to the area the pinned panels and persistent controls leave over.
    *
    * Maximize is a MODE, not a one-shot placement — a zone snap is the one-shot kind and stays
    * where it was put. While maximize is on the node claims the whole usable canvas, so pinning a
@@ -7689,10 +7690,16 @@ export function Canvas() {
   const fitMaximizedToUsableArea = useCallback(() => {
     const wrap = flowWrapRef.current?.getBoundingClientRect()
     if (!wrap) return
-    const insets = measurePinnedInsets(wrap)
+    const insets = measureMaximizeInsets(wrap)
     const prev = lastInsetsRef.current
     lastInsetsRef.current = insets
-    if (prev && prev.left === insets.left && prev.right === insets.right) return
+    if (
+      prev &&
+      prev.left === insets.left &&
+      prev.right === insets.right &&
+      prev.top === insets.top &&
+      prev.bottom === insets.bottom
+    ) return
     if (!nodesRef.current.some((n) => n.data.premaxRect)) return
     const rect = maximizeTargetRect(
       getViewport(),
@@ -7716,9 +7723,7 @@ export function Canvas() {
 
   useEffect(() => {
     fitMaximizedToUsableArea()
-    const panels = Array.from(
-      document.querySelectorAll('.sessions-sidebar--pinned, .drawer--pinned')
-    )
+    const panels = Array.from(document.querySelectorAll(MAXIMIZE_CHROME_SELECTOR))
     // A ResizeObserver covers width changes (`uiScale`, the drawer's wide variant) but NOT the
     // drawer's entry animation, which is opacity + transform — a transform never fires it, so the
     // panel is measured ~10px off its settled position. `animationend` closes exactly that gap.
