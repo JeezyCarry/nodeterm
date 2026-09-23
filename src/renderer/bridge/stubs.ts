@@ -198,7 +198,7 @@ export function buildStubApi(): Omit<
       // the project's ControlMaster). Resolve a typed refusal instead of rejecting so the
       // VideoNode shows the reason rather than a generic load failure.
       allowSsh: (): Promise<{ ok: false; error: string }> =>
-        Promise.resolve({ ok: false, error: 'Playing videos from an SSH host is not available in the browser.' }),
+        Promise.resolve({ ok: false, error: 'Playing media from an SSH host is not available in the browser.' }),
       writeHtml: U('media.writeHtml')
     },
     browser: {

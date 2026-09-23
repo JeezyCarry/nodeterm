@@ -1,3 +1,4 @@
+import { subagentReplay } from './subagent-replay'
 import fs from 'fs'
 import path from 'path'
 import { writeFileAtomic } from './fs-atomic'
@@ -1396,6 +1397,7 @@ interface NeedsYouClassification {
  */
 export function recordAgentEvent(rawEvent: NormalizedAgentEvent): NormalizedAgentEvent {
   if (!rawEvent?.nodeId) return rawEvent
+  subagentReplay.record(rawEvent)
   const ev = resolveGrokStopCancelled(rawEvent)
   const nodeId = ev.nodeId
   const now = Date.now()
@@ -1719,6 +1721,7 @@ export function recordContextUsage(nodeId: string, percent: number): void {
  * fires ONE end edge when the node was mid-turn (see below).
  */
 export function clearNode(nodeId: string): void {
+  subagentReplay.clearParent(nodeId)
   // Read BEFORE the delete — the end edge below is decided on the state the node died holding.
   const prev = state.get(nodeId)
   let changed = state.delete(nodeId)
@@ -1990,6 +1993,7 @@ export async function flush(): Promise<void> {
 
 /** Reset all module state (in-memory map + config + listeners + inbox). Test-only. */
 export function _resetForTest(): void {
+  subagentReplay.clear()
   state.clear()
   if (sweepTimer) clearInterval(sweepTimer)
   sweepTimer = null

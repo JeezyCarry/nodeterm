@@ -607,7 +607,7 @@ import {
   nodeSshFor,
   createVideoNode,
   createWebNode,
-  isVideoFile,
+  isMediaFile,
   duplicateNode,
   flowToNodeStates,
   addSelectionToGroup,
@@ -4179,7 +4179,7 @@ export function Canvas() {
       setNodes((ns) => [
         ...ns.map((n) => (n.selected ? { ...n, selected: false } : n)),
         {
-          ...(isVideoFile(filePath)
+          ...(isMediaFile(filePath)
             ? createVideoNode(ns.length, filePath, center ?? viewCenter(), sshFs)
             : createEditorNode(ns.length, filePath, center ?? viewCenter(), sshFs)),
           selected: true
@@ -13219,7 +13219,8 @@ export function Canvas() {
             an.start(e.toolUseId, {
               parentNodeId: e.nodeId,
               type: e.subagentType,
-              label: e.taskLabel
+              label: e.taskLabel,
+              startedAt: e.subagentStartedAt
             })
           }
           break

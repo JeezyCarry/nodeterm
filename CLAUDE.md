@@ -4959,6 +4959,37 @@ not fall back to the host's system login. System Codex retains the host environm
 home discovery during early attach. Never guess HOME/CODEX_HOME. Desktop and Server share this
 core gate; Desktop supports the remote lifecycle, while Server account management remains unavailable.
 
+## Media playback lifetime (#680)
+
+Audio routes through `isMediaFile` to the existing persisted `video` kind and native audio controls.
+Legacy audio editor nodes migrate on load. Desktop uses the existing local/SSH allowlist; Server
+and relay retain their explicit media transport degradation. Native mobile does not consume these
+React nodes; its own player/IME behavior requires a separate device check.
+
+Remote cache entries requested in this run are retained until exit, including cache hits; pruning
+waits are coordinated with a concurrent cache reader. The 20-entry cap is soft for retained files,
+so disk use may grow in a long run; prior-run entries are eligible again after restart. `mediaRange`
+handles suffix ranges and rejects unsatisfiable ones without weakening the serve-time path jail.
+
+## Subagent reload replay (#680)
+
+`core/subagent-replay.ts` retains at most 512 running starts for the existing WORKING_STALE_MS,
+with original host timestamps. The shared mirror event path feeds it (including synthetic async
+ends); session boundaries and clearNode discard it. Both shells expose the same read, and desktop
+preload / browser / relay subscribe before requesting it. Only lifecycle events wait behind the
+snapshot (bounded to 512 events / 3 seconds); live permission alerts are not delayed or replayed.
+No disk restore, transcript backlog, completed-card replay, or authorization evidence is provided.
+A host restart or a missed original start is still outside this recovery.
+
+
+## IME mode switching (#680)
+
+`terminal/ime-mode-switch.ts` adapts xterm 5.5's composition helper after `open()` in both terminal
+surfaces. Caps Lock must not finalize an active composition: the subsequent native compositionend
+owns that commit. The test executes the dependency's real helper, with an unpatched double-send
+control. This pins one event ordering, not every native IME; macOS Chinese Caps Lock still needs a
+device run, including insertText and compositionend orderings. Revalidate the adapter on xterm upgrades.
+
 ### Standing phone consent lifetime (#819)
 
 A browse socket can close before the human clicks the SAS dialog. `core/phone-approval.ts` retains
