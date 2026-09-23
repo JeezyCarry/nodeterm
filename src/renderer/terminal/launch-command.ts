@@ -1,10 +1,12 @@
+import type { LaunchClaim } from './launch-attempt'
 import type { PendingLaunch } from '@shared/types'
 import { deliverCommand, type DeliveryIo, type DeliveryOutcome } from './command-delivery'
 
 // A writer belongs to the PTY lifetime (including a parked view), not a Canvas render.
 // A durable write-ahead claim distinguishes a never-attempted warm launch from an uncertain
 // earlier submission whose clearing autosave may have been lost.
-type Writer = (command: string, manual: boolean) => Promise<DeliveryOutcome>
+type LaunchOutcome = DeliveryOutcome | 'deferred'
+type Writer = (command: string, manual: boolean) => Promise<LaunchOutcome>
 const defaultScope = {}
 const scopedWriters = new WeakMap<object, Map<string, Writer>>()
 function writersFor(scope: object): Map<string, Writer> {
@@ -17,12 +19,12 @@ export function registerLaunchWriter(id: string, writer: Writer, scope: object =
   writers.set(id, writer)
   return () => { if (writers.get(id) === writer) writers.delete(id) }
 }
-export function launchCommand(id: string, command: string, manual = false, scope: object = defaultScope): Promise<DeliveryOutcome> {
+export function launchCommand(id: string, command: string, manual = false, scope: object = defaultScope): Promise<LaunchOutcome> {
   return writersFor(scope).get(id)?.(command, manual) ?? Promise.resolve('cancelled')
 }
 
 export function createLaunchWriter(opts: {
-  claimAttempt(manual: boolean, command: string): Promise<boolean>
+  claimAttempt(manual: boolean, command: string): Promise<LaunchClaim>
   io: DeliveryIo
   shellReady(manual: boolean): Promise<boolean>
   killLine: string
@@ -30,17 +32,19 @@ export function createLaunchWriter(opts: {
 }): Writer {
   let attempted = false
   let submitted = false
-  let inFlight: Promise<DeliveryOutcome> | undefined
+  let inFlight: Promise<LaunchOutcome> | undefined
   let disposed = false
   opts.cleanup(() => { disposed = true })
   return (command, manual) => {
     if (submitted) return Promise.resolve('submitted') // stale UI/save; never paste twice
     if (inFlight) return inFlight
     if (disposed || (!manual && attempted)) return Promise.resolve('cancelled')
-    attempted = true
     inFlight = (async () => {
       if (!(await opts.shellReady(manual)) || disposed) return 'cancelled' as const
-      if (!(await opts.claimAttempt(manual, command)) || disposed) return 'cancelled' as const
+      const claim = await opts.claimAttempt(manual, command)
+      if (claim === 'deferred' && !disposed) return 'deferred' as const
+      if (!claim || disposed) return 'cancelled' as const
+      attempted = true
       // Saving can take a remote round trip. Recheck after the barrier, before any input.
       if (!(await opts.shellReady(manual)) || disposed) return 'cancelled' as const
       return new Promise<DeliveryOutcome>((resolve) => {
@@ -83,6 +87,7 @@ export function deliverInitialLaunch(command: string, opts: {
   opts.update({ pendingLaunch })
   opts.whenReady(() => {
     void opts.write(command, false).then((outcome) => {
+      if (outcome === 'deferred') return // no input/claim; retain never-attempted intent
       opts.update({ initialCommand: undefined,
         pendingLaunch: outcome === 'submitted' ? undefined : { ...pendingLaunch, attempted: true, manualOnly: true } })
       if (outcome !== 'submitted') opts.onFailure(outcome)

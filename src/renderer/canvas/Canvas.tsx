@@ -1,5 +1,5 @@
 import { createControlOpenBatch } from '../lib/controlOpenBatch'
-import { commitLaunchAttempt, registerLaunchCommit } from '../terminal/launch-attempt'
+import { commitOwnedLaunchAttempt, registerLaunchCommit } from '../terminal/launch-attempt'
 import { launchCommand } from '../terminal/launch-command'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -1952,6 +1952,12 @@ export function Canvas() {
           markDirty()
           return
         }
+        if (outcome === 'deferred') {
+          // No claim/input occurred while this project's canvas was parked. A later project
+          // activation can retry; do not turn never-attempted intent into manual recovery.
+          launchInFlight.current.delete(f.id)
+          return
+        }
         // The verified writer already exhausted its bounded echo repair. A failed launch
         // needs an explicit retry; unrelated hooks and remounts must never inject it later.
         setNodes((ns) => ns.map((n) => n.id === f.id && n.data.pendingLaunch
@@ -2783,10 +2789,10 @@ export function Canvas() {
   // live source: update its ref synchronously before serializing, not after an async setNodes.
   useEffect(() => registerLaunchCommit(activeSession.api, async (nodeId, command, manual) => {
     const projectId = useProjects.getState().activeProjectId
-    if (!canCommitCanvas(nodesProjectIdRef.current, projectId)) return false
+    if (!canCommitCanvas(nodesProjectIdRef.current, projectId)) return 'deferred'
     const node = nodesRef.current.find((n) => n.id === nodeId)
-    if (!node) return false
-    return commitLaunchAttempt({
+    if (!node) return 'deferred'
+    return commitOwnedLaunchAttempt(activeSession.api, api, {
       pending: node.data.pendingLaunch,
       command,
       manual,
@@ -2799,18 +2805,7 @@ export function Canvas() {
         commitActiveToStore()
       },
       save: async () => {
-        if (activeSession.api === api) {
-          await api.workspace.save(useProjects.getState().toWorkspace())
-        } else {
-          // Relay projects are intentionally absent from the local workspace serializer.
-          // Save on the owning core, preserving its other projects and the node's full content.
-          const workspace = await activeSession.api.workspace.load()
-          const matches = workspace.projects.flatMap((p) => p.nodes).filter((n) => n.id === nodeId)
-          if (matches.length !== 1 || matches[0].pendingLaunch?.command !== command)
-            throw new Error('launch intent changed before persistence')
-          matches[0].pendingLaunch = { ...matches[0].pendingLaunch!, attempted: true, manualOnly: true }
-          await activeSession.api.workspace.save(workspace)
-        }
+        await api.workspace.save(useProjects.getState().toWorkspace())
       }
     })
   }), [activeSession.api, api, commitActiveToStore, markDirty, setNodes])

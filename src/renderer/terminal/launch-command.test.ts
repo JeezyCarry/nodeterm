@@ -212,3 +212,29 @@ it.each([true, undefined])('a retained initialCommand alias cannot reset attempt
   expect(whenReady).not.toHaveBeenCalled()
   expect(write).not.toHaveBeenCalled()
 })
+
+it('a pre-input deferred claim preserves UI intent and the same parked writer can later deliver once', async () => {
+  let ready!: () => void
+  let echo!: (text: string) => void
+  const write = vi.fn(), failure = vi.fn()
+  const claimAttempt = vi.fn<() => Promise<boolean | 'deferred'>>()
+    .mockResolvedValueOnce('deferred').mockResolvedValue(true)
+  const writer = createLaunchWriter({ claimAttempt, shellReady: async () => true,
+    killLine: KILL_LINE, cleanup: () => {},
+    io: { write, onData: (cb) => { echo = cb; return () => {} } } })
+  const state: { initialCommand?: string; pendingLaunch?: PendingLaunch } = { initialCommand: 'claude brief' }
+  deliverInitialLaunch('claude brief', { write: writer, whenReady: (run) => { ready = run },
+    update: (patch) => Object.assign(state, patch), onFailure: failure })
+  ready()
+  await tick()
+  expect(state).toMatchObject({ initialCommand: 'claude brief', pendingLaunch: { attempted: false } })
+  expect(write).not.toHaveBeenCalled()
+  expect(failure).not.toHaveBeenCalled()
+  const resumed = writer('claude brief', false)
+  await tick()
+  expect(write.mock.calls).toEqual([['claude brief']])
+  echo('claude brief')
+  expect(await resumed).toBe('submitted')
+  expect(await writer('claude brief', false)).toBe('submitted')
+  expect(write.mock.calls).toEqual([['claude brief'], ['\r']])
+})

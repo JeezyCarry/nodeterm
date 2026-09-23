@@ -663,6 +663,10 @@ Desktop and Server save `attempted:true` before input. Never-attempted warm `--a
 proceed after shell verification; attempted/legacy-unknown intent requires Run now. Only confirmed
 submission clears intent. Desktop open replies use `createControlOpenBatch` for queued accounting;
 protect that contract and concurrent submission with behavior tests, never source-text pins.
+Relay-owned launches (automatic and Run now) are refused until a scoped durable claim API exists.
+Never round-trip a relay workspace load into save: the load can contain only one shared project,
+while save replaces the entire host index. A pre-input parked-project deferral keeps intent
+never-attempted; it must not poison the writer or trigger a retry timer.
 Held Desktop launches retain their attached transport even offscreen with tmux (large fan-outs cost
 memory). Server deferred delivery is one-shot: a failed probe/send needs explicit recovery.
 

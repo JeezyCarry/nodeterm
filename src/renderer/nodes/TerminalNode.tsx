@@ -5533,13 +5533,14 @@ export function TerminalNode({
             className={`term-node__status term-node__status--queued nodrag${
               launchDelivery ? ' term-node__status--queued-warn' : ''
             }`}
-            title={launchTooltip(launchDelivery, pendingWaitingOn, pendingLaunch.command, pendingErroredOn)}
+            title={launchTooltip(launchDelivery, pendingWaitingOn, pendingLaunch.command, pendingErroredOn, session.source === 'relay')}
           >
             <span className="term-node__status-dot" />
             {launchDelivery ? '⚠ ' : ''}QUEUED
             <button
               className="term-node__queued-run"
-              title={pendingLaunch.manualOnly ? "Retry launch at a shell prompt" : "Run now without waiting"}
+              disabled={session.source === 'relay'}
+              title={session.source === 'relay' ? "Open the host to run this command" : pendingLaunch.manualOnly ? "Retry launch at a shell prompt" : "Run now without waiting"}
               onClick={(e) => {
                 e.stopPropagation()
                 // Disarm only on a delivery that actually landed. Dropping `pendingLaunch`

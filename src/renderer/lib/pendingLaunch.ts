@@ -175,9 +175,11 @@ export function launchTooltip(
   delivery: LaunchDelivery | undefined,
   waitingOn: string,
   command: string,
-  erroredOn?: string
+  erroredOn?: string,
+  relay = false
 ): string {
   const runs = `Runs:\n${command}`
+  if (relay) return `Launch delivery from a relay tab is unavailable. Open the host to run this command.\n${runs}`
   if (delivery?.kind === 'failed')
     return (
       'Launch delivery is unconfirmed; automatic retry is stopped.\n' +

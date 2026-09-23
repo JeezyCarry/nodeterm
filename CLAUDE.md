@@ -2574,7 +2574,11 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   (4) Desktop automatic and manual launch delivery share `terminal/launch-command.ts`, which
   uses `deliverCommand`: echo verification, bounded Ctrl-U repair, platform kill-line and overlong
   line refusal. The PTY-lifetime writer coalesces concurrent requests and remembers submission
-  across parked views. New intent has `attempted:false`; the writer awaits a workspace save of
+  across parked views. Relay launch delivery, including Run now, is refused until a scoped durable
+  claim API exists: a relay workspace load can be project-scoped, while save replaces the host
+  index. Never use that load/save pair for a launch. A parked-project deferral before any input
+  retains never-attempted intent and can proceed on activation without a retry timer.
+  New intent has `attempted:false`; the writer awaits a workspace save of
   `attempted:true, manualOnly:true` before input, then rechecks the shell after that save. A warm
   attach may automatically deliver never-attempted intent, preserving long-running `--after`
   graphs through project switches/park expiry. Attempted/legacy-unknown intent stays manual: its

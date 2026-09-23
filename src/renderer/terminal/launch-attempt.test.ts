@@ -1,6 +1,8 @@
+import { scopeWorkspaceToProject } from '@shared/relay-workspace-scope'
+import type { Workspace } from '@shared/types'
 import { expect, it, vi } from 'vitest'
 import type { PendingLaunch } from '@shared/types'
-import { commitLaunch, commitLaunchAttempt, registerLaunchCommit } from './launch-attempt'
+import { commitLaunch, commitLaunchAttempt, commitOwnedLaunchAttempt, registerLaunchCommit } from './launch-attempt'
 import { createLaunchWriter } from './launch-command'
 import { queueControlLaunch, launchesToFire } from '../lib/pendingLaunch'
 
@@ -66,4 +68,39 @@ it('a saved --after launch survives park expiry, runs once on warm shell, and ne
   expect(launchesToFire([resumed], { upstream: { state: 'done' } }, live)).toEqual([])
   expect(await writer(ready.command, false)).toBe('submitted')
   expect(write.mock.calls).toEqual([[ready.command], ['\r']])
+})
+
+it.each([false, true])('refuses scoped relay persistence (manual=%s) without replacing any host projects', async (manual) => {
+  let host: Workspace = { version: 2, activeProjectId: 'shared', projects: ['shared', 'private-inline', 'other'].map((id) => ({
+    id, name: id, color: '#fff', nodes: [], viewport: { x: 0, y: 0, zoom: 1 }
+  })) }
+  const before = JSON.stringify(host)
+  const scoped = scopeWorkspaceToProject(host, 'shared')
+  expect(scoped.projects.map((p) => p.id)).toEqual(['shared'])
+  // This models the destructive whole-index save exposed by the existing relay API.
+  const save = vi.fn(async () => { host = scoped })
+  const update = vi.fn(), input = vi.fn()
+  const relay = {}, local = {}
+  const writer = createLaunchWriter({
+    shellReady: async () => true, killLine: '\x15', cleanup: () => {},
+    io: { write: input, onData: () => () => {} },
+    claimAttempt: () => commitOwnedLaunchAttempt(relay, local, {
+      pending: { command: 'claude brief', after: [], attempted: false },
+      command: 'claude brief', manual, update, save
+    })
+  })
+  expect(await writer('claude brief', manual)).toBe('cancelled')
+  expect(save).not.toHaveBeenCalled()
+  expect(update).not.toHaveBeenCalled()
+  expect(input).not.toHaveBeenCalled()
+  expect(JSON.stringify(host)).toBe(before)
+})
+
+it('acknowledges an owning local workspace only after its durable claim save', async () => {
+  const owner = {}, update = vi.fn(), save = vi.fn(async () => {})
+  expect(await commitOwnedLaunchAttempt(owner, owner, {
+    pending: { after: [], command: 'cmd', attempted: false }, command: 'cmd', manual: false, update, save
+  })).toBe(true)
+  expect(update).toHaveBeenCalledWith({ after: [], command: 'cmd', attempted: true, manualOnly: true })
+  expect(save).toHaveBeenCalledTimes(1)
 })

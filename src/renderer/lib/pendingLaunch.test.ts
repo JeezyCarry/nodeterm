@@ -285,3 +285,10 @@ it('manual recovery does not promise that retrying an errored dependency will au
   expect(tooltip).toContain('automatic retry is stopped')
   expect(tooltip).not.toContain('successful turn releases')
 })
+
+it('a refused relay launch explains host recovery rather than promising a working retry', () => {
+  const text = launchTooltip({ kind: 'failed', attempts: 1, at: 0 }, '', 'claude brief', undefined, true)
+  expect(text).toContain('Open the host to run this command')
+  expect(text).toContain('claude brief')
+  expect(text).not.toContain('press ▶')
+})
