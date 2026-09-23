@@ -33,6 +33,11 @@ function load(w: DesktopWallpaper): Promise<string | null> {
       .then((url) => (url ? `url("${url}")` : null))
       .catch(() => null)
     loaded.set(key, p)
+    // A miss is not remembered: the file may appear (a still converting, an import finishing), and
+    // a cached null would pin the plain canvas until the app restarts.
+    void p.then((bg) => {
+      if (bg === null && loaded.get(key) === p) loaded.delete(key)
+    })
   }
   return p
 }
