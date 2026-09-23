@@ -2809,6 +2809,15 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     prefix/diverged rule, via `head -c | cmp`), and `SshProjectManager.remoteClaudeSessionCopy`
     refuses an account pinned to another host. An SSH ctx with no remote leg (Server Edition) is
     refused, never answered from the local disk. Relay tabs: shown disabled.
+    **Two more surfaces, one choreography** (`runClaudeAccountSwitch` returns a
+    `ClaudeSwitchOutcome` instead of announcing it): the **kanban card** right-click menu gets the
+    node's rows from the SAME builder the canvas node menu uses (`accountSwitchRows` → KanbanView's
+    `accountMenuItems`), and the **usage popover** puts "⇄ Move N sessions" on each account row —
+    every Claude session on this canvas running on that account, on the popover's machine
+    (`bulkSwitchCandidates`), is moved to the picked account ONE AT A TIME (N parallel copies +
+    recycles on one host is a load spike), busy ones skipped and counted, one summary line
+    (`summarizeBulkSwitch`). The cross-project board (GlobalKanbanView) does not offer it:
+    its cards belong to other projects' canvases, whose nodes have no restart closure mounted.
   - **`boundAccountId(accountId, agentId)` (`shared/agents/account-binding.ts`) is the ONE rule for
     whether a node is account-bound at all**, and it feeds `data.accountId` *and* the account color
     from a single decision — split them and a node carries an account it is not painted for, or is

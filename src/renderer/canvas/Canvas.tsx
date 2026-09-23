@@ -504,6 +504,7 @@ import { useContextWindow } from '../state/contextWindow'
 import { useSessionNaming } from '../state/sessionNaming'
 import { useSshServers } from '../state/sshServers'
 import { useSshConn } from '../state/sshConn'
+import { scopeFromKey, usageScopeKey } from '../lib/usageScope'
 import { useSystemAccount } from '../state/systemAccount'
 import { useEntitlement } from '../state/entitlement'
 import type { SshServer } from '@shared/ssh'
@@ -624,10 +625,13 @@ import {
 import { codexAccountSelectable, codexAccountSwitchStillEligible } from './codex-account-switch'
 import { resolveNewCodexNodeAccount, planCodexAccountSwitch } from './codex-account-ops'
 import {
+  bulkSwitchCandidates,
   claudeSwitchHostKey,
   claudeSwitchTargets,
-  copyRefusalText,
-  planClaudeAccountSwitch
+  planClaudeAccountSwitch,
+  summarizeBulkSwitch,
+  switchOutcomeNotice,
+  type ClaudeSwitchOutcome
 } from './claude-account-switch'
 import type { CodexAccount } from '@shared/codex-account'
 import { useSystemCodexAccount } from '../state/systemCodexAccount'
@@ -6602,8 +6606,8 @@ export function Canvas() {
   // "Restart agent and shell" choreography, with the transcript copy + account rebind slotted in
   // between the CLI's exit and the pane recycle. The respawn then launches under the target's
   // CLAUDE_CONFIG_DIR and its cold-restore `--resume` continues the SAME conversation — no /login.
-  const switchClaudeAccountNode = useCallback(
-    async (nodeId: string, targetAccountId: string | undefined, targetLabel: string) => {
+  const runClaudeAccountSwitch = useCallback(
+    async (nodeId: string, targetAccountId: string | undefined): Promise<ClaudeSwitchOutcome> => {
       const n = nodesRef.current.find((x) => x.id === nodeId)
       const st = useAgentStatus.getState().byId[nodeId]
       const accounts = useSettings.getState().settings.claudeAccounts
@@ -6622,17 +6626,9 @@ export function Canvas() {
         accounts
       )
       if (!decision.ok) {
-        if (decision.reason === 'same-account') return
-        setNotice({
-          kind: 'error',
-          text:
-            decision.reason === 'no-session'
-              ? 'This session has no resumable conversation id yet — nothing to switch.'
-              : decision.reason === 'remote'
-                ? 'Switching accounts is not available for this session.'
-                : `${targetLabel} is no longer available. Nothing was changed.`
-        })
-        return
+        return decision.reason === 'same-account'
+          ? { kind: 'same-account' }
+          : { kind: 'refused', reason: decision.reason }
       }
       // An SSH node's copy runs on its host, over a project connected to it — the active one first
       // (the node is on this canvas), else any connected project on the same host.
@@ -6646,20 +6642,11 @@ export function Canvas() {
             ? active.id
             : undefined
         const projectId = activeId ?? connectedProjectIdForHost(hostKey)
-        if (!projectId) {
-          setNotice({
-            kind: 'error',
-            text: 'This host is not connected — reconnect the project, then switch. Nothing was changed.'
-          })
-          return
-        }
+        if (!projectId) return { kind: 'refused', reason: 'no-connection' }
         ctx = { projectId }
       }
       const fn = agentRestartFn(nodeId)
-      if (!fn) {
-        setNotice({ kind: 'error', text: 'Switch skipped: this terminal is not attached right now.' })
-        return
-      }
+      if (!fn) return { kind: 'refused', reason: 'not-attached' }
       const { plan } = decision
       let copy: ClaudeSessionCopyResult | undefined
       const outcome = await settleRestart(() =>
@@ -6674,24 +6661,235 @@ export function Canvas() {
         })
       )
       if (copy?.ok) markDirty()
-      if (outcome !== 'restarted') {
-        setNotice({
-          kind: 'error',
-          text:
-            outcome === 'not-eligible'
-              ? 'Switch skipped: this session is busy or not attached — try again once its turn is done.'
-              : 'Switch skipped: the agent did not quit in time. Nothing was changed.'
-        })
-        return
-      }
-      const moved = copy
-      setNotice(
-        moved?.ok
-          ? { kind: 'info', text: `Switched to ${targetLabel} — resuming the same conversation.` }
-          : { kind: 'error', text: copyRefusalText(moved?.ok === false ? moved.reason : 'failed', targetLabel) }
-      )
+      if (outcome !== 'restarted') return { kind: 'not-restarted', outcome }
+      const moved = copy as ClaudeSessionCopyResult | undefined
+      return moved?.ok ? { kind: 'switched' } : { kind: 'copy-failed', reason: moved?.ok === false ? moved.reason : 'failed' }
     },
     [markDirty, session.source, connectedProjectIdForHost]
+  )
+
+  const switchClaudeAccountNode = useCallback(
+    async (nodeId: string, targetAccountId: string | undefined, targetLabel: string) => {
+      const notice = switchOutcomeNotice(await runClaudeAccountSwitch(nodeId, targetAccountId), targetLabel)
+      if (notice) setNotice(notice)
+    },
+    [runClaudeAccountSwitch]
+  )
+
+  /**
+   * The usage popover's bulk move: every Claude session on this canvas that runs on `from` (and on
+   * the popover's machine) is moved to `to`, ONE AT A TIME — each is the same quit → copy → recycle
+   * as the single switch, and running them in parallel would put N transcript copies and N pane
+   * recycles on one host at once. Busy sessions are skipped, never interrupted. One summary line.
+   */
+  const bulkSwitchRunning = useRef(false)
+  const moveAccountSessions = useCallback(
+    async (from: string | undefined, to: string | undefined, toLabel: string) => {
+      if (bulkSwitchRunning.current) return
+      bulkSwitchRunning.current = true
+      try {
+        const byId = useAgentStatus.getState().byId
+        const scope = scopeFromKey(
+          usageScopeKey(useProjects.getState().getProject(useProjects.getState().activeProjectId))
+        )
+        const { ready, busy } = bulkSwitchCandidates(
+          nodesRef.current
+            .filter((n) => n.type === 'terminal')
+            .map((n) => ({
+              id: n.id,
+              agentId: restartAgentIdOf(n),
+              accountId: (n.data.accountId as string | undefined) || undefined,
+              hostKey: claudeSwitchHostKey(n),
+              busy: byId[n.id]?.state === 'working' || byId[n.id]?.state === 'blocked'
+            })),
+          from,
+          scope.kind === 'ssh' ? scope.hostKey : undefined
+        )
+        if (ready.length + busy.length === 0) return
+        setNotice({
+          kind: 'info',
+          text: `Moving ${ready.length} ${ready.length === 1 ? 'session' : 'sessions'} to ${toLabel}…`
+        })
+        const outcomes: ClaudeSwitchOutcome[] = []
+        for (const n of ready) outcomes.push(await runClaudeAccountSwitch(n.id, to))
+        setNotice(summarizeBulkSwitch(outcomes, busy.length, toLabel))
+      } finally {
+        bulkSwitchRunning.current = false
+      }
+    },
+    [runClaudeAccountSwitch]
+  )
+
+  /** How many Claude sessions on this canvas run on `accountId` on the popover's machine — the
+   *  number the usage popover's "Move N sessions" button shows. Read live (the popover re-renders
+   *  when it opens), from the same candidate rule the move walks. */
+  const countAccountSessions = useCallback((accountId: string | undefined): number => {
+    const byId = useAgentStatus.getState().byId
+    const scope = scopeFromKey(
+      usageScopeKey(useProjects.getState().getProject(useProjects.getState().activeProjectId))
+    )
+    const { ready, busy } = bulkSwitchCandidates(
+      nodesRef.current
+        .filter((n) => n.type === 'terminal')
+        .map((n) => ({
+          id: n.id,
+          agentId: restartAgentIdOf(n),
+          accountId: (n.data.accountId as string | undefined) || undefined,
+          hostKey: claudeSwitchHostKey(n),
+          busy: byId[n.id]?.state === 'working' || byId[n.id]?.state === 'blocked'
+        })),
+      accountId,
+      scope.kind === 'ssh' ? scope.hostKey : undefined
+    )
+    return ready.length + busy.length
+  }, [])
+
+  /**
+   * The running-node "Switch Claude account ▸" / "Switch Codex account ▸" rows for one node. ONE
+   * builder for the canvas node menu and the kanban card menu — the board is a second view of the
+   * same node, and two copies of these rows would drift. Carries the same gate the Restart row does
+   * (`restartEligibility` + a wired restart closure): a busy, id-less or detached node shows the
+   * rows disabled with the reason.
+   */
+  const accountSwitchRows = useCallback(
+    (nodeId: string): MenuItem[] => {
+      const n = nodesRef.current.find((x) => x.id === nodeId)
+      const st = useAgentStatus.getState().byId[nodeId]
+      const sourceAgentId = restartAgentIdOf(n)
+      const sessionId = restartSessionId(st?.sessionId, n?.data.agentSessionId)
+      const gate = restartEligibility(sourceAgentId, st?.state, sessionId)
+      if (!gate.ok && gate.reason === 'not-resumable') return []
+      const why = !gate.ok
+        ? gate.reason === 'working'
+          ? 'This session is busy — switch it once its turn (or permission prompt) is done.'
+          : 'Nothing to resume yet — this session has not reported an id.'
+        : !agentRestartFn(nodeId)
+          ? 'This terminal is not attached right now.'
+          : undefined
+      return [
+    // Switch this running Claude node onto another account already logged in on its
+    // machine — this one, or the SSH host its pane runs on — with no /login in the pane
+    // (`switchClaudeAccountNode`). Shown only when there is somewhere to switch to.
+    ...(sourceAgentId === 'claude'
+      ? (() => {
+          const settingsNow = useSettings.getState().settings
+          const hostKey = claudeSwitchHostKey(n)
+          const unswitchable =
+            session.source === 'relay' || (!!n && isRemoteSessionNode(n.data) && !hostKey)
+          const targets = claudeSwitchTargets(settingsNow.claudeAccounts, hostKey)
+          if (targets.length === 0) return []
+          const currentAccountId = (n?.data.accountId as string | undefined) || undefined
+          // The system row names the machine it is on: an SSH node's is the HOST's
+          // `~/.claude`, whose identity this machine's system email says nothing about.
+          const systemLabel = hostKey
+            ? `System account (${hostKey})`
+            : systemAccountDisplay(
+                settingsNow.systemAccountLabel,
+                useSystemAccount.getState().email
+              )
+          const row = (id: string | undefined, label: string): MenuItem => {
+            const isCurrent = (id || undefined) === currentAccountId
+            return {
+              label: `${isCurrent ? '✓ ' : ''}${label}`,
+              icon: <AgentIcon agentId="claude" />,
+              disabled: !!why || isCurrent,
+              hint: isCurrent
+                ? 'This node already runs on this account.'
+                : (why ??
+                  'Quits Claude, moves this conversation to the account and resumes it there — no login needed.'),
+              onClick: () => void switchClaudeAccountNode(nodeId, id, label)
+            }
+          }
+          if (unswitchable)
+            return [
+              {
+                label: 'Switch Claude account',
+                icon: <IconSwitch />,
+                disabled: true,
+                hint: 'Not available for relay sessions.',
+                onClick: () => {}
+              }
+            ] as MenuItem[]
+          return [
+            {
+              type: 'submenu',
+              label: 'Switch Claude account',
+              icon: <IconSwitch />,
+              children: [
+                row(undefined, systemLabel),
+                ...targets.map((a) => row(a.id, a.label || a.email || 'Account'))
+              ]
+            }
+          ] as MenuItem[]
+        })()
+      : []),
+    // Switch this running Codex node onto another machine-scoped account (S6 §3.5). Shown
+    // only for a Codex node with managed accounts on its machine. Each row is gated through
+    // `codexAccountSelectable`; the actual switch is owner-authorized MAIN-SIDE and resumes
+    // the SAME conversation id (`switchCodexAccountNode`) — the UI is not the boundary.
+    ...(sourceAgentId === 'codex'
+      ? (() => {
+          const codexAll = useSettings.getState().settings.codexAccounts
+          const hostKey = n?.data.ssh ? sshHostKey(n.data.ssh as SshServer) : undefined
+          const onMachine = codexAll.filter(
+            (a) => !a.pending && (hostKey ? a.host === hostKey : !a.host)
+          )
+          if (onMachine.length === 0) return []
+          // The three-phase switch (`switchThread`) plans and links rollouts in LOCAL
+          // homes only; for a node on an SSH host it could only fail. Say so instead of
+          // offering rows that roll back — the host-side switch is a follow-up.
+          if (hostKey)
+            return [
+              {
+                label: 'Switch Codex account',
+                icon: <IconSwitch />,
+                disabled: true,
+                hint: 'Switching Codex accounts is not available for SSH sessions yet.',
+                onClick: () => {}
+              }
+            ] as MenuItem[]
+          const currentAccountId = (n?.data.accountId as string | undefined) || undefined
+          const systemCodexLabel = systemAccountDisplay(
+            undefined,
+            useSystemCodexAccount.getState().email
+          )
+          const row = (
+            id: string | undefined,
+            label: string
+          ): MenuItem => {
+            const isCurrent = (id || undefined) === currentAccountId
+            const sel = codexAccountSelectable(id, onMachine, connectedProjectIdForHost)
+            return {
+              label: `${isCurrent ? '✓ ' : ''}${label}`,
+              icon: <AgentIcon agentId="codex" />,
+              disabled: !!why || isCurrent || !sel.ok,
+              hint: isCurrent
+                ? 'This node already runs on this account.'
+                : !sel.ok
+                  ? sel.reason === 'no-connection'
+                    ? 'This account lives on a host that is not connected.'
+                    : 'This account is no longer available.'
+                  : (why ??
+                    'Moves this conversation to the account and resumes it there (same conversation).'),
+              onClick: () => void switchCodexAccountNode(nodeId, id)
+            }
+          }
+          return [
+            {
+              type: 'submenu',
+              label: 'Switch Codex account',
+              icon: <IconSwitch />,
+              children: [
+                row(undefined, systemCodexLabel),
+                ...onMachine.map((a) => row(a.id, a.label))
+              ]
+            }
+          ] as MenuItem[]
+        })()
+      : []),
+      ]
+    },
+    [switchClaudeAccountNode, switchCodexAccountNode, connectedProjectIdForHost, session.source]
   )
 
   // Who the bulk restart would act on, right now: the ACTIVE project's canvas (nodesRef holds
@@ -8529,126 +8727,8 @@ export function Canvas() {
                       }
                     ] as MenuItem[])
                 : []),
-              // Switch this running Codex node onto another machine-scoped account (S6 §3.5). Shown
-              // only for a Codex node with managed accounts on its machine. Each row is gated through
-              // `codexAccountSelectable`; the actual switch is owner-authorized MAIN-SIDE and resumes
-              // the SAME conversation id (`switchCodexAccountNode`) — the UI is not the boundary.
-              // Switch this running Claude node onto another account already logged in on its
-              // machine — this one, or the SSH host its pane runs on — with no /login in the pane
-              // (`switchClaudeAccountNode`). Shown only when there is somewhere to switch to.
-              ...(sourceAgentId === 'claude'
-                ? (() => {
-                    const settingsNow = useSettings.getState().settings
-                    const hostKey = claudeSwitchHostKey(n)
-                    const unswitchable =
-                      session.source === 'relay' || (!!n && isRemoteSessionNode(n.data) && !hostKey)
-                    const targets = claudeSwitchTargets(settingsNow.claudeAccounts, hostKey)
-                    if (targets.length === 0) return []
-                    const currentAccountId = (n?.data.accountId as string | undefined) || undefined
-                    // The system row names the machine it is on: an SSH node's is the HOST's
-                    // `~/.claude`, whose identity this machine's system email says nothing about.
-                    const systemLabel = hostKey
-                      ? `System account (${hostKey})`
-                      : systemAccountDisplay(
-                          settingsNow.systemAccountLabel,
-                          useSystemAccount.getState().email
-                        )
-                    const row = (id: string | undefined, label: string): MenuItem => {
-                      const isCurrent = (id || undefined) === currentAccountId
-                      return {
-                        label: `${isCurrent ? '✓ ' : ''}${label}`,
-                        icon: <AgentIcon agentId="claude" />,
-                        disabled: !!why || isCurrent,
-                        hint: isCurrent
-                          ? 'This node already runs on this account.'
-                          : (why ??
-                            'Quits Claude, moves this conversation to the account and resumes it there — no login needed.'),
-                        onClick: () => void switchClaudeAccountNode(ids[0], id, label)
-                      }
-                    }
-                    if (unswitchable)
-                      return [
-                        {
-                          label: 'Switch Claude account',
-                          icon: <IconSwitch />,
-                          disabled: true,
-                          hint: 'Not available for relay sessions.',
-                          onClick: () => {}
-                        }
-                      ] as MenuItem[]
-                    return [
-                      {
-                        type: 'submenu',
-                        label: 'Switch Claude account',
-                        icon: <IconSwitch />,
-                        children: [
-                          row(undefined, systemLabel),
-                          ...targets.map((a) => row(a.id, a.label || a.email || 'Account'))
-                        ]
-                      }
-                    ] as MenuItem[]
-                  })()
-                : []),
-              ...(sourceAgentId === 'codex'
-                ? (() => {
-                    const codexAll = useSettings.getState().settings.codexAccounts
-                    const hostKey = n?.data.ssh ? sshHostKey(n.data.ssh as SshServer) : undefined
-                    const onMachine = codexAll.filter(
-                      (a) => !a.pending && (hostKey ? a.host === hostKey : !a.host)
-                    )
-                    if (onMachine.length === 0) return []
-                    // The three-phase switch (`switchThread`) plans and links rollouts in LOCAL
-                    // homes only; for a node on an SSH host it could only fail. Say so instead of
-                    // offering rows that roll back — the host-side switch is a follow-up.
-                    if (hostKey)
-                      return [
-                        {
-                          label: 'Switch Codex account',
-                          icon: <IconSwitch />,
-                          disabled: true,
-                          hint: 'Switching Codex accounts is not available for SSH sessions yet.',
-                          onClick: () => {}
-                        }
-                      ] as MenuItem[]
-                    const currentAccountId = (n?.data.accountId as string | undefined) || undefined
-                    const systemCodexLabel = systemAccountDisplay(
-                      undefined,
-                      useSystemCodexAccount.getState().email
-                    )
-                    const row = (
-                      id: string | undefined,
-                      label: string
-                    ): MenuItem => {
-                      const isCurrent = (id || undefined) === currentAccountId
-                      const sel = codexAccountSelectable(id, onMachine, connectedProjectIdForHost)
-                      return {
-                        label: `${isCurrent ? '✓ ' : ''}${label}`,
-                        icon: <AgentIcon agentId="codex" />,
-                        disabled: !!why || isCurrent || !sel.ok,
-                        hint: isCurrent
-                          ? 'This node already runs on this account.'
-                          : !sel.ok
-                            ? sel.reason === 'no-connection'
-                              ? 'This account lives on a host that is not connected.'
-                              : 'This account is no longer available.'
-                            : (why ??
-                              'Moves this conversation to the account and resumes it there (same conversation).'),
-                        onClick: () => void switchCodexAccountNode(ids[0], id)
-                      }
-                    }
-                    return [
-                      {
-                        type: 'submenu',
-                        label: 'Switch Codex account',
-                        icon: <IconSwitch />,
-                        children: [
-                          row(undefined, systemCodexLabel),
-                          ...onMachine.map((a) => row(a.id, a.label))
-                        ]
-                      }
-                    ] as MenuItem[]
-                  })()
-                : []),
+              // Switch Claude / Codex account — one builder shared with the kanban card menu.
+              ...accountSwitchRows(ids[0]),
             ]
             return [
               // The restart variants — plain restart, fresh shell, subscription, reopen as another
@@ -14576,6 +14656,7 @@ export function Canvas() {
           onModalNodeChange={setKanbanModalNode}
           onBrowserNav={browserNavFromKanban}
           onSetIcon={setNodeIcon}
+          accountMenuItems={accountSwitchRows}
         />
       )}
       <UpdateCard />
@@ -14833,7 +14914,12 @@ export function Canvas() {
         
           {/* Same write path as the TabBar caret menu (project.defaultAccountId + persist) — the
               popover row is a second, better-placed entrance to the same action (issue #142). */}
-          <UsageIndicator overBoard={kanbanOpen} onSetDefaultAccount={setProjectDefaultAccount} />
+          <UsageIndicator
+            overBoard={kanbanOpen}
+            onSetDefaultAccount={setProjectDefaultAccount}
+            countAccountSessions={countAccountSessions}
+            onMoveSessions={(from, to, label) => void moveAccountSessions(from, to, label)}
+          />
         </CanvasPills>
 
         {/* Canvas-mounted, deliberately NOT in the .top-banners column: this is about THIS canvas,

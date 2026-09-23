@@ -76,3 +76,57 @@ describe('planClaudeAccountSwitch', () => {
     })
   })
 })
+
+describe('bulk move', () => {
+  const node = (id: string, over: Partial<import('./claude-account-switch').BulkSwitchNode> = {}) => ({
+    id,
+    agentId: 'claude',
+    busy: false,
+    ...over
+  })
+
+  it('picks the Claude sessions on the source account and on the scoped machine only', async () => {
+    const { bulkSwitchCandidates } = await import('./claude-account-switch')
+    const nodes = [
+      node('sys'),
+      node('work', { accountId: 'w' }),
+      node('busy-sys', { busy: true }),
+      node('codex', { agentId: 'codex' }),
+      node('remote-sys', { hostKey: 'u@h' })
+    ]
+    const local = bulkSwitchCandidates(nodes, undefined, undefined)
+    expect(local.ready.map((n) => n.id)).toEqual(['sys'])
+    expect(local.busy.map((n) => n.id)).toEqual(['busy-sys'])
+    expect(bulkSwitchCandidates(nodes, 'w', undefined).ready.map((n) => n.id)).toEqual(['work'])
+    expect(bulkSwitchCandidates(nodes, undefined, 'u@h').ready.map((n) => n.id)).toEqual(['remote-sys'])
+  })
+
+  it('summarizes what moved, what stayed and what was skipped', async () => {
+    const { summarizeBulkSwitch } = await import('./claude-account-switch')
+    expect(summarizeBulkSwitch([{ kind: 'switched' }, { kind: 'switched' }], 0, 'Work')).toEqual({
+      kind: 'info',
+      text: 'Moved 2 sessions to Work.'
+    })
+    const mixed = summarizeBulkSwitch(
+      [
+        { kind: 'switched' },
+        { kind: 'copy-failed', reason: 'diverged' },
+        { kind: 'not-restarted', outcome: 'not-eligible' }
+      ],
+      1,
+      'Work'
+    )
+    expect(mixed.kind).toBe('error')
+    expect(mixed.text).toBe(
+      'Moved 1 session to Work · 1 resumed on their old account (the conversation could not be copied) · 2 skipped (busy, not attached or without a conversation yet).'
+    )
+  })
+
+  it('says nothing for a same-account pick and names the reason otherwise', async () => {
+    const { switchOutcomeNotice } = await import('./claude-account-switch')
+    expect(switchOutcomeNotice({ kind: 'same-account' }, 'X')).toBeNull()
+    expect(switchOutcomeNotice({ kind: 'refused', reason: 'no-connection' }, 'X')?.text).toMatch(
+      /not connected/
+    )
+  })
+})
