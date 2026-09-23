@@ -1158,6 +1158,13 @@ session.
   class the same way and no per-element opt-out can reach it); hoisting it to the whole NODE would
   additionally take wheel-zoom-to-cursor away over every node, which is exactly where a
   `wheelZoom` user aims.
+- **FitAddon reads the host's computed size, not its content rect.** The absolute, inset
+  canvas host uses `box-sizing: content-box` so its padding is excluded from that size
+  (#671). Its outer hit/plate rect still fills the body. The board modal instead keeps
+  padding on a separate wrapper. Do not put border-box padding back on a fit host:
+  it over-reports rows and clips the last line. `scripts/terminal-fit-layout.test.ts`
+  measures real xterm layout through resize sweeps at DPR 1, 1.25, 1.5 and 2 in Chrome
+  (`CHROME_BIN` overrides the executable); this does not verify GPU row-seam rendering.
 - A `ResizeObserver` drives `FitAddon.fit()` + `transport.resize`. Canvas zoom is a CSS
   transform, so it does *not* change `clientWidth` — cols/rows stay stable across zoom.
   `scale-fix.ts` patches xterm's mouse coords so text selection stays aligned when zoomed.
@@ -2574,6 +2581,8 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   would inject a prompt into every session an agent just spawned — the exact intrusion that push
   was reverted for. Links are pull-based, so nothing is lost. The refusal matrix is the pure
   `planBridges` (`renderer/lib/noteLink.ts`, unit-tested); Canvas only wraps it in setState.
+  A missing endpoint is only absent from the calling project: report that scope and the
+  unsupported cross-project boundary, without probing other projects or exposing their metadata.
   Callers that create and link nodes **in the same tick** must pass their own `lookup` — `setNodes`
   is async, so resolving fresh nodes off `nodesRef` would skip every one as "no such node".
   **Dependency edges (`--after`, 2026-07):** `open-terminal`/`open-claude`/`open-agent` accept
@@ -3840,7 +3849,14 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   **ONE exception, and it is not a walk-back of that rule (issue #743): a MAXIMIZED node**
   (`isMaximized` — `data.premaxRect`, the flag `maximizeNodeToRect` writes and
   `restoreMaximizedNode` clears) is framed against the same rectangle `maximizeTargetRect` placed
-  it in, by passing `measurePinnedInsets(box)` to `viewportForRect`. The trade-off above rests on
+  it in, through `viewportForNodeFocus`, which passes `measureMaximizeInsets(box)` to
+  `viewportForRect` only for maximized nodes. `nodeFocus.policy.test.ts` exercises this shared
+  Canvas decision for ordinary, maximized and restored nodes in both zoom modes.
+  Maximize also measures `.controls-cluster` and `.dock` (#711): their screen rectangles reserve
+  top/bottom space with an 8px gap, consuming the existing 24px margin first. Chrome outside the
+  horizontally usable area contributes nothing. Menus and hover peeks never reserve a band. Both
+  focus zoom branches use these same vertical insets; refitting observes the persistent chrome
+  as well as pinned panels and compares all four insets. Zone snap retains its side-only policy. The trade-off above rests on
   ONE number — how much of the node ends up behind the panel — and for a maximized node that
   number is set by the PANEL rather than the node, **by construction**: maximize sized it to be
   *exactly* the free area, so centring it in the wider pane buries half the inset less the margin.
@@ -3850,10 +3866,9 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   free area reproduces maximize's own origin (`marginPx + insets.left`) exactly — which is what
   makes this a fix rather than a second opinion about placement. It applies to BOTH zoom branches
   (the rectangle question is the same one; splitting it would be two rectangles again, which is
-  the bug), and with no pinned panel `insets` is zero and the whole thing is a mathematical no-op.
+  the bug). With no pinned panels or overlapping persistent controls, `insets` is zero.
   A pane narrower than the panels over it falls back to the whole pane rather than solving against
-  a negative width. `measurePinnedInsets` reads the DOM, so it is asked only for a node that can
-  use the answer.
+  a negative width. `measureMaximizeInsets` reads the DOM only when framing a maximized node.
   `settings.focusZoomToNode` (Behavior, default ON) is the escape hatch for the rescale: off, the
   camera keeps the zoom `getZoom()` reports and only pans, and that zoom is passed through
   **unclamped** — it is one the canvas is already displaying, and re-clamping it to the framing
