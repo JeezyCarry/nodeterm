@@ -1966,7 +1966,7 @@ export function nodeStatesToFlow(states: CanvasNodeState[]): CanvasNode[] {
 }
 
 /** Serializes live React Flow nodes back into persisted node states. */
-export function flowToNodeStates(nodes: CanvasNode[]): CanvasNodeState[] {
+export function flowToNodeStates(nodes: CanvasNode[], retainInitialCommand = true): CanvasNodeState[] {
   const sizeFor = (kind: NodeKind) =>
     kind === 'sticky'
       ? STICKY_SIZE
@@ -2033,9 +2033,9 @@ export function flowToNodeStates(nodes: CanvasNode[]): CanvasNodeState[] {
         agentModel: n.data.agentModel,
         accountId: n.data.accountId,
         agentSessionId: n.data.agentSessionId,
-        // A not-yet-submitted UI command is durable too. Recover it explicitly on reload:
-        // the old PTY may have accepted it before the clearing save landed.
-        pendingLaunch: n.data.pendingLaunch ?? (n.data.initialCommand
+        // Owning-core UI intent is durable. Relay snapshots opt out: their new UI command
+        // uses a transient one-shot writer, never a whole-workspace persistence claim.
+        pendingLaunch: n.data.pendingLaunch ?? (retainInitialCommand && n.data.initialCommand
           ? { after: [], command: n.data.initialCommand, attempted: false }
           : undefined),
         ssh: n.data.ssh,

@@ -2598,7 +2598,7 @@ export function Canvas() {
       // keeps mirroring the previous project until the host's next edit. Gated like the effect:
       // without phone access on, the serialize itself is the waste (main would drop the payload).
       if (useSettings.getState().settings.phoneAccessEnabled) {
-        window.nodeTerminal.remoteHost.sendCanvasState({ nodes: flowToNodeStates(nodesRef.current) })
+        window.nodeTerminal.remoteHost.sendCanvasState({ nodes: flowToNodeStates(nodesRef.current, sessionForProject(nodesProjectIdRef.current ?? '').source !== 'relay') })
       }
       // Offer the resume card once per project per app run — and only when the user opted in
       // (settings.showResumeCard, default off): while disabled the one-shot slot is NOT spent,
@@ -2728,7 +2728,8 @@ export function Canvas() {
   // ephemeral-id set: it is read from a live store, so it is captured here, as of this call.
   const publishableLater = useCallback((flow: CanvasNode[]): (() => CanvasNodeState[]) => {
     const ephIds = new Set(Object.keys(useAgentNodes.getState().byId))
-    return () => publishableStates(flowToNodeStates(flow), ephIds)
+    const retainInitial = sessionForProject(nodesProjectIdRef.current ?? '').source !== 'relay'
+    return () => publishableStates(flowToNodeStates(flow, retainInitial), ephIds)
   }, [])
 
   // ---- persistence helpers ----
@@ -2743,7 +2744,7 @@ export function Canvas() {
         .getState()
         .commitCanvas(
           id,
-          flowToNodeStates(nodesRef.current),
+          flowToNodeStates(nodesRef.current, sessionForProject(nodesProjectIdRef.current ?? '').source !== 'relay'),
           viewportRef.current,
           linkEdgesRef.current.map((e) => ({ id: e.id, source: e.source, target: e.target })),
           controlEdgesRef.current.map((e) => ({ id: e.id, source: e.source, target: e.target }))
@@ -3099,7 +3100,7 @@ export function Canvas() {
   useEffect(() => {
     if (!phoneHosting || loadingRef.current) return
     const t = setTimeout(() => {
-      window.nodeTerminal.remoteHost.sendCanvasState({ nodes: flowToNodeStates(nodesRef.current) })
+      window.nodeTerminal.remoteHost.sendCanvasState({ nodes: flowToNodeStates(nodesRef.current, sessionForProject(nodesProjectIdRef.current ?? '').source !== 'relay') })
     }, 120)
     return () => clearTimeout(t)
   }, [nodes, phoneHosting])
@@ -3113,7 +3114,7 @@ export function Canvas() {
   useEffect(() => {
     return window.nodeTerminal.remoteHost.onApplyMutation((mutation) => {
       setNodes((ns) => {
-        const next = applyCanvasMutation(flowToNodeStates(ns), mutation)
+        const next = applyCanvasMutation(flowToNodeStates(ns, sessionForProject(nodesProjectIdRef.current ?? '').source !== 'relay'), mutation)
         return nodeStatesToFlow(next)
       })
       markDirty()

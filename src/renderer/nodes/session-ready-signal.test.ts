@@ -77,7 +77,7 @@ describe('an ARMED node does not cold-start its agent under the hold (source pin
     // predicate's contents rather than the branch's old inline shape. `!data.pendingLaunch` and
     // `shouldColdResume` are independent refusals and must both survive a reformat.
     expect(src).toMatch(
-      /const canColdRestore =\s*\n?\s*!!agentId && canResume\(agentId\) && !data\.pendingLaunch && shouldColdResume\(pausedNow\)/
+      /const canColdRestore =\s*\n?\s*session\.source !== 'relay' && !!agentId && canResume\(agentId\) && !data\.pendingLaunch && shouldColdResume\(pausedNow\)/
     )
     // …and the relaunch branch is the one that reads it.
     expect(src).toContain('} else if (coldStart && canColdRestore) {')
@@ -97,9 +97,10 @@ describe('the QUEUED badge carries the delivery state (source pins)', () => {
     expect(src).toContain("useLaunchDelivery((s) => s.byId[id])")
     expect(src).toContain('term-node__status--queued-warn')
     // `pendingErroredOn` is the fourth argument since #521 — an errored upstream is idle, so
-    // without it the tooltip would promise a wait that never ends.
+    // without it the tooltip would promise a wait that never ends. The relay flag also
+    // keeps unsupported queued delivery from promising a working Run now action.
     expect(src).toContain(
-      'launchTooltip(launchDelivery, pendingWaitingOn, pendingLaunch.command, pendingErroredOn)'
+      "launchTooltip(launchDelivery, pendingWaitingOn, pendingLaunch.command, pendingErroredOn, session.source === 'relay')"
     )
   })
 

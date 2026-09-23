@@ -1,3 +1,4 @@
+import { deliverRelayInitialLaunch } from '../terminal/relay-initial-launch'
 import { commitLaunch } from '../terminal/launch-attempt'
 import { isLaunchShell } from '@shared/agents/pane'
 import { createLaunchWriter, deliverInitialLaunch, launchCommand, registerLaunchWriter } from '../terminal/launch-command'
@@ -3434,14 +3435,16 @@ export function TerminalNode({
             unsub()
           })
         }
-        const launchWriter = createLaunchWriter({
-          claimAttempt: (manual, command) => commitLaunch(api, id, command, manual),
-          io: { write: (d) => transport.write(sid, d), onData: (cb) => transport.onData(sid, cb) },
+        const launchWriterOptions = {
+          io: { write: (d: string) => transport.write(sid, d), onData: (cb: (data: string) => void) => transport.onData(sid, cb) },
           // A fresh shell is known at spawn; subsequent/manual deliveries must recheck the pane.
-          shellReady: async (manual) =>
+          shellReady: async (manual: boolean) =>
             (!manual && fresh && !sessionPersistent) || isLaunchShell(await queryPaneWithin(() => api.pty.paneCommand(id), RESTART_EXIT_TIMEOUT_MS)),
           killLine: getTerminalKillLine(),
-          cleanup: (cancel) => cleanups.push(cancel)
+          cleanup: (cancel: () => void) => { cleanups.push(cancel) }
+        }
+        const launchWriter = createLaunchWriter({ ...launchWriterOptions,
+          claimAttempt: (manual, command) => commitLaunch(api, id, command, manual)
         })
         const writeWhenShellReady = (cmd: string): void => {
           whenShellSettled(() => {
@@ -3493,7 +3496,7 @@ export function TerminalNode({
         // resume, not armed, not paused. A plain terminal has no conversation to lose, and paying
         // a probe to tell it so would be the channel pressure this whole area exists to reduce.
         const canColdRestore =
-          !!agentId && canResume(agentId) && !data.pendingLaunch && shouldColdResume(pausedNow)
+          session.source !== 'relay' && !!agentId && canResume(agentId) && !data.pendingLaunch && shouldColdResume(pausedNow)
         let coldStart = fresh
         if (!fresh && freshUnverified && !data.initialCommand && canColdRestore) {
           // After the shell has settled, not at this instant: the attach is a network round trip
@@ -3546,7 +3549,16 @@ export function TerminalNode({
         // forget it.
         if (data.initialCommand) {
           const command = data.initialCommand
-          deliverInitialLaunch(command, {
+          if (session.source === 'relay') {
+            deliverRelayInitialLaunch({ scope: api, id, fresh, pending: data.pendingLaunch, command,
+              consume: () => updateNodeData(id, { initialCommand: undefined }),
+              whenReady: whenShellSettled, writer: launchWriterOptions,
+              onFailure: (outcome) => {
+                useLaunchDelivery.getState().markFailed(id, 1)
+                if (outcome === 'line-too-long') setCo(termKey, { launchTooLongBytes: lineBytes(command) })
+              }
+            })
+          } else deliverInitialLaunch(command, {
             pending: data.pendingLaunch,
             whenReady: whenShellSettled,
             write: launchWriter,

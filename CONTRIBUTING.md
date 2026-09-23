@@ -663,7 +663,10 @@ Desktop and Server save `attempted:true` before input. Never-attempted warm `--a
 proceed after shell verification; attempted/legacy-unknown intent requires Run now. Only confirmed
 submission clears intent. Desktop open replies use `createControlOpenBatch` for queued accounting;
 protect that contract and concurrent submission with behavior tests, never source-text pins.
-Relay-owned launches (automatic and Run now) are refused until a scoped durable claim API exists.
+Relay queued/restored launches and Run now are refused until a scoped durable claim API exists.
+A new relay UI initialCommand may run once on a fresh PTY through the verified writer, without
+workspace writes or pendingLaunch creation. Consume its transient attempt before shell settle;
+never retry it on remount or serialize it as durable intent.
 Never round-trip a relay workspace load into save: the load can contain only one shared project,
 while save replaces the entire host index. A pre-input parked-project deferral keeps intent
 never-attempted; it must not poison the writer or trigger a retry timer.
