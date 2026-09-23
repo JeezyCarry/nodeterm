@@ -7,6 +7,7 @@ import { homedir } from 'os'
 import path from 'path'
 import { platform } from '../platform'
 import { writeFileAtomic } from '../fs-atomic'
+import { parseEndpointEnv } from './hook-endpoint-parse'
 import { hookSockPath } from './hook-sock-path'
 import { canControlCanvas, type AgentId } from '../../shared/agents/config'
 import { normalizeFor, type NormalizedAgentEvent } from '../../shared/agents/normalize'
@@ -356,6 +357,10 @@ export class HookServer {
       }) => Promise<void>)
     | null = null
   private codexIdentityListener: ((e: CodexIdentityEvent) => void) | null = null
+  private previousEndpointToken = ''
+
+  getPreviousEndpointToken(): string { return this.previousEndpointToken }
+
   private endpointPath = ''
   private publishedEndpoint = ''
   private nodeAuthSecret: Buffer | null = null
@@ -554,6 +559,22 @@ export class HookServer {
     this.identityNow = now
   }
 
+  /** Shell boot must continue even when optional hooks cannot safely take ownership. */
+  async startForApp(): Promise<string | null> {
+    try {
+      await this.start()
+      return null
+    } catch {
+      this.stop()
+      // Do not include raw errors: an invalid HTTP header may contain the bearer.
+      return `Agent hooks are disabled because their endpoint is occupied, malformed, or unavailable. ` +
+        `The application can still run, but agent status and canvas commands may be unavailable. ` +
+        `Close any other nodeterm instance using this data directory. If none is running, inspect ` +
+        `${this.endpointFilePath()} and its advertised listener; back up and remove a stale file, ` +
+        `then restart nodeterm. No other owner's endpoint was replaced.`
+    }
+  }
+
   async start(): Promise<void> {
     if (this.starting) return this.starting
     if (this.server) return
@@ -567,6 +588,14 @@ export class HookServer {
 
   private async startOwnedEndpoint(): Promise<void> {
     await assertHookEndpointAvailable(this.endpointFilePath())
+    this.previousEndpointToken = ''
+    try {
+      const previous = parseEndpointEnv(readFileSync(this.endpointFilePath(), 'utf8'))
+      // Only our conventional local endpoint supplies upgrade proof, never a tunnel record.
+      if (previous.NODETERM_HOOK_SOCK === hookSockPath(platform().userDataDir)) {
+        this.previousEndpointToken = previous.NODETERM_HOOK_TOKEN ?? ''
+      }
+    } catch { /* a first run has no prior bearer */ }
     this.token = randomUUID()
     // ONE handler, shared verbatim by the TCP and the unix-socket listeners: every gate (bearer,
     // per-node verdict, verified-only verbs) runs identically on both transports.

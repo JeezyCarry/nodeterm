@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'crypto'
+import { parseEndpointEnv } from '../../core/agents/hook-endpoint-parse'
+import { legacyEndpointMigration } from './legacy-hook-endpoint'
 // Connection-time remote hook setup for SSH projects: opens the reverse unix-socket tunnel
 // (local loopback hook server → remote socket), writes the owner-only remote endpoint file,
 // and installs the managed hook into the remote agent configs (claude + gemini JSON settings,
@@ -208,6 +210,11 @@ export class RemoteHooks {
         return null
       }
       const previous = this.specs.get(projectId)
+      // Read the installation-qualified file BEFORE replacing it: its prior bearer can prove
+      // ownership after a normal app quit removed the local endpoint advertisement.
+      const prior = await this.r.run(childArgs(conn, controlPath,
+        `test ! -L ${posixQuote(endpoint)} && cat ${posixQuote(endpoint)} 2>/dev/null`)).catch(() => null)
+      const previousToken = prior?.code === 0 ? parseEndpointEnv(prior.stdout).NODETERM_HOOK_TOKEN : ''
       // 2. Remote endpoint file — written only after the tunnel proved live, so sessions are
       // never pointed at a socket that answers nothing. The file carries the hook bearer. A
       // direct `cat > endpoint` both exposed partial bytes and preserved an old permissive mode;
@@ -224,6 +231,23 @@ export class RemoteHooks {
       if (endpointResult.code !== 0) {
         await this.r.run(hookForwardCancelArgs(conn, controlPath, sock, hook.port)).catch(() => {})
         return null
+      }
+      const legacy = `${remoteDir}/hook-endpoint-${projectId}.env`
+      try {
+        const old = await this.r.run(childArgs(conn, controlPath,
+          `test ! -L ${posixQuote(legacy)} && cat ${posixQuote(legacy)} 2>/dev/null`))
+        if (old.code === 0 && old.stdout) {
+          const migration = legacyEndpointMigration(legacy, old.stdout,
+            remoteEndpointFileContents(sock, hook.token, hook.version, `${remoteDir}/node-tokens`),
+            [hook.token, previousToken ?? '', hookServer.getPreviousEndpointToken()])
+          const migrated = migration && await this.r.run(childArgs(conn, controlPath, migration.command), migration.stdin)
+          if (!migrated || migrated.code !== 0) {
+            console.warn('[remote-hooks] Legacy hook endpoint was preserved because ownership or unchanged contents could not be proven. ' +
+              'Existing sessions use endpoint discovery; restart affected agent sessions to adopt the new endpoint directly.')
+          }
+        }
+      } catch {
+        console.warn('[remote-hooks] Legacy hook endpoint migration unavailable; restart affected agent sessions to adopt the new endpoint directly.')
       }
       this.specs.set(projectId, { sock, port: hook.port })
       if (previous) {

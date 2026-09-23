@@ -16,16 +16,26 @@ function fixture(): string {
 afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }) })
 
 describe('hook endpoint advertisement ownership', () => {
-  it.each([204, 421])('preserves a live advertised owner answering %s, independently of the new bind path', async (status) => {
+  it.each([403, 421])('authenticates a live owner whose wrong-token reply is %s', async (status) => {
     const file = fixture()
-    const server = createHttpServer((_req, res) => { res.writeHead(status); res.end() })
+    const server = createHttpServer((req, res) => { res.writeHead(req.headers['x-nodeterm-hook-token'] === 'old-owner' ? 204 : status); res.end() })
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     const address = server.address() as { port: number }
     const contents = `NODETERM_HOOK_PORT='${address.port}'\nNODETERM_HOOK_TOKEN='old-owner'\n`
     fs.writeFileSync(file, contents)
     try {
-      await expect(assertHookEndpointAvailable(file)).rejects.toThrow('hook-endpoint-owned')
+      await expect(assertHookEndpointAvailable(file)).rejects.toThrow('live nodeterm owner authenticated')
       expect(fs.readFileSync(file, 'utf8')).toBe(contents)
+    } finally { await new Promise<void>((resolve) => server.close(() => resolve())) }
+  })
+
+  it.each([200, 204, 404, 421])('does not authenticate a foreign HTTP listener returning %s', async (status) => {
+    const file = fixture()
+    const server = createHttpServer((_req, res) => { res.writeHead(status); res.end() })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    fs.writeFileSync(file, `NODETERM_HOOK_PORT='${(server.address() as { port: number }).port}'\nNODETERM_HOOK_TOKEN='old-owner'\n`)
+    try {
+      await expect(assertHookEndpointAvailable(file)).rejects.toThrow('could not be authenticated')
     } finally { await new Promise<void>((resolve) => server.close(() => resolve())) }
   })
 

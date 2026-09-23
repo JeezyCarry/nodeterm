@@ -769,3 +769,9 @@ who never saw it.
 Managed Codex login terminals are agent-less: core identifies their provider from the saved
 account list. Before opening one, await `useSettings.getState().flush()` after adding the account.
 The normal 300 ms coalesced save is too late: an unknown id can launch against the system home.
+
+Optional hook ownership failures must never stop Desktop window creation or Server boot. Use the
+shared nonfatal startup path and surface its actionable diagnostic. A responding HTTP port is not
+nodeterm identity: verify bearer acceptance and rejection. Legacy SSH endpoint migration requires
+ownership proof, an unchanged-file check, and stdin-only credential transfer; a project name alone
+is not permission to replace another installation's advertisement.

@@ -1866,7 +1866,7 @@ app.whenReady().then(async () => {
   // hook POST dies against a dead port with zero symptoms beyond "statuses stay idle". The
   // listeners (setListener/setRawListener/setControlHandler) attach later, which the server
   // tolerates — early hook POSTs are simply dropped, never mis-routed.
-  await hookServer.start()
+  const hookStartupWarning = await hookServer.startForApp()
   // ---- Node identity (src/core/agents/node-auth-secret.ts) ------------------------------------
   // One secret does two jobs: it arms the hook server's per-node capability (closing the "shared
   // bearer can name any sibling node" hole) and it signs the codex thread → node records the hook
@@ -1943,6 +1943,10 @@ app.whenReady().then(async () => {
     return undefined
   })
   const win = createWindow()
+  if (hookStartupWarning) {
+    console.error('[agent-hooks]', hookStartupWarning)
+    void dialog.showMessageBox(win, { type: 'warning', title: 'Agent hooks unavailable', message: hookStartupWarning })
+  }
   // NT_MULTI instances are throwaway dev sandboxes. The dock badge is the one marker that is
   // always visible on macOS (the window title is hidden by titleBarStyle: 'hiddenInset', and the
   // dev dock icon/name are Electron's own), so a test instance can never be mistaken for the

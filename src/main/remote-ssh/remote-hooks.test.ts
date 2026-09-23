@@ -48,6 +48,32 @@ function harness(
 }
 
 describe('RemoteHooks.setup', () => {
+  it('migrates a legacy file using this installation’s previous qualified bearer', async () => {
+    const legacy = "NODETERM_HOOK_TOKEN='previous-secret'\nNODETERM_HOOK_SOCK='/stale'\n"
+    const { rh, calls } = harness({ responses: {
+      [`cat '/home/u/.nodeterm/hook-endpoint-p1-${owner}.env'`]: legacy,
+      ["cat '/home/u/.nodeterm/hook-endpoint-p1.env'"]: legacy
+    } })
+    expect(await rh.setup('p1', conn, '/s.sock', { port: 51234, token: 'tok', version: '1' })).not.toBeNull()
+    const migration = calls.find((c) => c.cmd.includes('.migration-lock'))
+    expect(migration).toBeDefined()
+    expect(migration!.stdin).toContain("NODETERM_HOOK_TOKEN='tok'")
+    expect(migration!.cmd).not.toContain('previous-secret')
+    expect(migration!.cmd).not.toContain("'tok'")
+  })
+
+  it('preserves a legacy file owned by another installation and still connects', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { rh, calls } = harness({ responses: {
+        ["cat '/home/u/.nodeterm/hook-endpoint-p1.env'"]: "NODETERM_HOOK_TOKEN='foreign-secret'\n"
+      } })
+      expect(await rh.setup('p1', conn, '/s.sock', { port: 51234, token: 'tok', version: '1' })).not.toBeNull()
+      expect(calls.some((c) => c.cmd.includes('.migration-lock'))).toBe(false)
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('restart affected agent sessions'))
+    } finally { warn.mockRestore() }
+  })
+
   it('opens a reverse forward, writes the endpoint file, and installs the managed hook for claude', async () => {
     const { rh, calls } = harness()
     const res = await rh.setup('p1', conn, '/s.sock', { port: 51234, token: 'tok', version: '1' })

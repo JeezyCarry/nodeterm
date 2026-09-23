@@ -2072,12 +2072,21 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   - **Hook endpoint ownership (#826):** startup first probes every transport in an existing
     endpoint advertisement and preserves a live or uncertain owner. The local Unix listener probes its socket before
     cleanup. Only `ECONNREFUSED` plus the same device/inode permits removal; a live listener,
-    non-socket, symlink or uncertain probe refuses startup without replacing its endpoint.
+    non-socket, symlink or uncertain probe disables hooks without replacing its endpoint.
+    Both shells use `startForApp`: Desktop creates its window and then shows an actionable warning;
+    Server Edition logs the same warning and continues boot. An authenticated owner must answer
+    `/verify` with 204 for the advertised bearer AND reject a random bearer (403/421); unrelated
+    HTTP responses are uncertain listeners, not authenticated nodeterm. Probes have a hard deadline.
     Endpoint writes are atomic and stop removes only the run's own advertised contents. SSH setup
     never removes a socket before binding: every forward gets a fresh random path, while discovery
     is stable per project + installation identity hash. Only a verified replacement is advertised;
-    then this run cancels its previous forward. Existing legacy endpoint files are left intact and
-    upgraded clients can discover the new file. A reused tunnel that loses bearer verification
+    then this run cancels its previous forward. A legacy project endpoint is migrated only when its
+    bearer matches the current run, the previous installation-qualified advertisement, or a stale
+    conventional local advertisement retained at boot. Publication rechecks the snapshot digest,
+    refuses symlinks, uses a migration lock and a private temp, and never places credentials in argv.
+    Without ownership proof (including a first upgrade after the old local advertisement was deleted),
+    it preserves the file and logs instructions to restart affected agent sessions; discovery still
+    works but may incur the old dead-tunnel delay until then. No real-host upgrade is claimed by unit tests. A reused tunnel that loses bearer verification
     emits hook-only health updates: the desktop shows a warning and clears it after repair, without
     reconnecting terminals. These changes share the core listener in Desktop and Server Edition;
     the mobile wire protocol and node-identity rules are unchanged.
