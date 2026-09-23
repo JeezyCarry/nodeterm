@@ -271,16 +271,17 @@ describe('planParkEviction — remote parks go last (issue #886)', () => {
 })
 
 describe('parkWindowMs', () => {
-  it('defaults to the historical 5 minutes', () => {
-    expect(parkWindowMs(PARK_MINUTES_DEFAULT)).toBe(5 * 60_000)
-    expect(parkWindowMs(undefined)).toBe(5 * 60_000)
+  it('defaults to 10 minutes', () => {
+    expect(PARK_MINUTES_DEFAULT).toBe(10)
+    expect(parkWindowMs(PARK_MINUTES_DEFAULT)).toBe(10 * 60_000)
+    expect(parkWindowMs(undefined)).toBe(10 * 60_000)
   })
   it('0 = no window at all (null), never Infinity', () => {
     // setTimeout clamps a delay above 2^31-1 ms to ~1 ms: an Infinity window would dispose at once.
     expect(parkWindowMs(0)).toBeNull()
   })
   it('a broken hand-edit falls back to the default, never to "keep forever"', () => {
-    for (const bad of [NaN, -1, Infinity, '30', null]) expect(parkWindowMs(bad)).toBe(5 * 60_000)
+    for (const bad of [NaN, -1, Infinity, '30', null]) expect(parkWindowMs(bad)).toBe(10 * 60_000)
   })
   it('clamps to the ceiling, which stays under the setTimeout overflow', () => {
     expect(parkWindowMs(1e9)).toBe(PARK_MINUTES_MAX * 60_000)

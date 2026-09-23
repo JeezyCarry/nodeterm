@@ -24,8 +24,10 @@ import type { AgentState } from '@shared/agents/normalize'
 export const PARK_MAX = 20
 
 /** Default park window in minutes (`settings.terminalParkMinutes`) — the historical
- *  `TERM_PARK_MS` of 5 minutes, unchanged for everyone who never touches the setting. */
-export const PARK_MINUTES_DEFAULT = 5
+ *  `TERM_PARK_MS` was 5 minutes; raised to 10 (issue #886) so a short detour through other
+ *  projects no longer lands an SSH project on the seconds-long reattach path. The memory it holds
+ *  is bounded by the count cap (`PARK_MAX`), not by the window. */
+export const PARK_MINUTES_DEFAULT = 10
 /** Settings UI ceilings. The window's `0` means "until the app quits", so the ceiling only
  *  bounds a typed number; the cap's is a sanity bound for a hand-edited settings.json. */
 export const PARK_MINUTES_MAX = 24 * 60

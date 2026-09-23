@@ -1612,7 +1612,7 @@ export interface Settings {
   offscreenTerminalMinutes: number
   /** Minutes a terminal stays PARKED after its project is switched away — xterm + PTY client kept
    *  alive off-DOM so switching back is instant and exact (no reattach). 0 = until the app quits.
-   *  Default 5. Hand-editable; re-validated at the use site (`parkWindowMs`). Issue #886. */
+   *  Default 10. Hand-editable; re-validated at the use site (`parkWindowMs`). Issue #886. */
   terminalParkMinutes: number
   /** Max parked terminals across all projects before the oldest (local first, then remote) are
    *  released early. Default 20. Re-validated at the use site (`parkCap`). Issue #886. */
@@ -1890,7 +1890,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tmuxScrollback: 50000,
   tmuxLeadPaneWidth: 0,
   offscreenTerminalMinutes: 10,
-  terminalParkMinutes: 5,
+  terminalParkMinutes: 10,
   terminalParkMax: 20,
   commitAgent: 'claude',
   commitAgentCommand: '',

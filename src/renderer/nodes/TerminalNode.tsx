@@ -516,7 +516,7 @@ interface ParkedTerminal {
   remote: boolean
 }
 const parkedTerminals = new Map<string, ParkedTerminal>()
-// The park window is `settings.terminalParkMinutes` (default 5 = the historical TERM_PARK_MS; 0 =
+// The park window is `settings.terminalParkMinutes` (default 10 — the old TERM_PARK_MS was 5; 0 =
 // until the app quits) and the count cap `settings.terminalParkMax` (default PARK_MAX = 20), both
 // read at PARK time through their validators (`parkWindowMs` / `parkCap`), so a change applies to
 // the next switch-away without touching entries already parked. Issue #886.
