@@ -75,6 +75,7 @@ describe('NSIS safety wiring', () => {
     expect(check).toBeGreaterThanOrEqual(0)
     expect(check).toBeLessThan(install.indexOf('!insertmacro uninstallOldVersion SHELL_CONTEXT'))
     expect(fs.readFileSync(templates + 'uninstaller.nsh', 'utf8')).toContain('!insertmacro CHECK_APP_RUNNING')
+    expect(include).toContain('"${PROJECT_DIR}\\scripts\\windows-update-preflight.ps1"')
   })
   it('only proceeds on proven clear; silent, error and cancellation paths quit nonzero', () => {
     expect(include).toMatch(/\$R0 == 0\s+Goto nodeterm_preflight_clear/)
