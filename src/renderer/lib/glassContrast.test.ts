@@ -6,7 +6,8 @@ import {
   composite,
   contrastRatio,
   glassTintAlpha,
-  parseHex
+  parseHex,
+  worstContrast
 } from './glassContrast'
 
 const WHITE = [255, 255, 255] as const
@@ -44,6 +45,29 @@ describe('glassTintAlpha', () => {
     // 4.13:1 opaque — no translucent tint can reach 4.5, so glass must not make it any worse.
     expect(contrastRatio(parseHex(light.theme.foreground!)!, parseHex(light.theme.background!)!)).toBeLessThan(4.5)
     expect(glassTintAlpha(light.theme.foreground!, light.theme.background!)).toBe(1)
+  })
+
+  it.each(TERMINAL_THEMES.map((t) => [t.id, t] as const))(
+    '%s: no grey backdrop (0..255 step 15) is worse than the white/black worst case',
+    (_id, t) => {
+      const fg = parseHex(t.theme.foreground!)!
+      const tint = parseHex(t.theme.background!)!
+      const a = glassTintAlpha(t.theme.foreground!, t.theme.background!)
+      const worst = worstContrast(fg, tint, a)
+      for (let g = 0; g <= 255; g += 15) {
+        expect(contrastRatio(fg, composite(tint, [g, g, g], a))).toBeGreaterThanOrEqual(worst - 1e-9)
+      }
+    }
+  )
+
+  it('a text colour inside the composite range is caught (some backdrop matches it)', () => {
+    // Mid-grey text on a black tint at 0.55: over black the composite is black, over white it is
+    // ~#737373, and #404040 sits between them — a grey backdrop exists that erases it.
+    const fg = parseHex('#404040')!
+    expect(worstContrast(fg, [0, 0, 0], 0.55)).toBe(1)
+    let min = Infinity
+    for (let g = 0; g <= 255; g++) min = Math.min(min, contrastRatio(fg, composite([0, 0, 0], [g, g, g], 0.55)))
+    expect(min).toBeLessThan(1.05)
   })
 
   it('every alpha above the answer passes too (non-monotonic contrast is handled)', () => {

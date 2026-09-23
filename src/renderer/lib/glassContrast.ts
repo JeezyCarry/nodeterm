@@ -3,9 +3,17 @@
  *
  * A glass node paints the terminal theme's background as a translucent tint over whatever is
  * behind it (a wallpaper, the canvas), so the effective background of every glyph is
- * `tint·a + backdrop·(1−a)`. The backdrop is unknowable — any pixel of any wallpaper — so the alpha
- * is chosen against the two extremes: pure white and pure black. Every other backdrop pixel lies
- * between them channel-wise, and so does its composite.
+ * `tint·a + backdrop·(1−a)`. The backdrop is unknowable — any pixel of any wallpaper.
+ *
+ * Why checking pure white and pure black is enough: contrast depends only on luminance, and the
+ * composite's luminance rises monotonically with each backdrop channel, so EVERY backdrop's
+ * composite lies in the luminance interval [composite over black, composite over white]. Against a
+ * fixed text colour, contrast falls as the background's luminance approaches the text's and rises
+ * away from it — so over that interval the worst case is an endpoint, UNLESS the text's own
+ * luminance falls inside the interval, where some backdrop matches it exactly (ratio 1). That case
+ * is checked explicitly (`worstContrast`) and fails. For the built-in themes' foregrounds it never
+ * arises at a ≥ 0.55: the tint then dominates the composite, keeping the whole interval on the
+ * tint's side of the text. `glassContrast.test.ts` samples grey backdrops to pin the claim.
  *
  * Compositing is in gamma-encoded sRGB, the way the browser blends an rgba() fill; the WCAG
  * relative luminance is computed on the result.
@@ -50,11 +58,17 @@ const WHITE: Rgb = [255, 255, 255]
 const BLACK: Rgb = [0, 0, 0]
 const STEP = 0.005
 
+/** The lowest contrast `fg` can have against the tint over ANY backdrop (see the module header). */
+export function worstContrast(fg: Rgb, tint: Rgb, alpha: number): number {
+  const overBlack = composite(tint, BLACK, alpha)
+  const overWhite = composite(tint, WHITE, alpha)
+  const l = relativeLuminance(fg)
+  if (l > relativeLuminance(overBlack) && l < relativeLuminance(overWhite)) return 1
+  return Math.min(contrastRatio(fg, overWhite), contrastRatio(fg, overBlack))
+}
+
 function passes(fg: Rgb, tint: Rgb, alpha: number, minRatio: number): boolean {
-  return (
-    contrastRatio(fg, composite(tint, WHITE, alpha)) >= minRatio &&
-    contrastRatio(fg, composite(tint, BLACK, alpha)) >= minRatio
-  )
+  return worstContrast(fg, tint, alpha) >= minRatio
 }
 
 /**
