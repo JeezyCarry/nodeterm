@@ -13443,3 +13443,131 @@ body.focus-mode .dock:hover {
 .files-node.collapsed .files-node__header {
   border-bottom: none;
 }
+
+/* ==== Liquid Glass appearance (Settings → Appearance → Liquid Glass) ===========================
+   Everything below is scoped to `:root[data-nt-glass='on']`, which App.tsx sets only for that
+   appearance, so the default look is untouched. `--glass-chrome-bg` is the ONE chrome fill: the
+   resolved `--panel` at the alpha `glassChromeAlpha` computes so the resolved `--text` keeps 4.5:1
+   over any backdrop (dark 0.70, light 0.745 on the shipped palettes). `--muted` gets no guarantee.
+
+   Three rules hold it together:
+   - Surface TOKENS are redefined to that fill, which reaches the many panels that paint
+     `var(--panel)` & co. without naming each one. A surface nested in another only stacks the SAME
+     tint, which moves the composite toward the panel colour — every alpha above the computed one
+     also passes (the scan in glassContrast.ts is contiguous from opaque), so nesting cannot break
+     the guarantee.
+   - The floating containers that hard-code `rgba(var(--menu-rgb), .98)` and friends are listed
+     explicitly; `!important` because the minimap's own rule already carries it.
+   - backdrop-filter goes on OUTERMOST containers only. A blur inside another blurred element
+     re-blurs its parent's already-blurred pixels (and costs a second pass), so nested pieces take
+     the fill alone. Node blur pauses while the camera moves (`.canvas-moving`); chrome is static
+     and keeps its blur. */
+:root[data-nt-glass='on'] {
+  --panel: var(--glass-chrome-bg);
+  --panel-header: var(--glass-chrome-bg);
+  --panel-2: var(--glass-chrome-bg);
+  --surface-deep: var(--glass-chrome-bg);
+  --surface-raised: var(--glass-chrome-bg);
+  --surface-overlay: var(--glass-chrome-bg);
+  --tabbar-bg: var(--glass-chrome-bg);
+  --glass-edge: rgba(var(--tint-rgb), 0.2);
+  --glass-blur: blur(24px) saturate(160%);
+}
+
+/* Outermost chrome: fill + blur. */
+:root[data-nt-glass='on']
+  :is(
+    .tabbar,
+    .dock,
+    .ctx-menu,
+    .tab-menu,
+    .announce-banner,
+    .update-card,
+    .controls-cluster > button,
+    .confirm,
+    .logpanel,
+    .shortcuts,
+    .palette,
+    .react-flow__controls,
+    .react-flow__minimap.minimap,
+    .resume-card,
+    .sysres-pill,
+    .usage-popover,
+    .sessmem-panel,
+    .ctx-popover,
+    .sessions-sidebar,
+    .phone-pair,
+    .focus-exit,
+    .dictation,
+    .nt-settings
+  ) {
+  background: var(--glass-chrome-bg) !important;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+/* Nested inside a blurred container (or unknown nesting): the fill only. */
+:root[data-nt-glass='on']
+  :is(.dock-menu, .dock-menu__sub, .usage-refresh, .sessions-icon-cluster button) {
+  background: var(--glass-chrome-bg) !important;
+}
+
+/* The active tab normally takes the canvas colour and flares into it; over a wallpaper that is a
+   black tab. It stacks one more layer of the fill instead, and the flares go. */
+:root[data-nt-glass='on'] .tab.active {
+  background: var(--glass-chrome-bg);
+}
+:root[data-nt-glass='on'] .tab.active::after {
+  display: none;
+}
+
+/* Every node kind. Terminal nodes keep their own theme-derived tint (.term-node--glass, above);
+   the others take the chrome fill through the tokens (or here, for the rgb-token ones). Bodies
+   that are another renderer's surface — Monaco, a <webview>, a <video> — stay opaque: they paint
+   their own background. Sticky notes keep their colour: the colour IS the note. */
+:root[data-nt-glass='on'] :is(.files-node, .trigger-node, .dino-node) {
+  background: var(--glass-chrome-bg);
+}
+:root[data-nt-glass='on'] :is(.term-node, .files-node, .loop-node, .subagent-node, .trigger-node, .dino-node) {
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+:root[data-nt-glass='on']
+  .canvas-moving
+  :is(.term-node, .files-node, .loop-node, .subagent-node, .trigger-node, .dino-node) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* No per-node accent colour on a window (the sessions list and the kanban board keep them). The
+   top border and the colour dot are INLINE styles from `data.color`, hence !important. The dot
+   stays as a neutral ring: it is also the button that opens the colour picker. */
+:root[data-nt-glass='on'] .term-node {
+  border-color: var(--glass-edge);
+  border-top-width: 1px;
+  border-top-color: var(--glass-edge) !important;
+}
+:root[data-nt-glass='on'] .term-node__color {
+  background: transparent !important;
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+}
+:root[data-nt-glass='on'] .react-flow__node:not(.react-flow__node-group) .react-flow__resize-control.handle {
+  background-color: var(--text) !important;
+  border-color: var(--text) !important;
+}
+:root[data-nt-glass='on'] .react-flow__node:not(.react-flow__node-group) .react-flow__resize-control.line {
+  border-color: var(--glass-edge) !important;
+}
+/* State stays visible without the accent colour: selection is a neutral ink outline; unread and
+   attention keep their own glows (app state, not a per-node colour), and their border reads
+   through the neutral top edge too. */
+:root[data-nt-glass='on'] .term-node.selected {
+  border-color: var(--text) !important;
+  box-shadow:
+    0 0 0 1px var(--text),
+    0 12px 40px rgba(0, 0, 0, calc(0.35 * var(--shadow-k)));
+}
+:root[data-nt-glass='on'] .term-node.unread {
+  border-color: var(--accent);
+  border-top-color: var(--accent) !important;
+}

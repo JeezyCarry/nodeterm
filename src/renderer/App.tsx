@@ -88,6 +88,9 @@ export default function App() {
       root.style.removeProperty('--glass-chrome-bg')
       return
     }
+    // Read the tokens with the glass overrides OFF: under them `--panel` IS the glass fill, and a
+    // theme switch would otherwise compute the new alpha from the old theme's fill.
+    delete root.dataset.ntGlass
     const css = getComputedStyle(root)
     const text = css.getPropertyValue('--text').trim()
     const panel = css.getPropertyValue('--panel').trim()
