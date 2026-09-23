@@ -21,6 +21,7 @@ it.skipIf(!existsSync(chrome))('keeps refresh clickable beside/above the real do
       '--headless', '--no-sandbox', '--disable-gpu', `--user-data-dir=${join(dir, 'profile')}`,
       '--window-size=1800,1100', '--remote-debugging-port=0', 'about:blank'
     ])
+    const exited = new Promise(resolve => browser.once('exit', resolve))
     try {
       const endpoint = await new Promise<string>((resolve, reject) => {
         let output = ''
@@ -75,12 +76,15 @@ it.skipIf(!existsSync(chrome))('keeps refresh clickable beside/above the real do
         const result = value.result.value
         expect(result).toMatch(/^PASS /)
         console.log(result)
-      } finally { ws.close() }
+      } finally {
+        await call('Browser.close')
+        ws.close()
+      }
     } finally {
       browser.kill()
-      await new Promise(resolve => browser.once('exit', resolve))
+      await exited
     }
   } finally {
-    rmSync(dir, { recursive: true, force: true })
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   }
 }, 40000)
