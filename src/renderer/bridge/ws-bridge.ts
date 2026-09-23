@@ -29,6 +29,7 @@ import {
   type GrokApi,
   type GrokCliCaps,
   type ClaudeSkillShareResult,
+  type ClaudeSessionCopyResult,
   type CodexApi,
   type CodexIdentityCaps,
   UNKNOWN_CODEX_IDENTITY_CAPS,
@@ -259,11 +260,11 @@ export function buildRealApi(
       client.request(IPC.ptyReadScrollback, persistKey) as Promise<string>,
     sendText: (persistKey, text, opts) =>
       client.request(IPC.ptySendText, persistKey, text, opts?.enter) as Promise<boolean>,
-    // Fail-open: an errored status must not raise the banner in the browser.
+    // A failed read is unknown, never evidence that persistence is available.
     tmuxStatus: () =>
       client
         .request(IPC.ptyTmuxStatus)
-        .catch(() => ({ available: true, installCommand: null, installLabel: null, platform: null })) as Promise<TmuxStatus>,
+        .catch(() => ({ available: false, installCommand: null, installLabel: null, platform: null, persistence: null })) as Promise<TmuxStatus>,
     // Unknown on failure (null), never a rejection: the restart poller reads null as "not a
     // shell yet" and gives up on its own deadline.
     paneCommand: (persistKey) =>
@@ -995,7 +996,19 @@ export function buildClaudeAccountsApi(client: RpcClient): Pick<NodeTerminalApi,
           IPC.claudeAccountsSetSkillSharing,
           id,
           enabled
-        ) as Promise<ClaudeSkillShareResult>
+        ) as Promise<ClaudeSkillShareResult>,
+      // Real: the copy is core, on the machine the browser is served from — the same machine whose
+      // account dirs the Server Edition's panes run under.
+      // An SSH ctx is forwarded as-is: the server registers no SSH leg, so core refuses it
+      // (`failed`) instead of copying on the server's own disk.
+      copySession: (sessionId, sourceAccountId, targetAccountId, ctx) =>
+        client.request(
+          IPC.claudeAccountsCopySession,
+          sessionId,
+          sourceAccountId,
+          targetAccountId,
+          ctx
+        ) as Promise<ClaudeSessionCopyResult>
     }
   }
 }
