@@ -37,7 +37,7 @@ describe('session-host messaging extension', () => {
     const owner = await pane.owner()
     expect(owner?.paneId).toContain('generation-a')
     expect(await pane.send('line one\nline two\x1b[201~', owner!)).toBe(true)
-    expect(probe).toHaveBeenCalledTimes(2)
+    expect(probe).toHaveBeenCalledTimes(3)
     // Two writes, in order: the paste, then Enter only once the envelope is on screen.
     expect(vi.mocked(session.proc.write).mock.calls).toEqual([
       ['\x1b[200~line one\nline two[201~\x1b[201~'],

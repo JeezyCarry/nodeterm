@@ -907,3 +907,9 @@ Held approval attention must not replace subagent, recurring or background-task 
 state evidence from those lifecycle hooks. A parent may ask several questions while a child ticket
 is outstanding: track each new picker and preserve child approval cards independently, including
 when their display titles match. Answering either resolves only that question or ticket.
+
+Delayed Windows message submission must recheck the attested child process/birth AND emulator
+paste mode immediately before Enter, not just the surviving PTY root. A missing host reply after
+a transmitted text request is uncertain delivery, never a pre-paste refusal; show the no-resend
+warning. SessionStart idle rescue is scoped to that same nonempty session and agent identity,
+and a foreign idle must not broadcast fresh state proof to the renderer.

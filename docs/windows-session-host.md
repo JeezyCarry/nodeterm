@@ -690,7 +690,8 @@ Windows named-pipe DACL hardening remain outside this profile pass as described 
 
 New callers use additive `sendKeysV2`, returning `result.delivery`: `true` for completed
 requested writes, `false` before input, or `pasted-not-submitted` when paste landed but the
-settle/mode/generation checks withheld Enter. The last result is terminal for automatic
+settle/mode/generation checks withheld Enter, or a transmitted request lost its reply.
+The latter case is uncertain: neither paste nor submission is claimed confirmed. The last result is terminal for automatic
 delivery: inspect the terminal, do not resend or blindly press Enter. Canvas write, trigger
 run history, and one-way UI writers surface it. An older host refuses this command and keeps
 its sessions; there is no fallback to `sendKeys`, raw input, or automatic restart. Legacy

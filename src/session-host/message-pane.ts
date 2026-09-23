@@ -63,8 +63,11 @@ export function hostMessagePane(
         },
         submit: async () => {
           // A replaced or exited generation gets nothing: a bare Enter into a stranger's pane.
-          if (!current(s)) return
-          try { s.proc.write('\r') } catch { /* the paste already landed; receipt reports stalled */ }
+          try {
+            const owner = await probe(s.proc.pid, s.generation)
+            if (!sameNativeProcess(expected, owner) || !(await s.messagePasteReady()) || !current(s)) return
+            s.proc.write('\r')
+          } catch { /* the paste already landed; receipt reports stalled */ }
         }
       }, settle)
     }

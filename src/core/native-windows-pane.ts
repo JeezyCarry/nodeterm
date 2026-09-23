@@ -71,8 +71,10 @@ export class NativeWindowsPane {
         } catch { return false }
       },
       submit: async () => {
-        if (!this.alive) return
-        try { this.proc.write('\r') } catch { /* paste landed; receipt reports stalled */ }
+        try {
+          if (!sameNativeProcess(expected, await this.owner()) || !(await this.pasteAware()) || !this.alive) return
+          this.proc.write('\r')
+        } catch { /* paste landed; receipt reports stalled */ }
       }
     }, this.settle)
   }

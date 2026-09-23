@@ -5128,3 +5128,13 @@ Pin/revoke mutations use `updateApprovedDevices` to queue the entire read/modify
 unique-temp atomic rename alone cannot prevent lost updates. Non-ENOENT reads and malformed JSON
 reject rather than overwrite unknown trust state. The queue is not a cross-process lock. A click
 accepted before host stop may finish its disk save, but must never open the now-closed session.
+
+Windows messaging final-submit checks cross a second OS identity probe and emulator barrier:
+`NativeWindowsPane.sendEnvelope` and `hostMessagePane.send` retain accepted-paste semantics when
+the child has changed or paste mode is off, but withhold Enter. The root PTY can outlive the CLI.
+`SessionHostClient.sendKeys` tracks whether its V2 frame was handed to the socket separately
+from an explicit negative host reply; loss of the reply after transmission returns conservative
+partial/unknown delivery, with no resend. The SessionStart idle rescue latch stores its session,
+agent and receive time; foreign/missing idle identity never creates proof or changes the
+renderer-visible session. These boundaries have behavioral regressions in
+`core/windows-delivery-safety.test.ts` and the mirror/client suites.

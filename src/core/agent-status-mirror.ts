@@ -151,7 +151,7 @@ export interface MirrorEntry {
    * unmessageable forever: the boundary left it unverified and only a turn could re-verify it.
    * Runtime-only (not in `buildFile`'s allowlist); cleared by every state commit.
    */
-  sessionStarted?: true
+  sessionStarted?: { sessionId: string; agentId: NormalizedAgentEvent['agentId']; at: number }
 }
 
 /** This host's Server-Edition install metadata (spec: server-update). Written by the installer
@@ -453,12 +453,23 @@ export function reduceEntry(
   return reduceEffectiveEntry(prev, resolveGrokStopCancelled(ev), now)
 }
 
+function uncorrelatedStartIdle(prev: MirrorEntry | undefined, ev: NormalizedAgentEvent, now: number): boolean {
+  const started = prev?.sessionStarted
+  return !!started && ev.kind === 'state' && !!ev.idle &&
+    (ev.sessionId !== started.sessionId || ev.agentId !== started.agentId ||
+     prev.sessionId !== started.sessionId || now < started.at)
+}
+
 function reduceEffectiveEntry(
   prev: MirrorEntry | undefined,
   ev: NormalizedAgentEvent,
   now: number
 ): MirrorEntry {
   const next: MirrorEntry = prev ? { ...prev } : { updatedAt: now }
+  // Ignore foreign idle proof before generic identity capture can overwrite the session.
+  const started = prev?.sessionStarted
+  if (uncorrelatedStartIdle(prev, ev, now)) return next
+
   /**
    * Commit a state onto `next` — and everything that must move WITH it. One function rather than
    * the same four lines at each branch, because the alternative was measured: of the three branches
@@ -550,7 +561,7 @@ function reduceEffectiveEntry(
     const idleAfterSessionStart =
       ev.idle === true &&
       ev.verified === true &&
-      prev?.sessionStarted === true &&
+      !!started &&
       prev.state === undefined
     if (ev.idle && prev?.state !== 'working' && !idleAfterSessionStart) return next
     // An unanswered Codex `request_user_input`: the ask arrives as waiting+awaitingInput and the
@@ -594,7 +605,9 @@ function reduceEffectiveEntry(
     next.awaitingInput = undefined
     // The boundary proves nothing about a state (and leaves `verifiedAt` alone), but a VERIFIED
     // start arms the idle rescue above.
-    if (ev.sessionPhase === 'start' && ev.verified === true) next.sessionStarted = true
+    if (ev.sessionPhase === 'start' && ev.verified === true && ev.sessionId) {
+      next.sessionStarted = { sessionId: ev.sessionId, agentId: ev.agentId, at: now }
+    }
   }
   // subagent-start / subagent-end / recurring: identity captured above, main state untouched.
   return next
@@ -1468,6 +1481,10 @@ export function recordAgentEvent(rawEvent: NormalizedAgentEvent): NormalizedAgen
   const now = Date.now()
   const prev = state.get(nodeId)
   const prevState = prev?.state
+  if (uncorrelatedStartIdle(prev, ev, now)) {
+    // Broadcast no state proof either: a renderer must not show this stale done as fresh.
+    return { nodeId, kind: 'state', agentId: prev?.sessionStarted?.agentId ?? ev.agentId, sessionId: prev?.sessionId }
+  }
   const next = reduceEffectiveEntry(prev, ev, now)
   state.set(nodeId, next)
   const questionAnswered = !!prev?.pendingQuestion && !next.pendingQuestion &&

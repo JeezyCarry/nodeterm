@@ -123,6 +123,9 @@ function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
 }
 
+/** Explicit host refusal: unlike a lost response, the host answered this request. */
+class SessionHostRequestRejectedError extends Error {}
+
 function isTransportUncertainty(value: unknown): boolean {
   const error = asError(value) as NodeJS.ErrnoException
   if (
@@ -699,7 +702,7 @@ export class SessionHostClient {
     this.pending.delete(frame.id)
     if (entry.timer) clearTimeout(entry.timer)
     if (frame.ok) entry.resolve(frame.result)
-    else entry.reject(new Error(frame.error))
+    else entry.reject(new SessionHostRequestRejectedError(frame.error))
   }
 
   private deliverData(state: ClientSessionState, data: string): void {
@@ -780,7 +783,8 @@ export class SessionHostClient {
 
   private async request<T>(
     request: SessionHostRequestBody,
-    onSuccess?: (result: T, socket: net.Socket) => void
+    onSuccess?: (result: T, socket: net.Socket) => void,
+    onSent?: () => void
   ): Promise<T> {
     // A peer-initiated close races the client's own 'close' event: a cached socket can look live
     // here while the peer already hung up, and a frame written into that gap fails (EPIPE) for
@@ -801,7 +805,7 @@ export class SessionHostClient {
       const socket = this.socket
       if (!socket) throw new Error('session-host: not connected')
       try {
-        return await this.requestOnSocket(socket, request, onSuccess)
+        return await this.requestOnSocket(socket, request, onSuccess, onSent)
       } catch (error) {
         if (!(error instanceof SessionHostRequestNotDeliveredError)) throw error
         if (attempt + 1 >= SESSION_HOST_RESEND_ATTEMPTS) throw error.original
@@ -815,7 +819,8 @@ export class SessionHostClient {
   private requestOnSocket<T>(
     socket: net.Socket,
     request: SessionHostRequestBody,
-    onSuccess?: (result: T, socket: net.Socket) => void
+    onSuccess?: (result: T, socket: net.Socket) => void,
+    onSent?: () => void
   ): Promise<T> {
     if (this.socket !== socket || socket.destroyed) {
       return Promise.reject(
@@ -863,6 +868,7 @@ export class SessionHostClient {
           return
         }
         pending.sent = true
+        onSent?.()
         try {
           socket.write(encodeFrame(full), (error) => {
             // A response may beat a late write callback. Identity-check this exact pending entry so
@@ -1410,12 +1416,15 @@ export class SessionHostClient {
   }
 
   async sendKeys(name: string, text: string, enter: boolean): Promise<TextDeliveryResult> {
+    let sent = false
     try {
-      const result = await this.request<{ delivery?: TextDeliveryResult } | undefined>({ cmd: 'sendKeysV2', name, text, enter })
+      const result = await this.request<{ delivery?: TextDeliveryResult } | undefined>({ cmd: 'sendKeysV2', name, text, enter }, undefined, () => { sent = true })
       // A malformed success cannot prove submission; never retry a possibly accepted paste.
       return result?.delivery === true || result?.delivery === false ? result.delivery : 'pasted-not-submitted'
-    } catch {
-      return false
+    } catch (error) {
+      // A frame handed to the socket may already have pasted. A lost reply is not a
+      // pre-input refusal: surface uncertainty and never invite an automatic resend.
+      return sent && !(error instanceof SessionHostRequestRejectedError) ? 'pasted-not-submitted' : false
     }
   }
 
