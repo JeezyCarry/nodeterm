@@ -307,7 +307,8 @@ export interface PtyCreateResult {
    *
    * `'codex-account'` is the S6 fail-closed twin: a LOCAL Codex node that explicitly selected a
    * managed account whose home is missing refuses rather than spawning against the system login
-   * (§5 property 4). Same contract — nothing spawned, the renderer shows the node's refusal.
+   * (§5 property 4). Remote managed Codex accounts refuse unknown/unsafe ids or unresolved/unsafe homes.
+   * System SSH Codex may attach before remote home discovery. Nothing spawned on refusal.
    */
   unavailable?: 'ssh' | 'codex-account'
 }

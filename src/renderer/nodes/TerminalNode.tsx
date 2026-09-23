@@ -1,3 +1,5 @@
+import { ptyRefusal } from '@shared/pty-refusal'
+
 import { patchImeModeSwitch } from '../terminal/ime-mode-switch'
 
 import { deliverRelayInitialLaunch } from '../terminal/relay-initial-launch'
@@ -3154,10 +3156,15 @@ export function TerminalNode({
         // round-trip, or `ssh` is missing). Nothing was spawned — land in the same offline state
         // the near-side guard above produces, retry included.
         if (unavailable) {
-          setCo(termKey, { offline: true })
-          if (!disposed)
-            term.write('\r\n\x1b[90m[not connected — nothing was started locally]\x1b[0m\r\n')
-          if (sshProjectId) reportSshDrop(sshProjectId, id)
+          const refusal = ptyRefusal(unavailable)
+          setCo(
+            termKey,
+            refusal.connectionLost
+              ? { offline: true }
+              : { offline: false, spawnError: refusal.message }
+          )
+          if (!disposed) term.write(`\r\n\x1b[90m[${refusal.message}]\x1b[0m\r\n`)
+          if (refusal.connectionLost && sshProjectId) reportSshDrop(sshProjectId, id)
           return
         }
         // REFUSED: core's tombstone says another client deleted this node while we weren't

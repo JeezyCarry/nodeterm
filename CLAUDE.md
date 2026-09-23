@@ -4962,6 +4962,14 @@ sessions is a hazard whatever kills it; this removes the hazard, not a proven ca
   When a change is genuinely desktop-only (native menus, auto-update, Keychain), say so; the
   point is to make the call consciously, not to leave the other surfaces to rot.
 
+Remote Codex safety (#736): `spawnNew` requires managed SSH Codex accounts (including custom
+Codex harnesses and known agent-less login terminals) to have a safe id in the saved Codex account
+list and a safe resolved `remoteHome`. `remoteAccountScopeEnvArgs` then supplies the private
+`CODEX_HOME` and account marker. An unresolved or unsafe home must refuse before env staging/spawn,
+not fall back to the host's system login. System Codex retains the host environment even before
+home discovery during early attach. Never guess HOME/CODEX_HOME. Desktop and Server share this
+core gate; Desktop supports the remote lifecycle, while Server account management remains unavailable.
+
 ## Media playback lifetime (#680)
 
 Audio routes through `isMediaFile` to the existing persisted `video` kind and native audio controls.

@@ -86,17 +86,17 @@ import { findExecutableSync, findInPathString, resolveShellPath, shellPathNow } 
 import {
   AUTH_ENV_STRIP,
   accountTmuxEnvArgs,
-  isReservedSpawnEnvKey,
-  remoteAccountConfigDirAbs
+  isReservedSpawnEnvKey
 } from './claude-accounts-core'
 import {
   AUTH_ENV_STRIP as CODEX_AUTH_ENV_STRIP,
   codexSessionEnv,
   isCodexScopeRefusal,
+  isSafeAccountId,
   needsCodexAccountScope,
   resolveCodexSessionScope
 } from './codex-accounts-core'
-import { NODE_ID_MAX, isSafeNodeId } from './remote-safety'
+import { NODE_ID_MAX, isSafeNodeId, isSafeRemoteHome } from './remote-safety'
 import { remoteAccountScopeEnvArgs } from './remote-account-env'
 import { presenceHub } from './presence/hub'
 import {
@@ -2150,18 +2150,27 @@ export class PtyManager {
     if (options.requireRemote && !(options.sshRemote && options.persistKey && findSsh())) {
       return { sessionId: '', fresh: false, unavailable: 'ssh' }
     }
-    // FAIL-CLOSED Codex account scope (S6 §5 property 4 / Decision 2, the carried PR-1 obligation).
-    // A LOCAL Codex spawn that EXPLICITLY selected a managed account whose home is missing REFUSES
-    // here — it must never fall through and spawn against the SYSTEM `~/.codex` (silently acting as
-    // the wrong login is a worse failure for an explicit switch than for a first spawn). This is
-    // deliberately STRICTER than the Claude account path below, which falls back with a warning
-    // chip. `resolveCodexSessionScope` returns `{ unavailable: 'codex-account' }` for exactly that
-    // case; we map it straight through to a real refusal and spawn NOTHING. The system account (no
-    // id) always resolves. Remote (ssh) Codex sessions carry their account env via tmux `-e`.
-    if (needsCodexAccountScope(options.agentId, options.accountId, (id) => this.isCodexAccount(id)) && !options.sshRemote) {
-      const scope = resolveCodexSessionScope(platform().userDataDir, options.accountId)
-      if (isCodexScopeRefusal(scope)) {
-        return { sessionId: '', fresh: false, unavailable: 'codex-account' }
+    // A managed remote Codex account needs a known id and a safe resolved home so the
+    // remote env builder can supply its private CODEX_HOME. Otherwise a fresh spawn would
+    // silently use the host's system login. Agent-less login terminals use this same gate.
+    if (needsCodexAccountScope(options.agentId, options.accountId, (id) => this.isCodexAccount(id))) {
+      if (options.sshRemote) {
+        if (
+          options.accountId &&
+          (!isSafeAccountId(options.accountId) ||
+            !this.isCodexAccount(options.accountId) ||
+            !isSafeRemoteHome(options.sshRemote.remoteHome))
+        ) {
+          return { sessionId: '', fresh: false, unavailable: 'codex-account' }
+        }
+        if (!options.persistKey || !findSsh()) {
+          return { sessionId: '', fresh: false, unavailable: 'ssh' }
+        }
+      } else {
+        const scope = resolveCodexSessionScope(platform().userDataDir, options.accountId)
+        if (isCodexScopeRefusal(scope)) {
+          return { sessionId: '', fresh: false, unavailable: 'codex-account' }
+        }
       }
     }
     // A tmux-backed session is "fresh" (cold start) when no live session exists to reattach to
@@ -3067,8 +3076,9 @@ export class PtyManager {
       // ABSOLUTE — tmux copies `-e` values verbatim (no `$HOME`/`~` expansion) — so we build it from
       // the connection's resolved remote $HOME. Fail-open: an unknown remoteHome (home resolution
       // failed on connect) skips the account env and the session runs under the remote `~/.claude`.
-      // Routed by PROVIDER (`remoteAccountScopeEnvArgs`): a managed Codex account gets its
-      // CODEX_HOME + NODETERM_CODEX_ACCOUNT_ID, a Claude one its CLAUDE_CONFIG_DIR.
+      // Routed by PROVIDER. spawnNew refuses managed Codex until remote validation/hooks
+      // are wired. System Codex retains the host defaults, including before home discovery
+      // during early attach; never guess a credential directory from the local environment.
       const remoteAccountEnv = remoteAccountScopeEnvArgs({
         agentId: options.agentId,
         accountId: options.accountId,
