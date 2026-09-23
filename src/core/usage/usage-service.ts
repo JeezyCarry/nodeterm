@@ -24,6 +24,7 @@ import {
   type RemoteUsageTarget
 } from './remote-claude-usage'
 import { fetchCodexUsage } from './codex-usage'
+import { fetchRemoteCodexUsage } from './remote-codex-usage'
 import { fetchGeminiUsage } from './gemini-usage'
 import { fetchGrokUsage } from './grok-usage'
 import { fetchKimiUsage } from './kimi-usage'
@@ -440,23 +441,32 @@ export function startUsageService(opts: UsageServiceOptions = {}): UsageService 
   // providers above, fetched ON DEMAND rather than polled: each row costs an ssh exec plus an
   // HTTPS request made on someone else's machine, and the pill is informational. The renderer
   // asks on mount, when the popover opens, and whenever the set of connected projects changes.
-  const remoteCache = new Map<string, { at: number; usage: ClaudeUsage }>()
-  const remoteInFlight = new Map<string, Promise<ClaudeUsage>>()
+  const remoteCache = new Map<string, { at: number; usage: ClaudeUsage | ProviderUsage }>()
+  const remoteInFlight = new Map<string, Promise<ClaudeUsage | ProviderUsage>>()
+  const remoteKey = (t: RemoteUsageTarget): string => JSON.stringify([
+    t.provider ?? 'claude', t.hostKey, t.accountId, t.projectId, t.remoteHome, t.connectionKey, t.key
+  ])
 
   const runRemote = async (
     deps: RemoteUsageDeps,
     target: RemoteUsageTarget
-  ): Promise<ClaudeUsage> => {
-    const pending = remoteInFlight.get(target.key)
+  ): Promise<ClaudeUsage | ProviderUsage> => {
+    const key = remoteKey(target)
+    const pending = remoteInFlight.get(key)
     if (pending) return pending
-    const p = fetchRemoteUsage(target, deps.run, Date.now())
-    remoteInFlight.set(target.key, p)
+    const p = target.provider === 'codex'
+      ? fetchRemoteCodexUsage(target, deps.run, Date.now())
+      : fetchRemoteUsage(target, deps.run, Date.now())
+    remoteInFlight.set(key, p)
     try {
       const u = await p
-      remoteCache.set(target.key, { at: Date.now(), usage: u })
+      // A replaced connection/account cannot repopulate the cache with a late old reply.
+      if (remoteInFlight.get(key) === p && deps.targets().some(t => remoteKey(t) === key)) {
+        remoteCache.set(key, { at: Date.now(), usage: u })
+      }
       return u
     } finally {
-      remoteInFlight.delete(target.key)
+      if (remoteInFlight.get(key) === p) remoteInFlight.delete(key)
     }
   }
 
@@ -473,8 +483,9 @@ export function startUsageService(opts: UsageServiceOptions = {}): UsageService 
     // reporting numbers from a connection that no longer exists. Evicted against the FULL target
     // list rather than the caller's filtered one: switching between two SSH projects would
     // otherwise throw away each host's cache on the way to the other.
-    const live = new Set(all.map((t) => t.key))
+    const live = new Set(all.map(remoteKey))
     for (const key of [...remoteCache.keys()]) if (!live.has(key)) remoteCache.delete(key)
+    for (const key of [...remoteInFlight.keys()]) if (!live.has(key)) remoteInFlight.delete(key)
     // The scoped indicator asks for ONE host — the machine the active project runs on — so the
     // other connections cost nothing while you are not looking at them.
     const targets = query?.hostKey ? all.filter((t) => t.hostKey === query.hostKey) : all
@@ -482,13 +493,19 @@ export function startUsageService(opts: UsageServiceOptions = {}): UsageService 
     // One slow / unreachable host must not withhold the others.
     const rows = await Promise.all(
       targets.map(async (t): Promise<RemoteAccountUsage> => {
-        const cached = remoteCache.get(t.key)
+        const cached = remoteCache.get(remoteKey(t))
         const fresh = cached && Date.now() - cached.at < REFETCH_DEBOUNCE_MS
         const usage =
           !force && fresh
             ? cached.usage
-            : await runRemote(deps, t).catch(() => emptyUsage(null, Date.now(), 'error'))
-        return { hostKey: t.hostKey, accountId: t.accountId, label: t.label, usage }
+            : await runRemote(deps, t).catch((): ClaudeUsage | ProviderUsage => t.provider === 'codex'
+              ? { provider: 'codex', accountId: t.accountId ?? undefined, account: t.accountId ? t.label : null,
+                  status: 'error', limits: [], updatedAt: Date.now() }
+              : emptyUsage(null, Date.now(), 'error'))
+        const identity = { hostKey: t.hostKey, accountId: t.accountId, label: t.label }
+        return 'provider' in usage
+          ? { ...identity, provider: 'codex', usage }
+          : { ...identity, usage }
       })
     )
     return rows

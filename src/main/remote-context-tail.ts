@@ -1,8 +1,8 @@
-// Remote counterpart of context-tail.ts: tails a Claude transcript .jsonl that lives on a
+// Remote counterpart of context-tail.ts: tails an agent transcript .jsonl that lives on a
 // REMOTE host (read over the project's ControlMaster via an injected RemoteFile) and pushes
 // the IDENTICAL ContextWindowUsage IPC the local tail does — the renderer can't tell remote
-// from local. Reuses the pure parser (parseLatestUsage) + model-window resolution from the
-// local tail; differs only in being async (the read is an ssh round-trip), so it async-polls
+// from local. Claude uses parseLatestUsage + model-window resolution; Codex injects its own
+// parser and reported denominator. The read is an ssh round-trip, so it async-polls
 // with a per-session in-flight `reading` flag that skips a tick instead of overlapping reads.
 import { type BrowserWindow } from 'electron'
 import { IPC } from '../shared/ipc'
@@ -31,6 +31,7 @@ interface Tracked {
   suppressCarry: boolean
   used: number
   window: number
+  parsedWindow: number | null
   model: string | null
   // In-flight guard: a slow ssh read must not overlap with the next tick.
   reading: boolean
@@ -53,10 +54,12 @@ export interface RemoteContextTail {
 }
 
 export function createRemoteContextTail(
-  win: BrowserWindow,
+  win: BrowserWindow | ((payload: ContextWindowUsage) => void),
   remoteFile: RemoteFile,
-  opts?: ContextTailOptions
+  opts?: ContextTailOptions & { parseModel?: (text: string | string[]) => string | null }
 ): RemoteContextTail {
+  const customParse = opts?.parse
+  const parse: NonNullable<ContextTailOptions['parse']> = customParse ?? parseLatestUsage
   const sessions = new Map<string, Tracked>()
   let timer: ReturnType<typeof setInterval> | null = null
 
@@ -71,10 +74,12 @@ export function createRemoteContextTail(
     // torn tail past the final newline, so dropping it yields the complete lines.
     const lines = combined.toString('utf-8').split('\n')
     const completeLines = lines.slice(0, -1)
-    const latest = parseLatestUsage(lines)
+    t.model = opts?.parseModel?.(lines) ?? t.model
+    const latest = parse(lines)
     if (latest) {
       t.used = latest.used
       t.model = latest.model ?? t.model
+      t.parsedWindow = latest.window ?? t.parsedWindow
     }
     // A historical partial line may finish on a later poll; it still must not emit events.
     const eventLines = historical ? [] : completeLines.slice(t.suppressCarry ? 1 : 0)
@@ -88,7 +93,7 @@ export function createRemoteContextTail(
   }
 
   const push = (sessionId: string, t: Tracked): void => {
-    if (win.isDestroyed()) return
+    if (typeof win !== 'function' && win.isDestroyed()) return
     const usedPercent = Math.min(100, Math.max(0, (t.used / t.window) * 100))
     const payload: ContextWindowUsage = {
       sessionId,
@@ -96,10 +101,11 @@ export function createRemoteContextTail(
       windowTokens: t.window,
       usedPercent,
       model: t.model,
-      windowSource: t.sessionWindow === null ? 'estimate' : 'session-env',
+      windowSource: customParse ? 'transcript' : t.sessionWindow === null ? 'estimate' : 'session-env',
       updatedAt: Date.now()
     }
-    win.webContents.send(IPC.contextUpdate, payload)
+    if (typeof win === 'function') win(payload)
+    else win.webContents.send(IPC.contextUpdate, payload)
   }
 
   // One bounded read per tick; retain the last good meter through transport failures.
@@ -129,10 +135,10 @@ export function createRemoteContextTail(
     }
 
     // Reconcile the window every pass, same resolution as the local tail.
-    const window = t.sessionWindow ?? cachedWindowFor(t.model)
+    const window = customParse ? t.parsedWindow : t.sessionWindow ?? cachedWindowFor(t.model)
 
     if (sessions.get(sessionId) !== t) return
-    if (t.used > 0 && (t.used !== t.lastUsed || t.model !== t.lastModel || window !== t.lastWindow)) {
+    if (t.used > 0 && window !== null && window > 0 && (t.used !== t.lastUsed || t.model !== t.lastModel || window !== t.lastWindow)) {
       t.window = window
       push(sessionId, t)
       t.lastUsed = t.used
@@ -171,6 +177,7 @@ export function createRemoteContextTail(
         suppressCarry: false,
         used: 0,
         window: 0,
+        parsedWindow: null,
         model: null,
         reading: false,
         lastUsed: 0,

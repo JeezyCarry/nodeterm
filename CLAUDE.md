@@ -1772,9 +1772,9 @@ else, and its context links must keep classifying across restarts).
     (`isSafeRemoteTranscriptPath`) and cache, reused as a second consumer rather than copied. Its
     "could not resolve" is **terminal**: falling through to any local resolver would search THIS
     machine for a file that only ever existed on the other one, and claude's cwd fallback would
-    happily meter an unrelated local session under the remote node's id. Remote metering is
-    claude-only, the same boundary the hook raw-listener already draws (`remote-context-tail.ts`
-    parses claude's records; the locator searches claude's roots).
+    happily meter an unrelated local session under the remote node's id. Remote Codex uses its own account-scoped locator and parser over the same bounded SSH
+    reader. Its reported transcript window wins; Claude estimates must never supply a Codex
+    denominator. Unresolved/disconnected remote nodes cannot fall through to local readers.
   - **Nothing negative is ever cached.** A clean miss and a failed ssh call are indistinguishable to
     the locator, so both cache NOTHING and the next mount retries in full — a momentarily dead
     ControlMaster must not be remembered as "this session has no transcript", or the meter stays
@@ -3248,7 +3248,7 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
 - **The usage indicator is scoped to the ACTIVE project** (`renderer/lib/usageScope.ts`, pure +
   unit-tested) — it describes **the machine that project runs on**, and nothing else. A local
   project shows this machine (system + managed local accounts + the billing providers, whose
-  credentials are all local); an **SSH project shows only that host's Claude accounts** — no local
+  credentials are all local); an **SSH project shows that host's Claude and Codex accounts** — no local
   Claude, no local providers, no other host. Without this the panel showed every source at once:
   each addition was individually reasonable and the sum was unreadable, numbers from three
   machines sharing one line with nothing saying which was which. Deliberately NOT narrowed to the
@@ -3302,6 +3302,19 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   slice pushed to a host still drops `usage` (a host reading its own numbers back off us is
   pointless), and no keychain leg exists remotely (a headless macOS host would hang on the prompt,
   so a mac host reports nothing).
+
+- **Codex SSH usage** (`core/usage/remote-codex-usage.ts`) uses host-side Node JSON parsing
+  and curl, reusing the local Codex quota mapper. Read only `tokens.access_token` and
+  `tokens.account_id`; pass headers through stdin, disable curl config/redirects, and return
+  only sanitized quota fields. Never download credentials, refresh tokens, or launch a remote
+  app-server just to refresh usage. The host needs Node and curl; missing tools/transport or
+  malformed responses are errors, not proof of a logged-out account. System reads use the
+  host login environment's `CODEX_HOME`; managed reads use the validated account's remote
+  home. Cache identity includes provider, host, account and connection/home identity.
+  Remote Codex rows obey the Codex visibility setting and carry no Claude default-account
+  or bulk-move actions. Desktop supports SSH reads; Server Edition keeps its local core
+  readers and absent SSH dependency. The private mobile reader is separate. Device checks:
+  `docs/codex-ssh-metrics.md`.
 
 ### Adding a new agent (or a new model) — what to watch out for
 

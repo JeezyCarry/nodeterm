@@ -908,6 +908,12 @@ state evidence from those lifecycle hooks. A parent may ask several questions wh
 is outstanding: track each new picker and preserve child approval cards independently, including
 when their display titles match. Answering either resolves only that question or ticket.
 
+SSH Codex metrics must stay scoped to the host and account being read. Credentials and quota
+HTTP requests remain on that host; only sanitized usage returns over SSH. Never route a failed
+remote context lookup into a local transcript reader, or reuse Claude's token formula/window
+estimate for Codex. The system account follows the host login environment; managed accounts
+use their validated private home. Usage refresh must not start or repair a shared Codex daemon.
+
 Delayed Windows message submission must recheck the attested child process/birth AND emulator
 paste mode immediately before Enter, not just the surviving PTY root. A missing host reply after
 a transmitted text request is uncertain delivery, never a pre-paste refusal; show the no-resend
