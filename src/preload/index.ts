@@ -1,3 +1,4 @@
+import { subscribeAgentReplay } from '../shared/agent-replay-subscription'
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 import { IPC } from '../shared/ipc'
 import { resolveUiScale } from '../shared/ui-scale'
@@ -48,7 +49,7 @@ function subscribe<A extends unknown[] = []>(channel: string) {
 const subscribeMutation = subscribe<[CanvasMutation]>(IPC.remoteHostApplyMutation)
 // Fan-out subscriber for the connection-approval prompt (main → host renderer when a client
 // finishes the handshake; carries the SAS to show in the approval dialog).
-const subscribePeerPending = subscribe<[{ sas: string | null; id: string; pub?: string | null }]>(
+const subscribePeerPending = subscribe<[{ sas: string | null; id: string; pub?: string | null; standing?: boolean }]>(
   IPC.remoteHostPeerPending
 )
 const subscribePeerPendingCleared = subscribe<[{ id: string | null; pub?: string | null }]>(
@@ -560,15 +561,17 @@ const api: NodeTerminalApi = {
     remove: (id, ctx) => ipcRenderer.invoke(IPC.claudeAccountsRemove, id, ctx),
     link: (configDir) => ipcRenderer.invoke(IPC.claudeAccountsLink, configDir),
     setSkillSharing: (id, enabled) =>
-      ipcRenderer.invoke(IPC.claudeAccountsSetSkillSharing, id, enabled)
+      ipcRenderer.invoke(IPC.claudeAccountsSetSkillSharing, id, enabled),
+    copySession: (sessionId, sourceAccountId, targetAccountId, ctx) =>
+      ipcRenderer.invoke(IPC.claudeAccountsCopySession, sessionId, sourceAccountId, targetAccountId, ctx)
   },
   codexAccounts: {
-    add: () => ipcRenderer.invoke(IPC.codexAccountsAdd),
-    waitLogin: (id) => ipcRenderer.invoke(IPC.codexAccountsWaitLogin, id),
+    add: (ctx) => ipcRenderer.invoke(IPC.codexAccountsAdd, ctx),
+    waitLogin: (id, ctx) => ipcRenderer.invoke(IPC.codexAccountsWaitLogin, id, ctx),
     cancelWaitLogin: (id) => ipcRenderer.invoke(IPC.codexAccountsCancelWait, id),
-    identity: (id) => ipcRenderer.invoke(IPC.codexAccountsIdentity, id),
+    identity: (id, ctx) => ipcRenderer.invoke(IPC.codexAccountsIdentity, id, ctx),
     systemIdentity: (ctx) => ipcRenderer.invoke(IPC.codexAccountsSystemIdentity, ctx),
-    remove: (id) => ipcRenderer.invoke(IPC.codexAccountsRemove, id),
+    remove: (id, ctx) => ipcRenderer.invoke(IPC.codexAccountsRemove, id, ctx),
     switchThread: (threadId, cwd, sourceAccountId, targetAccountId) =>
       ipcRenderer.invoke(
         IPC.codexAccountsSwitchThread,
@@ -600,6 +603,7 @@ const api: NodeTerminalApi = {
     onApplyMutation: subscribeMutation,
     onPeerPending: subscribePeerPending,
     onPeerPendingCleared: subscribePeerPendingCleared,
+    approvePhone: (id, pub) => ipcRenderer.invoke(IPC.remotePhoneApprove, { id, pub }),
     approve: (id: string, pub?: string) => ipcRenderer.send(IPC.remoteHostApprove, { id, pub }),
     reject: (id: string, pub?: string) => ipcRenderer.send(IPC.remoteHostReject, { id, pub }),
     setPhoneAccess: (enabled) => ipcRenderer.send(IPC.remoteStandingHostSet, enabled)
@@ -776,11 +780,11 @@ const api: NodeTerminalApi = {
     ipcRenderer.on(IPC.agentUnreadClear, handler)
     return () => ipcRenderer.removeListener(IPC.agentUnreadClear, handler)
   },
-  onAgentStatus: (listener) => {
-    const handler = (_e: unknown, payload: Parameters<typeof listener>[0]) => listener(payload)
+  onAgentStatus: (listener) => subscribeAgentReplay((cb) => {
+    const handler = (_e: unknown, payload: Parameters<typeof listener>[0]) => cb(payload)
     ipcRenderer.on(IPC.agentStatus, handler)
     return () => ipcRenderer.removeListener(IPC.agentStatus, handler)
-  },
+  }, () => ipcRenderer.invoke(IPC.agentSubagentSnapshot), listener),
   reportHibernated: (nodeId, on) => ipcRenderer.send(IPC.agentHibernated, { nodeId, on }),
   onAgentWake: (listener) => {
     const handler = (_e: unknown, nodeId: string) => listener(nodeId)

@@ -1,3 +1,4 @@
+import { subagentReplay } from '../core/subagent-replay'
 import { grokHomeDir, grokSessionDir, grokSessionsDir } from '../core/agents/grok-paths'
 import { join, resolve, posix } from 'path'
 import { startSessionNameSweep, displayNodeTitle } from '../core/session-name-sweep'
@@ -76,6 +77,7 @@ import type { TranscriptPresence } from '../shared/types'
 import { boardLogRemotePath } from '../core/board-log'
 import { PtyManager } from '../core/pty-manager'
 import { WorkspaceStore } from '../core/workspace-store'
+import type { CardLabelEdit } from '../core/project-kanban-write'
 import { WorkspaceWatcher } from '../core/workspace-watcher'
 import { SettingsStore } from '../core/settings-store'
 import { registerAgentEnvIpc } from '../core/agent-env-ipc'
@@ -158,6 +160,8 @@ import {
   onMirrorFlush,
   flush as flushAgentStatusMirror,
   recordAgentEvent,
+  recordQuestionResult,
+  ignoreQuestionHook,
   ackDone,
   recordRawToolEvent,
   recordContextUsage,
@@ -292,7 +296,7 @@ import { initStandingHost } from './remote/standing-host'
 import { killRelayHostsByPeerKey } from './remote/relay-host'
 import { initRelayHost } from './remote/relay-host-service'
 import { createRevoker } from './remote/revocation'
-import { loadApprovedDevices, saveApprovedDevices } from './remote/approved-devices'
+import { loadApprovedDevices, saveApprovedDevices, updateApprovedDevices } from './remote/approved-devices'
 import { publicKeyToB64 } from './remote/e2ee'
 import { connectRelayClient, type RelayClientSession } from './remote/relay-client'
 import { decodeOffer } from './remote/pairing'
@@ -1674,6 +1678,7 @@ app.whenReady().then(async () => {
   const peerRevoker = createRevoker({
     load: loadApprovedDevices,
     save: saveApprovedDevices,
+    update: updateApprovedDevices,
     onRevoke: (peerKeyB64) => killRelayHostsByPeerKey(peerKeyB64)
   })
   ipcMain.handle(IPC.remoteRevokePeer, (_e, peerKeyB64: string) =>
@@ -1868,7 +1873,7 @@ app.whenReady().then(async () => {
   // hook POST dies against a dead port with zero symptoms beyond "statuses stay idle". The
   // listeners (setListener/setRawListener/setControlHandler) attach later, which the server
   // tolerates — early hook POSTs are simply dropped, never mis-routed.
-  await hookServer.start()
+  const hookStartupWarning = await hookServer.startForApp()
   // ---- Node identity (src/core/agents/node-auth-secret.ts) ------------------------------------
   // One secret does two jobs: it arms the hook server's per-node capability (closing the "shared
   // bearer can name any sibling node" hole) and it signs the codex thread → node records the hook
@@ -1945,6 +1950,10 @@ app.whenReady().then(async () => {
     return undefined
   })
   const win = createWindow()
+  if (hookStartupWarning) {
+    console.error('[agent-hooks]', hookStartupWarning)
+    void dialog.showMessageBox(win, { type: 'warning', title: 'Agent hooks unavailable', message: hookStartupWarning })
+  }
   // NT_MULTI instances are throwaway dev sandboxes. The dock badge is the one marker that is
   // always visible on macOS (the window title is hidden by titleBarStyle: 'hiddenInset', and the
   // dev dock icon/name are Electron's own), so a test instance can never be mistaken for the
@@ -2326,24 +2335,15 @@ app.whenReady().then(async () => {
    * A tool RESULT landed in a tracked transcript. Only interesting while the node is still in
    * needs-you: an `AskUserQuestion` the user declined with Esc fires no PostToolUse and no Stop, so
    * nothing ever moved the node off NEEDS YOU — badge, notch capsule and phone card all stuck until
-   * the next prompt. The result proves the ask settled; `working` is the honest next state (Claude
+   * the next prompt. A matching session + tool-use ID proves the ask settled; `working` is the honest next state (Claude
    * carries on with "User declined to answer questions"), and any real event corrects it anyway.
    */
-  const onToolResult = (sessionId: string): void => {
+  const onToolResult = (sessionId: string, toolUseId: string): void => {
     let nodeId: string | undefined
     for (const [nid, sid] of nodeContextSession) if (sid === sessionId) nodeId = nid
     if (!nodeId) return
-    const st = nodeState(nodeId)
-    if (st !== 'blocked' && st !== 'waiting') return
-    const ev = {
-      nodeId,
-      agentId: 'claude',
-      sessionId,
-      kind: 'state',
-      state: 'working'
-    } satisfies NormalizedAgentEvent
-    sendToMain(IPC.agentStatus, ev)
-    recordAgentEvent(ev)
+    const ev = recordQuestionResult(nodeId, sessionId, toolUseId)
+    if (ev) sendToMain(IPC.agentStatus, ev)
   }
   const onTaskNotification = (sessionId: string, n: TaskNotification): void => {
     let nodeId: string | undefined
@@ -2666,7 +2666,10 @@ app.whenReady().then(async () => {
       // wrong-machine read, which is what falling through would produce.
       if (agentId && agentId !== 'claude') return 'unresolved'
       // Already tracked (a hook event landed, or an earlier mount resolved it) — nothing to ask.
-      if (remoteContextTail.pathFor(sessionId)) return 'tracked'
+      if (remoteContextTail.pathFor(sessionId)) {
+        remoteContextTail.replay(sessionId)
+        return 'tracked'
+      }
       // Asks the HOST where the transcript is, jails the answer, and caches a HIT under the session
       // id (shared with the ⌘M read path, which is the locator's first consumer). A clean miss and
       // a failed ssh call both come back `undefined` and cache NOTHING — so a momentarily dead
@@ -2772,6 +2775,7 @@ app.whenReady().then(async () => {
   // just-read node's latest state is `done`. The mirror resolves the node's done inbox event(s)
   // (phone Inbox archives the card) and re-sends an 'end' live-update so the paired phone dismisses
   // its lingering DONE Live Activity. Fire-and-forget; the mirror no-ops with no unresolved done.
+  corePlatform.handle(IPC.agentSubagentSnapshot, () => subagentReplay.snapshot())
   corePlatform.handle(IPC.agentAckDone, (nodeId: string) => {
     ackDone(nodeId)
   })
@@ -2971,11 +2975,7 @@ app.whenReady().then(async () => {
     return isSafeRemoteTranscriptPath(abs, remoteHome) ? abs : undefined
   }
   const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])
-  // `meta` carries the per-node `verified` flag and is deliberately UNUSED here: A13 moved
-  // enforcement into the hook server, which refuses before a listener is ever called. This shell
-  // used to keep a `nodeVerified` map written on every event and read by nothing. The parameter
-  // stays because the flag is part of the listener contract and both shells must take it
-  // (invariant 4, pinned by hook-verified-parity.test.ts); a second copy of the answer is not.
+  // Hook server validates session-env capacity and caller identity once for both shells.
   hookServer.setRawListener((agentId, nodeId, payload, _meta) => {
     if (agentId === 'grok') {
       // This branch records two associations, neither of which grok's envelope states outright.
@@ -3138,6 +3138,7 @@ app.whenReady().then(async () => {
     // Runs BEFORE the local/remote split so it covers remote (SSH) nodes too — it needs only
     // tool_name/tool_input, never the transcript path the split routes on.
     recordRawToolEvent(nodeId, payload)
+    if (ignoreQuestionHook(nodeId, payload)) return
     const p = payload as {
       hook_event_name?: string
       session_id?: string
@@ -3157,7 +3158,7 @@ app.whenReady().then(async () => {
       const transcriptPath = safeRemoteTranscriptPath(p.transcript_path, remoteHome)
       if (p.session_id && transcriptPath) {
         const ref: RemoteFileRef = { conn: rt.conn, controlPath: rt.controlPath, path: transcriptPath }
-        remoteContextTail.track(p.session_id, ref)
+        remoteContextTail.track(p.session_id, ref, _meta.contextWindow)
         remoteTranscriptBySession.set(p.session_id, ref)
       }
       if (nodeId && p.session_id) nodeContextSession.set(nodeId, p.session_id)
@@ -3213,7 +3214,7 @@ app.whenReady().then(async () => {
     }
     const transcriptPath = safeTranscriptPath(p.transcript_path)
     // Context-window meter: tail the session transcript (any event carrying both fields).
-    if (p.session_id && transcriptPath) contextTail.track(p.session_id, transcriptPath)
+    if (p.session_id && transcriptPath) contextTail.track(p.session_id, transcriptPath, _meta.contextWindow)
     if (nodeId && p.session_id) nodeContextSession.set(nodeId, p.session_id)
     if (nodeId && p.session_id && transcriptPath) setNodeTranscript(nodeId, p.session_id, transcriptPath)
     if (p.hook_event_name === 'SessionEnd' && p.session_id) contextTail.untrack(p.session_id)
@@ -3909,7 +3910,11 @@ app.whenReady().then(async () => {
     kanban: {
       ensureBoard: (projectId: string) => workspaceStore.ensureRemoteBoard(projectId),
       setCardColumn: (projectId: string, nodeId: string, columnId: string | null) =>
-        workspaceStore.setRemoteCardColumn(projectId, nodeId, columnId)
+        workspaceStore.setRemoteCardColumn(projectId, nodeId, columnId),
+      // The phone's long-press label sheet. Same store read-modify-write + renderer announce as the
+      // card move, so a label added on the phone lands on the canvas node and the kanban card live.
+      editCardLabels: (projectId: string, nodeId: string, edit: CardLabelEdit) =>
+        workspaceStore.editRemoteCardLabels(projectId, nodeId, edit)
     },
     // "End session" from the phone (`pty.destroy`): the SAME two steps the desktop × performs —
     // kill the tmux session on every socket it could live on (the sweep may have seen it on either

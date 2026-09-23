@@ -307,7 +307,8 @@ export interface PtyCreateResult {
    *
    * `'codex-account'` is the S6 fail-closed twin: a LOCAL Codex node that explicitly selected a
    * managed account whose home is missing refuses rather than spawning against the system login
-   * (§5 property 4). Same contract — nothing spawned, the renderer shows the node's refusal.
+   * (§5 property 4). Remote managed Codex accounts refuse unknown/unsafe ids or unresolved/unsafe homes.
+   * System SSH Codex may attach before remote home discovery. Nothing spawned on refusal.
    */
   unavailable?: 'ssh' | 'codex-account'
 }
@@ -337,6 +338,10 @@ export type NodeKind = 'terminal' | 'sticky' | 'group' | 'editor' | 'diff' | 'vi
  * a stalled station must never be a dead end.
  */
 export interface PendingLaunch {
+  /** false proves no input attempt; true/absent require explicit recovery after reload. */
+  attempted?: boolean
+  /** An attempted/uncertain delivery requires explicit Run now; never replay on hooks. */
+  manualOnly?: boolean
   /**
    * Node ids to wait for. Only nodes running a hook-reporting agent may appear here — a plain
    * terminal never reports `done`, so waiting on one would stall forever (refused at creation).
@@ -892,9 +897,12 @@ export const EMPTY_WORKSPACE: Workspace = {
 
 // ---- Contract for the API exposed to the renderer via preload ----
 
-/** Wire shape of pty:tmux-status — behind the "tmux not found" banner. */
+/** Local core backend discovery, not a runtime health check or a promise about existing sessions. */
 export interface TmuxStatus {
+  /** tmux discovery only; retained for older callers and install polling. */
   available: boolean
+  /** Absent on older peers; null when discovery could not be read. */
+  persistence?: { enabled: boolean; backend: 'tmux' | 'session-host' | null } | null
   /** One-shot install command for a terminal node; null = no known installer (text-only banner). */
   installCommand: string | null
   /** Button caption for installCommand (e.g. "Install Homebrew + tmux" when brew must come first). */
@@ -1602,6 +1610,13 @@ export interface Settings {
   /** Minutes a terminal may sit fully offscreen before its xterm+PTY client is torn down in
    *  place (tmux keeps the session; re-approach reattaches and redraws). 0 = never. */
   offscreenTerminalMinutes: number
+  /** Minutes a terminal stays PARKED after its project is switched away — xterm + PTY client kept
+   *  alive off-DOM so switching back is instant and exact (no reattach). 0 = until the app quits.
+   *  Default 5. Hand-editable; re-validated at the use site (`parkWindowMs`). Issue #886. */
+  terminalParkMinutes: number
+  /** Max parked terminals across all projects before the oldest (local first, then remote) are
+   *  released early. Default 20. Re-validated at the use site (`parkCap`). Issue #886. */
+  terminalParkMax: number
   /** AI commit message agent: a local coding-agent CLI run read-only. */
   commitAgent: 'claude' | 'codex' | 'custom'
   /** For commitAgent='custom': command template; {prompt} placeholder optional (else stdin). */
@@ -1875,6 +1890,8 @@ export const DEFAULT_SETTINGS: Settings = {
   tmuxScrollback: 50000,
   tmuxLeadPaneWidth: 0,
   offscreenTerminalMinutes: 10,
+  terminalParkMinutes: 5,
+  terminalParkMax: 20,
   commitAgent: 'claude',
   commitAgentCommand: '',
   commitExtraPrompt: '',
@@ -2007,6 +2024,8 @@ export type SshProjectStatus = 'connecting' | 'connected' | 'disconnected' | 're
  * Absent = not probed / nothing new ⇒ the renderer keeps omitting the `auto` flag (fail-open).
  */
 export interface SshProjectStatusEvent {
+  /** Hook-only health update; it does not imply an SSH reconnect or terminal restart. */
+  hookTunnelVerified?: boolean
   projectId: string
   status: SshProjectStatus
   error?: string
@@ -2423,9 +2442,18 @@ export interface UsageLimit {
  * One provider's usage snapshot. `ClaudeUsage` below is the Claude-shaped superset kept for the
  * existing pill; new providers use this leaner shape (they have no per-account story yet).
  */
+/** Safe billing diagnostics: never include URLs, response bodies, or exception messages. */
+export type UsageDiagnostic = {
+  view: 'credits' | 'default'
+} & ({ reason: 'http'; httpStatus: number } | {
+  reason: 'timeout' | 'network' | 'invalid-response'
+})
+
 export interface ProviderUsage {
   /** Agent id the limits belong to: 'claude' | 'codex' | … */
   provider: string
+  /** Failed billing views, including failures recovered by a successful fallback. */
+  diagnostics?: UsageDiagnostic[]
   limits: UsageLimit[]
   /** Signed-in identity, when the provider exposes one cheaply (email / account label). */
   account: string | null
@@ -2536,6 +2564,14 @@ export interface SessionMemoryApi {
   host(q?: SessionMemoryQuery): Promise<MemInfo | null>
 }
 
+/** Best-effort active organization from this account's Claude identity file. */
+export interface ClaudeUsageOrganization {
+  name: string
+  uuid?: string
+  type?: string
+  rateLimitTier?: string
+}
+
 /** Claude Code subscription usage snapshot for the bottom-left indicator. */
 export interface ClaudeUsage {
   /**
@@ -2547,6 +2583,8 @@ export interface ClaudeUsage {
   weekly: ClaudeUsageWindow | null
   /** Signed-in account email, read-only and best-effort (null if unknown). */
   email: string | null
+  /** Active organization, absent when its metadata is unavailable. */
+  organization?: ClaudeUsageOrganization
   /** Unix ms when this snapshot was produced. */
   updatedAt: number
   /**
@@ -2608,6 +2646,8 @@ export interface UsageApi {
 
 /** A Claude session's context-window fill, pushed per sessionId from the transcript tailer. */
 export interface ContextWindowUsage {
+  /** Missing on older hosts; only session-env is an observed Claude configuration. */
+  windowSource?: 'session-env' | 'transcript' | 'estimate'
   sessionId: string
   /** input + cache_read + cache_creation tokens of the latest assistant message. */
   usedTokens: number
@@ -2783,7 +2823,29 @@ export interface ClaudeAccountsApi {
    * (the account's `skills/` resolves to the system one) and `failed` (an EPERM, a vanished skill).
    */
   setSkillSharing(id: string, enabled: boolean): Promise<ClaudeSkillShareResult>
+  /**
+   * Copy a conversation's transcript from one LOCAL account's config dir into another's (`undefined`
+   * = the system `~/.claude`), so a node switched onto the target account resumes the SAME
+   * conversation there with no `/login`. With an SSH `ctx` the same copy runs on that project's host,
+   * between REMOTE accounts pinned to it. Called only after the CLI has exited. Never overwrites a
+   * diverged copy (`diverged`); never throws — every refusal is a reason.
+   */
+  copySession(
+    sessionId: string,
+    sourceAccountId: string | undefined,
+    targetAccountId: string | undefined,
+    /** An SSH project's node: the copy runs ON THAT HOST, between its remote account dirs. */
+    ctx?: AccountSshCtx
+  ): Promise<ClaudeSessionCopyResult>
 }
+
+/** What `claudeAccounts.copySession` did. `copied: false` = the target already held this exact copy. */
+export type ClaudeSessionCopyResult =
+  | { ok: true; copied: boolean }
+  | {
+      ok: false
+      reason: 'bad-request' | 'unknown-account' | 'no-transcript' | 'diverged' | 'failed'
+    }
 
 /** What one `setSkillSharing` / launch reconcile did. Counts, never an exception. */
 export interface ClaudeSkillShareResult {
@@ -2811,22 +2873,26 @@ export interface ClaudeSkillShareResult {
  */
 export interface CodexAccountsApi {
   /** Mint a new managed account: create its private CODEX_HOME (0700) and symlink the shared,
-   *  non-secret runtime assets in. Returns the new id + its home. */
-  add(): Promise<{ id: string; home: string }>
+   *  non-secret runtime assets in. Returns the new id + its home. With an SSH `ctx` the home is
+   *  created ON that connected host (no credential ever travels); throws when it cannot be. */
+  add(ctx?: AccountSshCtx): Promise<{ id: string; home: string }>
   /** Poll the account's `auth.json` (a real file, never a symlink) every 2s up to 5min for a
-   *  completed device login, then read its email; null on timeout/cancel. */
-  waitLogin(id: string): Promise<{ email: string | null } | null>
+   *  completed device login, then read its email; null on timeout/cancel. With an SSH `ctx` the poll
+   *  runs on the host, and a login whose email cannot be read there resolves `{ email: null }`. */
+  waitLogin(id: string, ctx?: AccountSshCtx): Promise<{ email: string | null } | null>
   /** Cancel an in-flight `waitLogin` for this account. */
   cancelWaitLogin(id: string): Promise<void>
-  /** Read a managed account's already-logged-in identity (email), or null if not logged in. */
-  identity(id: string): Promise<{ email: string | null } | null>
+  /** Read a managed account's already-logged-in identity (email), or null if not logged in. With an
+   *  SSH `ctx`, asked of the account's home on that host. */
+  identity(id: string, ctx?: AccountSshCtx): Promise<{ email: string | null } | null>
   /** Read a machine's system (`~/.codex`) account identity. No arg ⇒ this Mac. `{ projectId }` ⇒
    *  the connected SSH host behind that project; a host whose system identity cannot be resolved
    *  resolves `null` (fail-closed — a remote machine panel never borrows this Mac's login). */
   systemIdentity(ctx?: { projectId?: string }): Promise<{ email: string | null } | null>
   /** Remove a managed account: stop its daemon and delete its home. Refused while a switch
-   *  reservation holds it or a concurrent removal is in flight (Property 10). */
-  remove(id: string): Promise<void>
+   *  reservation holds it or a concurrent removal is in flight (Property 10). With an SSH `ctx`,
+   *  the home is deleted on that host; throws when it could not be. */
+  remove(id: string, ctx?: AccountSshCtx): Promise<void>
   /** Phase 1 of the owner-authorized same-machine switch: plan + reserve the rollout exposure of a
    *  conversation from one account to another under a `rollbackToken` (TTL 60s, owner = caller). */
   switchThread(
@@ -3133,6 +3199,10 @@ export interface LicenseApi {
   releaseOthers(): Promise<LicenseDetail>
 }
 
+export type PhoneApprovalResult = {
+  status: 'persisted' | 'approved' | 'saved-disconnected' | 'stale' | 'persistence-failed'
+}
+
 export interface RemoteHostApi {
   /**
    * Enter host mode: mint a pairing token, connect to the relay as the host, and return the
@@ -3158,16 +3228,17 @@ export interface RemoteHostApi {
    * verification code to display. Returns an unsubscribe function.
    */
   onPeerPending(
-    listener: (info: { sas: string | null; id: string; pub?: string | null }) => void
+    listener: (info: { sas: string | null; id: string; pub?: string | null; standing?: boolean }) => void
   ): () => void
   /** The pending prompt expired host-side (120 s) — the dialog must drop or re-arm, else its
    *  Approve is a silent no-op against a dead id (issue #372). */
   onPeerPendingCleared(
     listener: (info: { id: string | null; pub?: string | null }) => void
   ): () => void
-  /** Approve the pending client → the host begins serving its pty/fs RPCs. `pub` (the peer's
-   *  stable box key) survives the phone's reconnect churn where the per-attach `id` does not —
-   *  pass both when known. */
+  /** Standing phone consent: persist the displayed handshake identity before granting access.
+   *  Both fields must match a bounded pending request. Desktop-only; Server rejects explicitly. */
+  approvePhone(id: string, pub: string): Promise<PhoneApprovalResult>
+  /** Legacy interactive (single-use offer) approval; does not persist a device pin. */
   approve(id: string, pub?: string): void
   /** Reject the pending client → the connection is dropped. Same id/pub matching as approve. */
   reject(id: string, pub?: string): void
