@@ -2064,14 +2064,39 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     "control endpoint unreachable" — in the field, a reviewer launch silently dropped. Now shared,
     one definition. Two server-side halves in `hook-server.ts`: a FAILED `listen()` un-wedges the
     singleton (it used to leave `this.server` set, making every retry a silent no-op at port 0)
-    and both `stop()` and the failed-start path delete `hook-endpoint.env` — publication reflects
-    listener liveness; a crash skips that, which is exactly what the client walk exists for. An
-    HTTP answer of any code is authoritative: only a dead transport (curl 000/'') fails over, so a
-    403/400 is never re-sent to another instance. The walk is skipped under
-    `CODEX_SANDBOX_NETWORK_DISABLED` (#367 — the sandbox denies every connect, the hint is the
-    right diagnosis) and the final error now distinguishes "no endpoint anywhere" from "an
+    and `stop()` deletes only the endpoint contents this run published — a failed start cannot
+    erase another owner's advertisement. A crash skips cleanup, which is why clients still walk
+    the candidates.
+    HTTP 421 means the bearer belongs to a different endpoint and is rejected BEFORE dispatch;
+    it joins dead transport (curl 000/'') in the bounded discovery walk. A node-identity 403/400
+    remains final and is never re-sent to another instance. The walk is skipped under
+    `CODEX_SANDBOX_NETWORK_DISABLED` for transport failures (#367); an explicit 421 proves
+    transport worked and still permits discovery. The final error distinguishes "no endpoint
+    anywhere" from "an
     advertised endpoint that is not listening" (`STALE_ENDPOINT_HINT`). Desktop quit calls
     `hookServer.stop()` on the second before-quit pass, after the flush window.
+
+  - **Hook endpoint ownership (#826):** startup first probes every transport in an existing
+    endpoint advertisement and preserves a live or uncertain owner. The local Unix listener probes its socket before
+    cleanup. Only `ECONNREFUSED` plus the same device/inode permits removal; a live listener,
+    non-socket, symlink or uncertain probe disables hooks without replacing its endpoint.
+    Both shells use `startForApp`: Desktop creates its window and then shows an actionable warning;
+    Server Edition logs the same warning and continues boot. An authenticated owner must answer
+    `/verify` with 204 for the advertised bearer AND reject a random bearer (403/421); unrelated
+    HTTP responses are uncertain listeners, not authenticated nodeterm. Probes have a hard deadline.
+    Endpoint writes are atomic and stop removes only the run's own advertised contents. SSH setup
+    never removes a socket before binding: every forward gets a fresh random path, while discovery
+    is stable per project + installation identity hash. Only a verified replacement is advertised;
+    then this run cancels its previous forward. A legacy project endpoint is migrated only when its
+    bearer matches the current run, the previous installation-qualified advertisement, or a stale
+    conventional local advertisement retained at boot. Publication rechecks the snapshot digest,
+    refuses symlinks, uses a migration lock and a private temp, and never places credentials in argv.
+    Without ownership proof (including a first upgrade after the old local advertisement was deleted),
+    it preserves the file and logs instructions to restart affected agent sessions; discovery still
+    works but may incur the old dead-tunnel delay until then. No real-host upgrade is claimed by unit tests. A reused tunnel that loses bearer verification
+    emits hook-only health updates: the desktop shows a warning and clears it after repair, without
+    reconnecting terminals. These changes share the core listener in Desktop and Server Edition;
+    the mobile wire protocol and node-identity rules are unchanged.
 
   Enforcement is dated (`NODE_IDENTITY_STRICT_AFTER`, 2026-10-13, read through `isStrictInstant` so a
   clock years ahead cannot enter strict mode early) with a `settings.hookIdentityStrict` escape hatch

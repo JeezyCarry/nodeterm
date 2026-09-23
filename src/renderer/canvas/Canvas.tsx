@@ -1306,6 +1306,7 @@ export function Canvas() {
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false)
   // Live SSH ControlMaster status per project id (drives the thin connection banner).
   const [sshStatus, setSshStatus] = useState<Record<string, SshProjectStatus>>({})
+  const [lostHookTunnels, setLostHookTunnels] = useState<Record<string, boolean>>({})
   // The cause that came with an `error` status. Kept beside the status because the banner used to
   // render a bare "SSH connection error", throwing away the one line ssh gave us (permission
   // denied, host unreachable, host key mismatch) that tells the user what to actually fix.
@@ -13590,6 +13591,10 @@ export function Canvas() {
   // Track SSH project connection status for the thin connection banner (keyed by project id).
   useEffect(() => {
     return window.nodeTerminal.sshProject.onStatus((e) => {
+      if (e.hookTunnelVerified !== undefined) {
+        setLostHookTunnels((prev) => ({ ...prev, [e.projectId]: !e.hookTunnelVerified }))
+        return // A health probe must never trigger terminal reconnection.
+      }
       setSshStatus((prev) => ({ ...prev, [e.projectId]: e.status }))
       // Keep the cause for the banner. Cleared on any non-error status so a stale reason can
       // never be shown next to a healthy connection.
@@ -14559,15 +14564,17 @@ export function Canvas() {
         )}
         {activeSshServer &&
           sshStatus[activeProjectId] &&
-          sshStatus[activeProjectId] !== 'connected' &&
+          (sshStatus[activeProjectId] !== 'connected' || lostHookTunnels[activeProjectId]) &&
           (() => {
             const st = sshStatus[activeProjectId]
+            const hooksLost = st === 'connected' && lostHookTunnels[activeProjectId]
             const isError = st === 'error' || st === 'disconnected'
             // The reason ssh gave, already trimmed to one line by lastSshErrorLine in main. Shown
             // inline: a bare "SSH connection error" leaves the user with nothing to act on.
             const cause = sshError[activeProjectId]
-            const text =
-              st === 'connecting'
+            const text = hooksLost
+              ? `${activeSshServer.label}: Agent status and canvas control lost their verified connection. Retrying automatically…`
+              : st === 'connecting'
                 ? `Connecting to ${activeSshServer.label}…`
                 : st === 'reconnecting'
                   ? `Reconnecting to ${activeSshServer.label}…`
@@ -14591,7 +14598,7 @@ export function Canvas() {
                   borderRadius: 8
                 }}
               >
-                {isError ? (
+                {isError || hooksLost ? (
                   <span
                     style={{
                       width: 8,
