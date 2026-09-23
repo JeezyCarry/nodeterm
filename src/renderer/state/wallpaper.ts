@@ -3,8 +3,12 @@ import { gradientCss, normalizeWallpaper, type DesktopWallpaper } from '@shared/
 import { useSettings } from './settings'
 
 /**
- * The canvas background for the current `desktopWallpaper` setting, as a CSS `background` value,
- * or null for none (the canvas then draws exactly as before).
+ * The canvas background for the current `desktopWallpaper` setting, as a CSS `background-image`
+ * value, or null for none (the canvas then draws exactly as before).
+ *
+ * `background-image` only, never folded into a `background` shorthand next to `var(--canvas-bg)`:
+ * Chromium drops any value that holds a var() once it passes ~2 MB, and a still's data: URL is
+ * about 3 MB, so the shorthand silently resolved to nothing and the canvas stayed black.
  *
  * A gradient preset is CSS and resolves synchronously. A still or an imported image is a data:
  * URL from core (`wallpaper.load`), cached here by value so a re-render or a round trip through
@@ -26,7 +30,7 @@ function load(w: DesktopWallpaper): Promise<string | null> {
     loaded.clear()
     p = window.nodeTerminal.wallpaper
       .load(w)
-      .then((url) => (url ? `center / cover no-repeat url("${url}")` : null))
+      .then((url) => (url ? `url("${url}")` : null))
       .catch(() => null)
     loaded.set(key, p)
   }

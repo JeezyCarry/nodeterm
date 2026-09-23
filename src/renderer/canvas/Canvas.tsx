@@ -14801,7 +14801,16 @@ export function Canvas() {
         <SessionProvider session={sessionForProject(activeProjectId || '')} key={sessionForProject(activeProjectId || '').id}>
         <ReactFlow
           className={wallpaperBg ? 'has-wallpaper' : undefined}
-          style={wallpaperBg ? { background: `${wallpaperBg}, var(--canvas-bg)` } : undefined}
+          style={
+            wallpaperBg
+              ? {
+                  backgroundImage: wallpaperBg,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat'
+                }
+              : undefined
+          }
           nodes={allNodes}
           edges={displayEdges}
           nodeTypes={nodeTypes}
