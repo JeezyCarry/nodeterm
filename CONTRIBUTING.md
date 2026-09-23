@@ -97,6 +97,13 @@ lane unaffected.
 
 ## House rules
 
+- **Branch labels describe a checkout on one core.** Share existing status reads through
+  `renderer/state/gitBranches.ts`; do not cache a branch forever by project id or copy a project
+  branch onto worktree nodes. Source, Sessions and worktree headers consume the same observations,
+  keyed by API identity, exact cwd and (for SSH) project identity. Never probe an SSH cwd locally
+  from a background header: only the active SSH project is git-routable. SSH headers observe
+  Source refreshes instead.
+
 - **Never call the user's machine a Mac in user-visible copy.** Use `thisMachine()` /
   `thisMachineCap()` / `machineNoun()` from `src/renderer/lib/machineName.ts` — "this Mac" on
   macOS, "this PC" on Windows, "this computer" elsewhere and in any Server Edition browser tab
