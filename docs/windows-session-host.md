@@ -353,12 +353,18 @@ makes it identifiable; it does **not** make the install directory safe to replac
 alone deliberately leaves the host and its sessions running (#829).
 
 The NSIS install/uninstall preflight now refuses to proceed while the app or host is running from
-the target installation. It replaces electron-builder's automatic process termination, including
+any installation, or a process runs under the installation path prefix. It replaces electron-builder's
+automatic process termination, including
 its silent/`--updated` path. Cancel leaves sessions alone. Retry performs a fresh, read-only process
 query. A failed query (including an inaccessible nodeterm process with no executable path) blocks
 instead of guessing. Silent installation returns a nonzero exit code, without a dialog or kill.
 The query uses Windows PowerShell with a child-process-only execution policy; no persistent policy
 or trust setting is changed. Group Policy restrictions still cause a safe refusal.
+
+This is deliberately conservative: an old uninstaller may use a machine-wide name match or a
+path prefix without a directory boundary. Another installation (even a sibling directory whose
+name begins with this installation's name) can therefore block an update. The new preflight must
+cover those legacy targets before invoking the old executable; it never stops them on your behalf.
 
 To update when you are ready to end sessions:
 
@@ -367,8 +373,9 @@ To update when you are ready to end sessions:
 2. Use **End session** in the Sessions sidebar for each local session. This ends its process and
    removes its node; do not mistake closing a project or quitting the app for ending a session.
    Shells may also be exited normally once their work is saved.
-3. Quit nodeterm, wait at least 30 seconds after the last session ends, and run the installer again.
-   Do not reopen the app or start sessions while installation is in progress.
+3. Quit nodeterm, wait at least 30 seconds after the last session ends, and run the installer again
+   from Downloads, outside the installation directory. Other installations/users must finish their
+   sessions too. Do not reopen the app or start sessions while installation is in progress.
 4. If the host remains, keep the installer cancelled and inspect Windows Task Manager's Details
    view. Verify the executable path belongs to this installation. Ending that exact host manually
    is a last resort **only if you accept losing every terminal/agent process it owns**; never use

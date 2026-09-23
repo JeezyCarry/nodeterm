@@ -38,11 +38,13 @@ describe.skipIf(!available)('installer preflight with disposable process-query f
     ['app live / no host', [app], 10],
     ['app closed / host exited', [], 0],
     ['host fallback to original executable', [app], 10],
-    ['host in another installation', [{ ...host, ExecutablePath: 'C:\\Apps\\nodeterm-other\\nodeterm-session-host.exe' }], 0],
+    ['host in another installation still blocks the old uninstaller', [{ ...host, ExecutablePath: 'D:\\Other\\nodeterm-session-host.exe' }], 10],
     ['case-insensitive Windows path', [{ ...host, ExecutablePath: host.ExecutablePath!.toUpperCase() }], 10],
     ['unknown host owner/path', [{ ...host, ExecutablePath: null }], 20],
     ['unknown app owner/path', [{ ...app, ExecutablePath: '' }], 20],
-    ['uninstaller is not the app', [{ Name: 'Uninstall nodeterm.exe', ExecutablePath: 'C:\\Apps\\nodeterm\\Uninstall nodeterm.exe' }], 0]
+    ['uninstaller copied to temp is clear', [{ Name: 'Uninstall nodeterm.exe', ExecutablePath: 'C:\\Temp\\Uninstall nodeterm.exe' }], 0],
+    ['legacy prefix-matched process blocks', [{ Name: 'helper.exe', ExecutablePath: 'C:\\Apps\\nodeterm-other\\helper.exe' }], 10],
+    ['unrelated process outside installation is clear', [{ Name: 'helper.exe', ExecutablePath: 'C:\\Other\\helper.exe' }], 0]
   ] as const)('%s', (_name, processes, result) => {
     expect(probe([...processes])).toBe(result)
   })
