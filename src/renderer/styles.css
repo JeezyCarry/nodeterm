@@ -13533,7 +13533,26 @@ body.focus-mode .dock:hover {
   --surface-overlay: var(--glass-chrome-bg);
   --tabbar-bg: var(--glass-chrome-bg);
   --glass-edge: rgba(var(--tint-rgb), 0.2);
-  --glass-blur: blur(24px) saturate(160%);
+  /* The Glass slider (App.tsx sets the live values inline; these are the Readable-tick defaults):
+     `--glass-t` 0 = Clear … 1 = Tinted, `--glass-sheen` the specular wash (0 from the tick on).
+     Clearer glass blurs a little less and saturates a little more, and refracts at its rim
+     (`#nt-refract`, components/GlassRefraction.tsx — its strength also follows the slider). */
+  --glass-t: 0.7;
+  --glass-sheen: 0;
+  --glass-refract: url(#nt-refract);
+  --glass-blur: var(--glass-refract) blur(calc(16px + 12px * var(--glass-t)))
+    saturate(calc(200% - 55% * var(--glass-t)));
+  /* A diagonal light across the surface, strongest at the top-left rim. Painted as a background
+     layer (under the content), and only left of the Readable tick: it lightens the surface, so it
+     may only appear where the contrast promise is already off. */
+  --glass-sheen-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, calc(0.22 * var(--glass-sheen))) 0%,
+    rgba(255, 255, 255, calc(0.04 * var(--glass-sheen))) 22%,
+    rgba(255, 255, 255, 0) 50%,
+    rgba(255, 255, 255, calc(0.06 * var(--glass-sheen))) 85%,
+    rgba(255, 255, 255, calc(0.14 * var(--glass-sheen))) 100%
+  );
 }
 
 /* Outermost chrome: fill + blur. */
@@ -13564,6 +13583,7 @@ body.focus-mode .dock:hover {
     .nt-settings
   ) {
   background: var(--glass-chrome-bg) !important;
+  background-image: var(--glass-sheen-image) !important;
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }
@@ -13591,6 +13611,7 @@ body.focus-mode .dock:hover {
   background: var(--glass-chrome-bg);
 }
 :root[data-nt-glass='on'] :is(.term-node, .files-node, .loop-node, .subagent-node, .trigger-node, .dino-node) {
+  background-image: var(--glass-sheen-image);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }

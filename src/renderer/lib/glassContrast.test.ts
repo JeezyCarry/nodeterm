@@ -12,7 +12,15 @@ import {
   glassChromeAlpha,
   parseCssColor,
   parseHex,
-  worstContrast
+  worstContrast,
+  GLASS_CLEAR_ALPHA,
+  GLASS_READABLE_TICK,
+  GLASS_TINTED_ALPHA,
+  glassRefraction,
+  glassSheen,
+  glassSliderAlpha,
+  glassTint,
+  resolveGlassSlider
 } from './glassContrast'
 
 const WHITE = [255, 255, 255] as const
@@ -131,5 +139,62 @@ describe('glassChromeAlpha (Liquid Glass chrome, both app themes)', () => {
     expect(parseCssColor('#282828')).toEqual({ rgb: [40, 40, 40], alpha: 1 })
     expect(parseCssColor('rgb(1,2,3)')).toEqual({ rgb: [1, 2, 3], alpha: 1 })
     expect(glassChromeAlpha('nope', '#000')).toBeNull()
+  })
+})
+
+describe('Glass slider (Clear ↔ Tinted)', () => {
+  const css = readFileSync(join(__dirname, '..', 'styles.css'), 'utf8').replace(/\r\n/g, '\n')
+  const body = (sel: string): string => {
+    const i = css.indexOf(`\n${sel} {\n`)
+    return css.slice(i, css.indexOf('\n}\n', i))
+  }
+  const tok = (b: string, n: string) => new RegExp(`\\n\\s*${n}:\\s*([^;]+);`).exec(b)?.[1].trim()
+  const dark = body(':root')
+  const light = body(":root[data-theme='light']")
+  const chrome = (b: string): number => {
+    const tint = tok(b, '--tint-rgb') ?? tok(dark, '--tint-rgb')!
+    const text = (tok(b, '--text') ?? tok(dark, '--text')!).replace('var(--tint-rgb)', tint)
+    return glassChromeAlpha(text, tok(b, '--panel')!)!
+  }
+  const surfaces: Array<[string, number]> = [
+    ['chrome dark', chrome(dark)],
+    ['chrome light', chrome(light)],
+    ...TERMINAL_THEMES.map((t) => [t.id, glassTintAlpha(t.theme.foreground!, t.theme.background!)] as [string, number])
+  ]
+
+  it.each(surfaces)('%s: the Readable tick is exactly the computed 4.5:1 alpha', (_id, readable) => {
+    expect(glassSliderAlpha(GLASS_READABLE_TICK, readable)).toBeCloseTo(readable, 10)
+  })
+
+  it.each(surfaces)('%s: alpha rises monotonically from Clear to Tinted', (_id, readable) => {
+    let prev = -1
+    for (let i = 0; i <= 100; i++) {
+      const a = glassSliderAlpha(i / 100, readable)
+      expect(a).toBeGreaterThanOrEqual(prev)
+      prev = a
+    }
+    expect(glassSliderAlpha(0, readable)).toBe(GLASS_CLEAR_ALPHA)
+    expect(glassSliderAlpha(1, readable)).toBe(Math.max(readable, GLASS_TINTED_ALPHA))
+  })
+
+  it('an untouched or hand-mangled setting is the Readable tick; numbers clamp', () => {
+    for (const v of [null, undefined, 'x', Number.NaN, Infinity]) expect(resolveGlassSlider(v)).toBe(GLASS_READABLE_TICK)
+    expect(resolveGlassSlider(-3)).toBe(0)
+    expect(resolveGlassSlider(7)).toBe(1)
+  })
+
+  it('the sheen appears only left of the tick; refraction fades to nothing at Tinted', () => {
+    expect(glassSheen(0)).toBe(1)
+    for (const t of [GLASS_READABLE_TICK, 0.85, 1]) expect(glassSheen(t)).toBe(0)
+    expect(glassRefraction(0)).toBeGreaterThan(glassRefraction(GLASS_READABLE_TICK))
+    expect(glassRefraction(1)).toBe(0)
+  })
+
+  it('a terminal tint follows the slider', () => {
+    const t = TERMINAL_THEMES.find((x) => x.id === 'nodeterm-dark') ?? TERMINAL_THEMES[0]
+    const at = (s: number) => Number(/, ([\d.]+)\)$/.exec(glassTint(t.theme, s)!.background)![1])
+    expect(at(0)).toBeLessThan(at(GLASS_READABLE_TICK))
+    expect(at(GLASS_READABLE_TICK)).toBeCloseTo(glassTintAlpha(t.theme.foreground!, t.theme.background!), 3)
+    expect(at(1)).toBeGreaterThanOrEqual(at(GLASS_READABLE_TICK))
   })
 })

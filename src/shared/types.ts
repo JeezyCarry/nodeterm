@@ -1693,6 +1693,9 @@ export interface Settings {
   /** Draw the canvas dot grid (Settings → Appearance). Display only — snapping and align-to-grid
    *  are unchanged. Default ON in every appearance; read through `showCanvasDots`. */
   canvasDots: boolean
+  /** The Liquid Glass slider (Settings → Appearance), 0 = Clear … 1 = Tinted. null = the Readable
+   *  tick, where text keeps 4.5:1 (renderer/lib/glassContrast.ts `resolveGlassSlider`). */
+  glassTint: number | null
   /** Whether usage percentages render as consumed ("32% used"), remaining ("68% left"), or raw
    *  token counts ("48k/200k tokens" — context-window surfaces only; provider quota surfaces
    *  have no token counts and fall back to 'used' display). 'remaining' is the historical
@@ -1938,6 +1941,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // reads as noise to users who navigate by the trail chords/Dock buttons instead.
   showResumeCard: false,
   canvasDots: true,
+  glassTint: null,
   usagePercentMode: 'remaining',
   defaultAgent: 'claude',
   // Sessions start in auto mode out of the box. Existing users pick this up on hydrate

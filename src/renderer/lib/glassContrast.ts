@@ -114,12 +114,16 @@ export interface GlassTint {
   foreground: string
 }
 
-/** CSS for a theme's glass, or null when its background is not a colour we can parse. */
-export function glassTint(theme: { background?: string; foreground?: string }): GlassTint | null {
+/** CSS for a theme's glass at a Glass-slider position (default: the Readable tick), or null when
+ *  its background is not a colour we can parse. */
+export function glassTint(
+  theme: { background?: string; foreground?: string },
+  slider: number = GLASS_READABLE_TICK
+): GlassTint | null {
   const bg = theme.background ? parseHex(theme.background) : null
   if (!bg) return null
   const foreground = theme.foreground ?? '#ffffff'
-  const alpha = glassTintAlpha(foreground, theme.background!)
+  const alpha = glassSliderAlpha(slider, glassTintAlpha(foreground, theme.background!))
   const rgb = bg.join(', ')
   return {
     background: `rgba(${rgb}, ${alpha.toFixed(3)})`,
@@ -185,4 +189,55 @@ export function glassChromeAlpha(text: string, panel: string, minRatio = 4.5): n
   }
   if (lowest === Infinity) return 1
   return Math.max(GLASS_ALPHA_MIN, lowest)
+}
+
+/* ------------------------------------------------------------------------------------------- *
+ * The Glass slider (Settings → Appearance, Liquid Glass only): Clear ↔ Tinted, like iOS 26.
+ *
+ * One setting drives every glass surface, and every surface has its OWN readable alpha (the chrome
+ * fill, each terminal theme). So the slider is not an alpha: it is a position `t` in 0..1, and each
+ * surface maps it through three points — Clear at 0, its own readable alpha at the Readable tick,
+ * Tinted at 1. At the tick every surface sits exactly at the alpha the functions above computed,
+ * which is why the tick can promise 4.5:1; right of it every alpha is higher, and the scans above
+ * return the bottom of a range that reaches opaque, so the promise holds all the way to Tinted.
+ * Left of the tick is clearer than the guarantee, and the Settings row says so.
+ * ------------------------------------------------------------------------------------------- */
+
+/** Tint alpha at the Clear end: never fully clear, the tint still says where a surface is. */
+export const GLASS_CLEAR_ALPHA = 0.2
+/** Tint alpha at the Tinted end (a surface whose readable alpha is higher keeps its own). */
+export const GLASS_TINTED_ALPHA = 0.95
+/** Where the Readable tick sits on the track — also the default, so an untouched slider is the
+ *  look Liquid Glass shipped with. 0.7 is close to where the chrome's readable alpha falls on a
+ *  straight Clear→Tinted scale (dark 0.70 → 0.67, light 0.745 → 0.73), so the track reads as
+ *  roughly linear. */
+export const GLASS_READABLE_TICK = 0.7
+
+/** `settings.glassTint` → a slider position. Absent / not a finite number = the Readable tick. */
+export function resolveGlassSlider(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(1, Math.max(0, value))
+    : GLASS_READABLE_TICK
+}
+
+/** The tint alpha of a surface whose readable alpha is `readable`, at slider position `t`. */
+export function glassSliderAlpha(t: number, readable: number): number {
+  const tinted = Math.max(readable, GLASS_TINTED_ALPHA)
+  if (t <= GLASS_READABLE_TICK) {
+    return GLASS_CLEAR_ALPHA + ((readable - GLASS_CLEAR_ALPHA) * t) / GLASS_READABLE_TICK
+  }
+  return readable + ((tinted - readable) * (t - GLASS_READABLE_TICK)) / (1 - GLASS_READABLE_TICK)
+}
+
+/** Specular sheen strength, 0..1: full at Clear, ZERO from the Readable tick on — the sheen is a
+ *  white wash under the text, so it may only appear where the contrast promise is already off. */
+export function glassSheen(t: number): number {
+  return Math.max(0, (GLASS_READABLE_TICK - t) / GLASS_READABLE_TICK)
+}
+
+/** Edge-lens displacement (feDisplacementMap `scale`, objectBoundingBox units): strongest at
+ *  Clear, flat at Tinted. It moves backdrop pixels, never the tint, so it cannot touch contrast. */
+export const GLASS_REFRACT_MAX = 0.06
+export function glassRefraction(t: number): number {
+  return GLASS_REFRACT_MAX * (1 - t)
 }

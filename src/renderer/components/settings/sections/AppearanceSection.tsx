@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSettings } from '../../../state/settings'
 import { isLiquidGlass } from '@renderer/lib/appTheme'
+import { GLASS_READABLE_TICK, resolveGlassSlider } from '@renderer/lib/glassContrast'
 import { showCanvasDots } from '@renderer/lib/canvasDots'
 import {
   defaultWallpaper,
@@ -68,6 +69,10 @@ const ROWS = {
       'focused',
       'native'
     ]
+  },
+  glassTint: {
+    title: 'Glass',
+    keywords: ['glass', 'liquid', 'transparency', 'clear', 'tinted', 'frosted', 'blur', 'opacity']
   },
   canvasDots: {
     title: 'Show grid dots',
@@ -337,6 +342,7 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
   const hiddenHeaderButtons = useSettings((s) => s.settings.hiddenHeaderButtons)
   const showResumeCard = useSettings((s) => s.settings.showResumeCard)
   const canvasDots = useSettings((s) => s.settings.canvasDots)
+  const glassSlider = resolveGlassSlider(useSettings((s) => s.settings.glassTint))
   const windowTitleActiveSession = useSettings((s) => s.settings.windowTitleActiveSession)
   const update = useSettings((s) => s.update)
   // Glass over plain black reads as a dark theme with smudges, so choosing Liquid Glass with no
@@ -382,6 +388,54 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
           }
         />
       </SearchableRow>
+      {isLiquidGlass(appTheme) && (
+        <SearchableRow {...ROWS.glassTint}>
+          <FieldRow
+            label="Glass"
+            description={
+              glassSlider < GLASS_READABLE_TICK
+                ? 'Clearer than Readable: the wallpaper shows through more, and text contrast is no longer guaranteed.'
+                : 'From Readable to Tinted, regular text keeps 4.5:1 contrast over any wallpaper.'
+            }
+            control={
+              <div className="flex w-56 flex-col gap-1">
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  list="nt-glass-ticks"
+                  value={glassSlider}
+                  aria-label="Glass, from Clear to Tinted"
+                  aria-valuetext={
+                    Math.abs(glassSlider - GLASS_READABLE_TICK) < 0.005
+                      ? 'Readable'
+                      : `${Math.round(glassSlider * 100)}% tinted`
+                  }
+                  onChange={(e) => update({ glassTint: Number(e.target.value) })}
+                  className="w-full accent-[var(--accent)]"
+                />
+                <datalist id="nt-glass-ticks">
+                  <option value={GLASS_READABLE_TICK} label="Readable" />
+                </datalist>
+                <div className="relative h-4 text-[11px] text-muted">
+                  <span className="absolute left-0">Clear</span>
+                  <button
+                    type="button"
+                    className="absolute -translate-x-1/2 hover:text-text"
+                    style={{ left: `${GLASS_READABLE_TICK * 100}%` }}
+                    onClick={() => update({ glassTint: null })}
+                    title="Back to the readable point"
+                  >
+                    Readable
+                  </button>
+                  <span className="absolute right-0">Tinted</span>
+                </div>
+              </div>
+            }
+          />
+        </SearchableRow>
+      )}
       <SearchableRow {...ROWS.uiScale}>
         <UiScaleRow />
       </SearchableRow>

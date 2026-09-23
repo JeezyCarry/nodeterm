@@ -179,7 +179,7 @@ import { useCopyFeedback } from '../terminal/useCopyFeedback'
 import { ContextMeter } from '../components/ContextMeter'
 import { isZoomModifierHeld } from '../lib/zoomModifier'
 import { isHidden } from '../lib/ui-visibility'
-import { glassTint } from '../lib/glassContrast'
+import { glassTint, resolveGlassSlider } from '../lib/glassContrast'
 import { isLiquidGlass } from '../lib/appTheme'
 import { resolveTerminalTheme } from '../terminal/themes'
 import { readsClaudeTranscript } from '../lib/transcriptGates'
@@ -1249,9 +1249,10 @@ export function TerminalNode({
   // translucent tint of THIS node's effective theme — project override included — at the alpha
   // that keeps its foreground at 4.5:1 over any backdrop (lib/glassContrast.ts).
   const glass = isLiquidGlass(useSettings((s) => s.settings.appTheme))
+  const glassSlider = resolveGlassSlider(useSettings((s) => s.settings.glassTint))
   const glassVars = useMemo(() => {
     if (!glass) return null
-    const tint = glassTint(resolveTerminalTheme(visual.terminalTheme).theme)
+    const tint = glassTint(resolveTerminalTheme(visual.terminalTheme).theme, glassSlider)
     return tint
       ? ({
           '--term-glass-bg': tint.background,
@@ -1259,7 +1260,7 @@ export function TerminalNode({
           '--term-glass-fg': tint.foreground
         } as React.CSSProperties)
       : null
-  }, [glass, visual.terminalTheme])
+  }, [glass, glassSlider, visual.terminalTheme])
   // The account list, for the chip and for the READERS below: a config dir the user links while
   // this pane sits quiet must resolve to its new account immediately, not at the next hook event.
   const claudeAccounts = useSettings((s) => s.settings.claudeAccounts)

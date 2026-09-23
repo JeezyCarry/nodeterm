@@ -19,7 +19,8 @@ import { resolveUiScale } from '../shared/ui-scale'
 import { resolveTabBarHeight } from '../shared/window-chrome-metrics'
 import { useAppTheme } from './state/useAppTheme'
 import { installWindowActivityOnDocument } from './lib/windowActivity'
-import { glassChromeAlpha, parseCssColor } from './lib/glassContrast'
+import { glassChromeAlpha, glassSheen, glassSliderAlpha, parseCssColor, resolveGlassSlider } from './lib/glassContrast'
+import { GlassRefraction } from './components/GlassRefraction'
 import { isLiquidGlass } from './lib/appTheme'
 
 export default function App() {
@@ -81,11 +82,16 @@ export default function App() {
   // stays the one source of truth; declared after the data-theme effect, so it reads the tokens
   // of the theme that effect just applied. An unparseable token leaves the chrome opaque.
   const liquidGlass = isLiquidGlass(useSettings((s) => s.settings.appTheme))
+  // The Glass slider moves every surface between Clear and Tinted through its own readable alpha
+  // (glassSliderAlpha); `--glass-t` scales the blur and `--glass-sheen` the specular wash in CSS.
+  const glassSlider = resolveGlassSlider(useSettings((s) => s.settings.glassTint))
   useEffect(() => {
     const root = document.documentElement
     if (!liquidGlass) {
       delete root.dataset.ntGlass
       root.style.removeProperty('--glass-chrome-bg')
+      root.style.removeProperty('--glass-t')
+      root.style.removeProperty('--glass-sheen')
       return
     }
     // Read the tokens with the glass overrides OFF: under them `--panel` IS the glass fill, and a
@@ -94,14 +100,18 @@ export default function App() {
     const css = getComputedStyle(root)
     const text = css.getPropertyValue('--text').trim()
     const panel = css.getPropertyValue('--panel').trim()
-    const alpha = glassChromeAlpha(text, panel)
+    const readable = glassChromeAlpha(text, panel)
     const rgb = parseCssColor(panel)?.rgb
     root.style.setProperty(
       '--glass-chrome-bg',
-      alpha !== null && rgb ? `rgba(${rgb.join(', ')}, ${alpha.toFixed(3)})` : panel
+      readable !== null && rgb
+        ? `rgba(${rgb.join(', ')}, ${glassSliderAlpha(glassSlider, readable).toFixed(3)})`
+        : panel
     )
+    root.style.setProperty('--glass-t', glassSlider.toFixed(3))
+    root.style.setProperty('--glass-sheen', glassSheen(glassSlider).toFixed(3))
     root.dataset.ntGlass = 'on'
-  }, [liquidGlass, appTheme])
+  }, [liquidGlass, appTheme, glassSlider])
 
   // Apply the UI scale as page zoom (issue #299 — 4K readability; the why-page-zoom write-up
   // lives in shared/ui-scale.ts). Gated on `hydrated` so boot doesn't flash-reset a scaled window
@@ -130,6 +140,7 @@ export default function App() {
         {/* The node-icon picker, opened from the node menu, a node header and the kanban card
             modal — one dialog for all three, driven by nodeIconDialog(). */}
         <NodeIconDialogHost />
+        {liquidGlass && <GlassRefraction slider={glassSlider} />}
       </ReactFlowProvider>
     </SessionProvider>
   )

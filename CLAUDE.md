@@ -3883,6 +3883,25 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   glass header are ink over a tinted chip (`-webkit-text-fill-color: var(--text)` with the chip
   mixed from `currentColor`), not coloured text. `styles.palette.test.ts` pins the mapping and that
   no two meanings resolve to the same colour, in both themes.
+- **Glass slider + refraction** (Settings → Appearance, shown only under Liquid Glass; iOS 26's
+  Clear ↔ Tinted). `settings.glassTint` is a slider POSITION, not an alpha (`null` = the Readable
+  tick, read through `resolveGlassSlider`): every surface has its own readable alpha, so each maps
+  the position through three points — `GLASS_CLEAR_ALPHA` 0.2 at Clear, its OWN computed readable
+  alpha at `GLASS_READABLE_TICK` (0.7), `max(readable, 0.95)` at Tinted (`glassSliderAlpha`). At the
+  tick every surface is exactly at the alpha `glassTintAlpha`/`glassChromeAlpha` computed, and every
+  alpha right of it is higher — so Readable→Tinted keeps 4.5:1; left of the tick the row says the
+  guarantee is off. Measured: chrome dark 0.20 / 0.70 / 0.95, chrome light 0.20 / 0.745 / 0.95,
+  nodeterm-dark 0.20 / 0.675 / 0.95 (Clear / Readable / Tinted). App.tsx sets `--glass-t` (blur
+  16→28px, saturation 200→145%) and `--glass-sheen`. **Refraction** is ONE shared SVG filter
+  (`components/GlassRefraction.tsx`, `#nt-refract`: a 256² edge-lens displacement map generated once,
+  `primitiveUnits="objectBoundingBox"` so one filter fits every element), referenced from
+  `--glass-blur` as `url(#nt-refract)` — no per-node filters. Its scale is `0.06 × (1 − t)`; it moves
+  backdrop pixels, never the tint, so it cannot touch contrast. The specular sheen is a background
+  gradient scaled by `glassSheen(t)`, which is ZERO from the tick on — it lightens the surface, so it
+  may only exist where the promise is already off. Node blur+refraction still pause while the camera
+  moves (`.canvas-moving`); chrome keeps both. MEASURED on the live dev build (CDP computed style):
+  Chromium keeps `url("#nt-refract") blur(…) saturate(…)` on the tab bar, dock, sessions sidebar,
+  minimap, zoom controls and terminal nodes.
 - **Surfaces.** Desktop: full. Server Edition: gradients + glass; the stills list is empty (not
   macOS) and "Choose image…" is hidden (a picker there browses the SERVER's disk). Relay tabs keep
   a stub (no stills, import refused). Mobile: N/A (no canvas). Kanban: N/A (the board is opaque).
