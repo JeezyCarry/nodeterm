@@ -583,6 +583,8 @@ const api: NodeTerminalApi = {
     commitSwitch: (token) => ipcRenderer.invoke(IPC.codexAccountsCommitSwitch, token),
     finishSwitch: (token) => ipcRenderer.invoke(IPC.codexAccountsFinishSwitch, token),
     rollbackSwitch: (token) => ipcRenderer.invoke(IPC.codexAccountsRollbackSwitch, token),
+    switchThreadRemote: (threadId, targetAccountId, hostAccountIds, ctx) =>
+      ipcRenderer.invoke(IPC.codexAccountsSwitchThreadRemote, threadId, targetAccountId, hostAccountIds, ctx),
     transferThreadToSsh: (threadId, cwd, projectId, targetAccountId, sourceAccountId) =>
       ipcRenderer.invoke(
         IPC.codexAccountsTransferThreadToSsh,

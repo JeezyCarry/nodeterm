@@ -393,6 +393,7 @@ export function buildStubApi(): Omit<
       commitSwitch: U('codexAccounts.commitSwitch'),
       finishSwitch: U('codexAccounts.finishSwitch'),
       rollbackSwitch: U('codexAccounts.rollbackSwitch'),
+      switchThreadRemote: U('codexAccounts.switchThreadRemote'),
       transferThreadToSsh: U('codexAccounts.transferThreadToSsh')
     },
     transcripts: {

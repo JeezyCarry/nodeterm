@@ -1,3 +1,4 @@
+import type { TextDeliveryResult } from './text-delivery'
 // Types shared across the main, preload, and renderer processes.
 
 import { TABBAR_HEIGHT_PX } from './window-chrome-metrics'
@@ -1006,8 +1007,9 @@ export interface PtyApi {
   readScrollback(persistKey: string): Promise<string>
   /** Send literal text into a session, by default followed by Enter (e.g. a slash command).
    *  `opts.enter: false` writes the text without submitting it (dictation's Insert). Returns
-   *  false if unavailable. */
-  sendText(persistKey: string, text: string, opts?: { enter?: boolean }): Promise<boolean>
+   *  false if unavailable; `pasted-not-submitted` means input was accepted but Enter was not
+   *  confirmed written. Surface it without automatically resending. True is not an app receipt. */
+  sendText(persistKey: string, text: string, opts?: { enter?: boolean }): Promise<TextDeliveryResult>
   /** Is tmux available on this host (else the silent plain-shell fallback), plus a suggested
    *  install command for the "tmux not found" banner. */
   tmuxStatus(): Promise<TmuxStatus>
@@ -1612,7 +1614,7 @@ export interface Settings {
   offscreenTerminalMinutes: number
   /** Minutes a terminal stays PARKED after its project is switched away — xterm + PTY client kept
    *  alive off-DOM so switching back is instant and exact (no reattach). 0 = until the app quits.
-   *  Default 5. Hand-editable; re-validated at the use site (`parkWindowMs`). Issue #886. */
+   *  Default 10. Hand-editable; re-validated at the use site (`parkWindowMs`). Issue #886. */
   terminalParkMinutes: number
   /** Max parked terminals across all projects before the oldest (local first, then remote) are
    *  released early. Default 20. Re-validated at the use site (`parkCap`). Issue #886. */
@@ -1890,7 +1892,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tmuxScrollback: 50000,
   tmuxLeadPaneWidth: 0,
   offscreenTerminalMinutes: 10,
-  terminalParkMinutes: 5,
+  terminalParkMinutes: 10,
   terminalParkMax: 20,
   commitAgent: 'claude',
   commitAgentCommand: '',
@@ -2915,6 +2917,18 @@ export interface CodexAccountsApi {
   finishSwitch(rollbackToken: string): Promise<void>
   /** Phase 3b: roll back a reservation (releases it; a committed link is left for cleanup). */
   rollbackSwitch(rollbackToken: string): Promise<void>
+  /**
+   * The SSH leg of a running node's account switch: expose the conversation to `targetAccountId`
+   * ON the connected host behind `ctx.projectId` (hardlink the rollout into the target home, verify
+   * the target discovers it). `hostAccountIds` = every managed account on that host (the catalogs
+   * the thread is resolved across). Resolves once the target can resume it; throws otherwise.
+   */
+  switchThreadRemote(
+    threadId: string,
+    targetAccountId: string | undefined,
+    hostAccountIds: string[],
+    ctx: AccountSshCtx
+  ): Promise<void>
   /** Source-side leg of moving an idle LOCAL conversation to an SSH account: validate strict source
    *  containment then hand the upload to the remote import path (PR 6). Local rollout untouched. */
   transferThreadToSsh(

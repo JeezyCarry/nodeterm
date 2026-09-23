@@ -22,6 +22,7 @@ installLogSink(logBuffer)
 import { writeFilesToClipboard } from './clipboard-files'
 import { pickProjectIcon } from './project-icon-upload'
 import { allowGuestNavigation } from './webview-nav'
+import { installWebviewZoom } from './webview-zoom'
 import { hostOsFromPlatform, sshServerCopy } from '../shared/ssh-server'
 import { macTitleBarOptions, trafficLightPositionFor } from './window-chrome'
 import { resolveTabBarHeight } from '@shared/window-chrome-metrics'
@@ -1268,6 +1269,7 @@ app.whenReady().then(async () => {
         /* logging must never break a page */
       }
     })
+    installWebviewZoom(contents, process.platform === 'darwin')
     if (contents.getType() !== 'webview') return
     // Web nodes may only show http(s) pages, jailed nt-media:// content, or origin-gated
     // local file:// pages (policy + tests in webview-nav.ts).
@@ -1818,8 +1820,10 @@ app.whenReady().then(async () => {
   // src/core/agents/agent-messaging.ts for the whole map.
   const messagingDeps: AgentMessagingDeps = {
     paneOwner: (id) => ptyManager.paneOwner(id),
-    sendEnvelope: (id, envelope) => ptyManager.sendEnvelope(id, envelope),
-    hasLiveSession: (id) => ptyManager.hasLiveSession(id),
+    sendEnvelope: (id, envelope, expected) => ptyManager.sendEnvelope(id, envelope, expected),
+    envelopePasteReady: (id) => ptyManager.envelopePasteReady(id),
+    // Attached OR released-but-running: see AgentMessagingDeps.hasLiveSession.
+    hasLiveSession: (id) => ptyManager.sessionExists(id),
     projects: () => workspaceStore.persistedCanvases(),
     isRemoteNode: (id) => !!ptyManager.sshRemoteForNode(id),
     // GLOBAL CONSTRAINT 11: every delivery path is gated behind the per-project switch. The switch

@@ -56,6 +56,21 @@ handler needs something only Electron has (an SSH ControlMaster, a native dialog
 **injected dep** whose absence is a documented degrade — see `registerTranscriptIpc` /
 `registerContextEnsureIpc` — rather than a reason to keep the whole handler in `src/main`.
 
+**Windows agent messaging:** direct ConPTY terminals are looked up by the runtime node index,
+not the persistence key. `NativeWindowsPane` checks console membership, the unambiguous native
+process chain and process birth times, and frames paste only after the terminal requested it.
+Do not replace that read with a stored `agentId` or the restart heuristic's deepest descendant.
+An interpreter such as `node` is named by its script's package `bin` entry, never as `node`, so
+npm-installed CLIs such as Codex are recognized. A session released by park expiry or offscreen
+release is still messageable: existence and routing ask the backend, not the attached client.
+Never put the submitting Enter in the same write as a message paste: `core/settled-submit.ts`
+pastes, waits for the envelope to render, then submits separately, on every backend.
+The persistent session-host transport has its own versioned messaging extension: the host checks
+its session generation, OS process identity and emulator before writing. An older live host keeps
+its terminals and refuses the extension; never restart it automatically or fall back to sendKeys.
+Message dispatch publishes pending canvas edits before main resolves scope, without overwriting
+an unresolved file conflict. See `docs/windows-session-host.md`.
+
 Claude usage identity is scoped to the same config directory as its credentials. Read organization
 metadata even when credentials already include an email, and degrade to the email-only row when
 metadata cannot be read. Managed usage must never fall back to an unscoped system Keychain token:
@@ -338,6 +353,13 @@ lane unaffected.
   nodes), and why a background project's pages stay mounted as hidden ghosts instead of
   unmounting. `display:none` is safe (measured: state, scroll and viewport size survive); a reorder
   or unmount reloads the user's page and loses their in-page state.
+
+- **A `<webview>` page's wheel never reaches the host DOM.** The guest is an out-of-process frame:
+  measured on Electron 42, physical Ctrl/Cmd+wheel reached the page and emitted `zoom-changed` on
+  the guest `WebContents`, while no host `wheel` listener fired. Keep `nowheel` on the webview host
+  (it protects React Flow routing) and install page zoom in main through `installWebviewZoom`;
+  removing the class or adding a renderer wheel handler cannot implement guest zoom. The shared
+  renderer controls call the same `@shared/webview-zoom` policy directly on the attached guest.
 
 These are the ones that come up in review most often. Each exists because its absence caused a real
 bug.
@@ -824,6 +846,14 @@ Two files, two audiences:
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
 
+**Windows text submission waits for the composer.** Use `core/settled-text.ts` for native PTY and
+session-host `sendText`: adjacent paste/Enter writes can be consumed in one read. The bounded
+screen check may leave text unsubmitted; propagate `pasted-not-submitted` all the way to the
+caller and tell the user to inspect the terminal. Never treat that truthy string as success or
+automatically retry the paste. True means the requested writes completed, not that a turn began.
+The versioned `sendKeysV2` host request refuses old hosts without fallback or restart. Collapsed
+or hidden pastes may need manual Enter; device testing remains necessary.
+
 An unanswered Claude `AskUserQuestion` is correlated by session and tool-use ID in the core
 mirror, independently of its short-lived display stash. Ordinary hooks, subagent activity and
 unrelated transcript results must not clear attention or archive its inbox card. Both shells
@@ -883,3 +913,9 @@ HTTP requests remain on that host; only sanitized usage returns over SSH. Never 
 remote context lookup into a local transcript reader, or reuse Claude's token formula/window
 estimate for Codex. The system account follows the host login environment; managed accounts
 use their validated private home. Usage refresh must not start or repair a shared Codex daemon.
+
+Delayed Windows message submission must recheck the attested child process/birth AND emulator
+paste mode immediately before Enter, not just the surviving PTY root. A missing host reply after
+a transmitted text request is uncertain delivery, never a pre-paste refusal; show the no-resend
+warning. SessionStart idle rescue is scoped to that same nonempty session and agent identity,
+and a foreign idle must not broadcast fresh state proof to the renderer.

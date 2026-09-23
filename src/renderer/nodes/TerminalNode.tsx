@@ -85,6 +85,7 @@ import {
   planParkEviction,
   type ParkTimer
 } from '../terminal/park-budget'
+import { agentProcessInPane } from '../terminal/live-work'
 import {
   mayDisposeOffscreen,
   offscreenCoreIsRemote,
@@ -495,6 +496,10 @@ interface ParkedTerminal {
    *  lever reads later than that, so without this snapshot every park looks agent-less. See
    *  `effectiveAgentState`. */
   parkedAgentState?: AgentState
+  /** An agent CLI was in the pane at park time — see `ParkedEntryState.agentProcess`. */
+  agentProcess: boolean
+  /** Live read: has the CLI announced its exit since? The veto over `agentProcess`. */
+  readSessionEnded: () => boolean
   /** When this entry was parked — what ages the snapshot above (`parkedStateFloor`). */
   parkedAt: number
   /** The node's agent state RIGHT NOW, read from the store of the session this node belongs to
@@ -517,7 +522,7 @@ interface ParkedTerminal {
   remote: boolean
 }
 const parkedTerminals = new Map<string, ParkedTerminal>()
-// The park window is `settings.terminalParkMinutes` (default 5 = the historical TERM_PARK_MS; 0 =
+// The park window is `settings.terminalParkMinutes` (default 10 — the old TERM_PARK_MS was 5; 0 =
 // until the app quits) and the count cap `settings.terminalParkMax` (default PARK_MAX = 20), both
 // read at PARK time through their validators (`parkWindowMs` / `parkCap`), so a change applies to
 // the next switch-away without touching entries already parked. Issue #886.
@@ -532,6 +537,8 @@ function parkDisposable(key: string): boolean {
   return canDisposeParkedEntry({
     tmuxBacked: p.tmuxBacked,
     parkedAgentState: p.parkedAgentState,
+    agentProcess: p.agentProcess,
+    liveSessionEnded: p.readSessionEnded(),
     parkedAt: p.parkedAt,
     liveAgentState: p.readAgentState()
   })
@@ -1516,6 +1523,14 @@ export function TerminalNode({
   // offer this node's in-place restart from the SAME derivation, and a second copy drifting from
   // this one yields a row whose closure refuses every click.
   const agentId = createdAgentId(data)
+  /** Is an agent CLI believed to be running in this pane right now? The created agent, else one a
+   *  hook event identified (a hand-launched CLI). Read through a ref by the release/park levers. */
+  const readAgentProcess = (): boolean => {
+    const st = agentStatusStore.getState().byId[id]
+    return agentProcessInPane(agentId ?? st?.agentId, st)
+  }
+  const readAgentProcessRef = useRef(readAgentProcess)
+  readAgentProcessRef.current = readAgentProcess
   // Gate each former `isClaude` site by the capability it actually represents.
   const showStatus = !!agentId && hasHooks(agentId) // status badge + session-title capture
   const showLoop = !!agentId && canRecur(agentId) // /loop · /schedule · /cron chrome
@@ -4492,6 +4507,8 @@ export function TerminalNode({
           // Snapshot NOW, because the departure effect declared below this one clears this node's
           // agent status on this very unmount — every lever reads later and would see nothing.
           parkedAgentState: readAgentState(),
+          agentProcess: readAgentProcessRef.current(),
+          readSessionEnded: () => agentStatusStore.getState().byId[id]?.sessionEnded === true,
           parkedAt: Date.now(),
           readAgentState,
           cleanups,
@@ -4685,7 +4702,8 @@ export function TerminalNode({
             if (
               shouldDeferReleaseForLiveWork({
                 tmuxBacked: sessionPersistentRef.current,
-                agentState: readAgentStateRef.current()
+                agentState: readAgentStateRef.current(),
+                agentProcess: readAgentProcessRef.current()
               })
             ) {
               // Re-stamp the offscreen clock: this node is not RELEASABLE yet, and the Eco
