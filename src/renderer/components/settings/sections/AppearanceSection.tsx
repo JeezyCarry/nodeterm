@@ -1,4 +1,13 @@
+import { useEffect, useState } from 'react'
 import { useSettings } from '../../../state/settings'
+import {
+  GRADIENT_WALLPAPERS,
+  NO_WALLPAPER,
+  normalizeWallpaper,
+  sameWallpaper,
+  type DesktopWallpaper,
+  type WallpaperStill
+} from '@shared/wallpaper'
 import { SYSTEM_NODE_COLOR_SWATCHES } from '@shared/node-colors'
 import { SettingsSection } from '../SettingsSection'
 import { SearchableRow } from '../SearchableRow'
@@ -39,6 +48,14 @@ const ROWS = {
     keywords: ['tab', 'bar', 'height', 'strip', 'top', 'title bar', 'thickness', 'compact', 'dense']
   },
   accent: { title: 'Accent', keywords: ['accent', 'color', 'theme', 'appearance'] },
+  wallpaper: {
+    title: 'Desktop wallpaper',
+    keywords: ['wallpaper', 'background', 'desktop', 'image', 'picture', 'gradient', 'sonoma', 'canvas']
+  },
+  glassTerminals: {
+    title: 'Glass terminals',
+    keywords: ['glass', 'liquid', 'blur', 'translucent', 'transparent', 'frosted', 'terminal']
+  },
   windowTitle: {
     title: 'Window title',
     keywords: [
@@ -193,6 +210,123 @@ function TabBarHeightRow(): React.JSX.Element {
   )
 }
 
+/** One picker tile. The selected tile gets the text-coloured ring, like the accent swatches. */
+function WallpaperTile({
+  label,
+  selected,
+  background,
+  onClick,
+  children
+}: {
+  label: string
+  selected: boolean
+  background?: string
+  onClick: () => void
+  children?: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-label={`Wallpaper ${label}`}
+      aria-pressed={selected}
+      title={label}
+      onClick={onClick}
+      style={background ? { background } : undefined}
+      className={cn(
+        'flex h-14 w-24 items-center justify-center overflow-hidden rounded-md border-2 text-[11px] text-muted',
+        selected ? 'border-text' : 'border-border'
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * None, the macOS stills found on the machine that owns the files, the gradient presets, and
+ * "Choose image…". The stills list comes from core and is empty off macOS (and on a relay tab);
+ * "Choose image…" is hidden in the Server Edition, where a native file picker would browse the
+ * SERVER's disk rather than the viewer's.
+ */
+function WallpaperPicker(): React.JSX.Element {
+  const value = normalizeWallpaper(useSettings((s) => s.settings.desktopWallpaper))
+  const update = useSettings((s) => s.update)
+  const [stills, setStills] = useState<WallpaperStill[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    window.nodeTerminal.wallpaper
+      .listStills()
+      .then((list) => live && setStills(list))
+      .catch(() => live && setStills([]))
+    return () => {
+      live = false
+    }
+  }, [])
+  const pick = (w: DesktopWallpaper): void => {
+    setError(null)
+    update({ desktopWallpaper: w })
+  }
+  const chooseImage = async (): Promise<void> => {
+    setError(null)
+    const picked = await window.nodeTerminal.dialog.selectFile().catch(() => null)
+    if (!picked) return
+    try {
+      pick(await window.nodeTerminal.wallpaper.importImage(picked))
+    } catch (e) {
+      // Electron prefixes a handler's error with "Error invoking remote method …: Error: ".
+      setError(String((e as Error)?.message ?? e).replace(/^.*Error: /, ''))
+    }
+  }
+  const is = (w: DesktopWallpaper): boolean => sameWallpaper(value, w)
+  return (
+    <div>
+      <h4 className="text-[13px] font-medium text-text">Desktop wallpaper</h4>
+      <p className="mt-1 text-[13px] leading-relaxed text-muted">
+        A picture behind the canvas. It stays put while you pan and zoom. Pairs with Glass
+        terminals below.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <WallpaperTile label="None" selected={is(NO_WALLPAPER)} onClick={() => pick(NO_WALLPAPER)}>
+          None
+        </WallpaperTile>
+        {stills === null && <span className="self-center text-[12px] text-muted">Loading stills…</span>}
+        {stills?.map((s) => (
+          <WallpaperTile
+            key={s.id}
+            label={s.label}
+            selected={is({ kind: 'preset', id: s.id })}
+            background={s.thumb ? `center / cover no-repeat url("${s.thumb}")` : undefined}
+            onClick={() => pick({ kind: 'preset', id: s.id })}
+          >
+            {s.thumb ? null : s.label}
+          </WallpaperTile>
+        ))}
+        {GRADIENT_WALLPAPERS.map((g) => (
+          <WallpaperTile
+            key={g.id}
+            label={g.label}
+            selected={is({ kind: 'preset', id: g.id })}
+            background={g.css}
+            onClick={() => pick({ kind: 'preset', id: g.id })}
+          />
+        ))}
+        {value.kind === 'image' && (
+          <WallpaperTile label="Your image" selected onClick={() => {}}>
+            Your image
+          </WallpaperTile>
+        )}
+        {!isBrowserRuntime() && (
+          <WallpaperTile label="Choose image…" selected={false} onClick={() => void chooseImage()}>
+            Choose image…
+          </WallpaperTile>
+        )}
+      </div>
+      {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
+    </div>
+  )
+}
+
 export function AppearanceSection({ isActive }: { isActive: boolean }): React.JSX.Element {
   const appTheme = useSettings((s) => s.settings.appTheme)
   const accent = useSettings((s) => s.settings.accent)
@@ -200,6 +334,7 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
   const hiddenHeaderButtons = useSettings((s) => s.settings.hiddenHeaderButtons)
   const showResumeCard = useSettings((s) => s.settings.showResumeCard)
   const windowTitleActiveSession = useSettings((s) => s.settings.windowTitleActiveSession)
+  const glassTerminals = useSettings((s) => s.settings.glassTerminals)
   const update = useSettings((s) => s.update)
   return (
     <SettingsSection
@@ -256,6 +391,22 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
             ))}
           </div>
         </div>
+      </SearchableRow>
+      <SearchableRow {...ROWS.wallpaper}>
+        <WallpaperPicker />
+      </SearchableRow>
+      <SearchableRow {...ROWS.glassTerminals}>
+        <FieldRow
+          label="Glass terminals"
+          description="Terminal nodes become frosted glass over the wallpaper or canvas. Their tint is set per terminal theme so text keeps at least 4.5:1 contrast whatever is behind it (Solarized Light is already below that and stays opaque). Terminal nodes only."
+          control={
+            <Switch
+              checked={glassTerminals === true}
+              onChange={(v) => update({ glassTerminals: v })}
+              ariaLabel="Glass terminals"
+            />
+          }
+        />
       </SearchableRow>
       <SearchableRow {...ROWS.windowTitle}>
         <FieldRow
