@@ -29,6 +29,8 @@ export function registerCoreHandlers(
   platform: ServerPlatform,
   deps: {
     getSettings: () => Settings
+    /** Lets the wallpaper cache prune what a changed choice left behind. */
+    onSettingsChange?: (cb: (s: Settings) => void) => unknown
     downloadTickets?: DownloadTickets
     /** See fs-handlers' dep of the same name — the canvas-image write directory. */
     localProjectCwd?: (projectId: string) => string | undefined
@@ -84,7 +86,10 @@ export function registerCoreHandlers(
   // hand a later codex a value it removed: exactly the "a stub compiles fine while doing nothing"
   // failure the three-surfaces rule warns about.
   registerCodexCliIpc()
-  registerWallpaperIpc()
+  registerWallpaperIpc({
+    get: deps.getSettings,
+    onChange: (cb) => deps.onSettingsChange?.(cb)
+  })
   void claudeCliCaps()
 
   // The answer is populated after server node identity is armed. Early browser callers wait for

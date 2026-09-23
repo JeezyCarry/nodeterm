@@ -2,7 +2,8 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { cachedImagePath, importWallpaper, scanStills } from './wallpaper'
+import { existsSync, readdirSync } from 'node:fs'
+import { cachedImagePath, importWallpaper, pruneWallpaperCache, scanStills } from './wallpaper'
 
 const HASH = 'a'.repeat(40)
 let root: string | null = null
@@ -59,5 +60,23 @@ describe('importWallpaper', () => {
   it('refuses a file that is not a supported image', async () => {
     await expect(importWallpaper('/etc/passwd')).rejects.toThrow(/JPEG, PNG, WebP or HEIC/)
     await expect(importWallpaper(42)).rejects.toThrow()
+  })
+})
+
+describe('pruneWallpaperCache', () => {
+  it('removes only unreferenced full-size cache files; keeps the kept, thumbs, temps and foreign files', async () => {
+    root = mkdtempSync(path.join(tmpdir(), 'wp-cache-'))
+    const keep = `${'a'.repeat(40)}.jpg`
+    const stale = `${'b'.repeat(40)}.png`
+    const thumb = `${'c'.repeat(40)}-t.jpg`
+    const temp = `${'d'.repeat(40)}.jpg.123.1.tmp`
+    for (const f of [keep, stale, thumb, temp, 'notes.txt']) put(f, 10)
+    await pruneWallpaperCache([{ kind: 'image', path: path.join(root, keep) }, { kind: 'none' }], root)
+    expect(readdirSync(root).sort()).toEqual([keep, thumb, temp, 'notes.txt'].sort())
+  })
+
+  it('a missing cache dir is not an error', async () => {
+    await expect(pruneWallpaperCache([], path.join(tmpdir(), 'no-such-wp-cache-xyz'))).resolves.toBeUndefined()
+    expect(existsSync(path.join(tmpdir(), 'no-such-wp-cache-xyz'))).toBe(false)
   })
 })

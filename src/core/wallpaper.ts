@@ -125,14 +125,32 @@ function publishOnce(target: string, produce: (tmp: string) => Promise<void>): P
   return job
 }
 
-/** HEIC/JPEG/PNG → JPEG no larger than `px` on its long edge, via macOS's built-in `sips`. */
-async function convertWithSips(src: string, px: number, suffix: string): Promise<string> {
-  const target = path.join(wallpaperCacheDir(), `${await cacheKey(src, `sips${px}`)}${suffix}.jpg`)
-  return publishOnce(target, async (tmp) => {
-    await run(SIPS, ['-s', 'format', 'jpeg', '-Z', String(px), src, '--out', tmp], {
-      timeout: 60_000
+/** The long edge of an image in px, per `sips`; null when it cannot say. */
+async function longEdge(src: string): Promise<number | null> {
+  try {
+    const { stdout } = await run(SIPS, ['-g', 'pixelWidth', '-g', 'pixelHeight', src], {
+      timeout: 30_000
     })
-  })
+    const dims = [...stdout.matchAll(/pixel(?:Width|Height):\s*(\d+)/g)].map((m) => Number(m[1]))
+    return dims.length === 2 ? Math.max(dims[0], dims[1]) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * HEIC/JPEG/PNG/WebP → JPEG no larger than `px` on its long edge, via macOS's built-in `sips`.
+ * `-Z` alone would also UPSCALE (measured: a 320px image comes out 3840px wide), so it is passed
+ * only when the image is actually larger; an unreadable size is treated as larger.
+ */
+function convertWithSips(src: string, px: number, suffix: string): Promise<string> {
+  return cacheKey(src, `sips${px}`).then((key) =>
+    publishOnce(path.join(wallpaperCacheDir(), `${key}${suffix}.jpg`), async (tmp) => {
+      const edge = await longEdge(src)
+      const resize = edge === null || edge > px ? ['-Z', String(px)] : []
+      await run(SIPS, ['-s', 'format', 'jpeg', ...resize, src, '--out', tmp], { timeout: 60_000 })
+    })
+  )
 }
 
 let stillScan: Promise<ScannedStill[]> | null = null
@@ -198,26 +216,99 @@ export async function loadWallpaper(value: unknown): Promise<string | null> {
 }
 
 /**
- * Copy a picked image into the cache (HEIC is converted, since Chromium cannot decode it) and
- * return the value to store. The copy is what keeps the wallpaper when the original moves.
+ * Put a picked image into the cache and return the value to store. The cached copy is what keeps
+ * the wallpaper when the original moves.
+ *
+ * On macOS every import goes through `sips` to a JPEG no larger than 3840px, like the stills — a
+ * 60 MB camera PNG would otherwise be copied as-is and then refused by `load`'s 25 MB cap, which
+ * reads as a wallpaper that silently never appears. Elsewhere there is no converter, so an image
+ * over the cap is refused HERE, where the picker can show the reason. HEIC needs `sips`.
  */
 export async function importWallpaper(sourcePath: unknown): Promise<DesktopWallpaper> {
   if (typeof sourcePath !== 'string' || !IMPORT_EXT.test(sourcePath)) {
     throw new Error('Choose a JPEG, PNG, WebP or HEIC image.')
   }
   const src = path.resolve(sourcePath)
-  if (/\.heic$/i.test(src)) {
-    if (process.platform !== 'darwin') throw new Error('HEIC images can only be converted on macOS.')
-    return { kind: 'image', path: await convertWithSips(src, FULL_PX, '') }
+  const current = currentWallpaper()
+  let result: DesktopWallpaper
+  if (process.platform === 'darwin') {
+    result = { kind: 'image', path: await convertWithSips(src, FULL_PX, '') }
+  } else {
+    if (/\.heic$/i.test(src)) throw new Error('HEIC images can only be converted on macOS.')
+    if ((await stat(src)).size > MAX_LOAD_BYTES) {
+      throw new Error(`That image is larger than ${MAX_LOAD_BYTES / 1024 / 1024} MB. Choose a smaller one.`)
+    }
+    const ext = path.extname(src).toLowerCase().replace('.jpeg', '.jpg')
+    const target = path.join(wallpaperCacheDir(), `${await cacheKey(src, 'copy')}${ext}`)
+    await publishOnce(target, (tmp) => copyFile(src, tmp))
+    result = { kind: 'image', path: target }
   }
-  const ext = path.extname(src).toLowerCase().replace('.jpeg', '.jpg')
-  const target = path.join(wallpaperCacheDir(), `${await cacheKey(src, 'copy')}${ext}`)
-  await publishOnce(target, (tmp) => copyFile(src, tmp))
-  return { kind: 'image', path: target }
+  // The setting is written by the renderer after this returns, so keep BOTH the new file and
+  // whatever is on screen now; the settings hook prunes the old one once the choice lands.
+  void pruneWallpaperCache([current, result])
+  return result
 }
 
-/** Wire onto the platform's RPC surface (Electron ipcMain / server WS-RPC alike). */
-export function registerWallpaperIpc(): void {
+/** The cache file a wallpaper value is drawn from, or null for none/gradients/unknown stills. */
+async function fileFor(value: unknown, dir: string): Promise<string | null> {
+  const w = normalizeWallpaper(value)
+  if (w.kind === 'image') return cachedImagePath(w.path, dir)
+  if (w.kind === 'preset' && w.id.startsWith('mac:')) {
+    const still = (await stills()).find((s) => s.id === w.id)
+    if (!still) return null
+    const key = await cacheKey(still.path, `sips${FULL_PX}`).catch(() => null)
+    return key ? path.join(dir, `${key}.jpg`) : null
+  }
+  return null
+}
+
+/**
+ * Delete cached wallpapers nothing refers to any more. Only full-size files this module minted
+ * (hash-named, no `-t`) are candidates: foreign files and temps are never touched, and still
+ * thumbnails are kept (ponytail: ~20 KB each, one per system still; a stale one after an OS update
+ * lingers until the cache dir is cleared). A conversion still in flight is never removed.
+ *
+ * Temps are deliberately left alone: `sweepStaleTempFiles` refuses any pid-bearing temp
+ * (fs-atomic.ts — a pid cannot prove its writer is dead across instances), which is every temp
+ * this module writes, and each writer already removes its own temp on failure.
+ */
+export async function pruneWallpaperCache(keep: unknown[], dir = wallpaperCacheDir()): Promise<void> {
+  try {
+    const keepFiles = new Set(
+      (await Promise.all(keep.map((v) => fileFor(v, dir)))).filter((f): f is string => !!f)
+    )
+    for (const name of await readdir(dir)) {
+      if (!CACHED_NAME.test(name) || name.includes('-t.')) continue
+      const file = path.join(dir, name)
+      if (keepFiles.has(file) || inflight.has(file)) continue
+      await unlink(file).catch(() => {})
+    }
+  } catch {
+    // best effort: a missing cache dir or an unreadable entry is nothing to clean
+  }
+}
+
+let currentWallpaper: () => unknown = () => undefined
+
+/**
+ * Wire onto the platform's RPC surface (Electron ipcMain / server WS-RPC alike). The settings
+ * accessors let the cache follow the choice: a changed `desktopWallpaper` prunes what the old one
+ * left behind. There is deliberately no prune at boot: `SettingsStore.init` answers an unreadable
+ * settings.json with the defaults, and pruning against that would delete the wallpaper the user
+ * actually chose — a failed read is not evidence the choice went away. Only a SAVED change prunes.
+ */
+export function registerWallpaperIpc(settings: {
+  get: () => { desktopWallpaper?: unknown }
+  onChange: (cb: (s: { desktopWallpaper?: unknown }) => void) => unknown
+}): void {
+  currentWallpaper = () => settings.get().desktopWallpaper
+  let last = JSON.stringify(currentWallpaper() ?? null)
+  settings.onChange((s) => {
+    const next = JSON.stringify(s.desktopWallpaper ?? null)
+    if (next === last) return
+    last = next
+    void pruneWallpaperCache([s.desktopWallpaper])
+  })
   platform().handle(IPC.wallpaperListStills, () => listStills())
   platform().handle(IPC.wallpaperLoad, (value: unknown) => loadWallpaper(value))
   platform().handle(IPC.wallpaperImport, (sourcePath: unknown) => importWallpaper(sourcePath))
