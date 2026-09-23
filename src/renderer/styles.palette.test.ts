@@ -177,11 +177,11 @@ describe('Liquid Glass accessibility fallbacks', () => {
     return ''
   }
 
-  it('Reduce Transparency drops blur, refraction and sheen on glass', () => {
+  it('Reduce Transparency drops blur, refraction and the rim light on glass', () => {
     const m = media('(prefers-reduced-transparency: reduce)')
     expect(m).toContain(":root[data-nt-glass='on']")
     expect(m).toMatch(/--glass-blur:\s*none/)
-    expect(m).toMatch(/--glass-sheen-image:\s*none/)
+    expect(m).toMatch(/:is\(\.term-node[^)]*\)::before \{\s*display: none/)
   })
 
   it('Increase Contrast strengthens edges and takes the HIG increased-contrast palette', () => {
@@ -236,5 +236,16 @@ describe('terminal glass blur', () => {
     expect(rule.slice(0, rule.indexOf('}'))).toContain('backdrop-filter: var(--glass-term-blur)')
     const reduce = CSS.slice(CSS.indexOf('@media (prefers-reduced-transparency: reduce) {'))
     expect(reduce.slice(0, reduce.indexOf('}'))).toMatch(/--glass-term-blur:\s*none/)
+  })
+})
+
+describe('glass rim light', () => {
+  it('a masked 1px ring on the glass nodes, never a surface-wide sheen', () => {
+    const i = CSS.indexOf(":root[data-nt-glass='on'] :is(.term-node, .files-node, .loop-node, .subagent-node, .trigger-node, .dino-node)::before {\n  --glass-rim")
+    const r = CSS.slice(i, CSS.indexOf('\n}', i))
+    expect(r).toContain('padding: 1px')
+    expect(r).toContain('pointer-events: none')
+    expect(r).toContain('-webkit-mask-composite: xor')
+    expect(CSS).not.toContain('--glass-sheen')
   })
 })

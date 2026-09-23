@@ -17,7 +17,6 @@ import {
   GLASS_READABLE_TICK,
   GLASS_TINTED_ALPHA,
   glassRefraction,
-  glassSheen,
   glassSliderAlpha,
   glassTint,
   resolveGlassSlider,
@@ -187,9 +186,8 @@ describe('Glass slider (Clear ↔ Tinted)', () => {
     expect(resolveGlassSlider(7)).toBe(1)
   })
 
-  it('the sheen appears only left of the tick; refraction fades to nothing at Tinted', () => {
-    expect(glassSheen(0)).toBe(1)
-    for (const t of [GLASS_READABLE_TICK, 0.85, 1]) expect(glassSheen(t)).toBe(0)
+  it('refraction is strongest at Clear and fades to nothing at Tinted', () => {
+    expect(glassRefraction(0)).toBe(0.025)
     expect(glassRefraction(0)).toBeGreaterThan(glassRefraction(GLASS_READABLE_TICK))
     expect(glassRefraction(1)).toBe(0)
   })

@@ -19,7 +19,7 @@ import { resolveUiScale } from '../shared/ui-scale'
 import { resolveTabBarHeight } from '../shared/window-chrome-metrics'
 import { useAppTheme } from './state/useAppTheme'
 import { installWindowActivityOnDocument } from './lib/windowActivity'
-import { glassChromeAlpha, glassSheen, glassSurfaceAlpha, parseCssColor, resolveGlassSlider } from './lib/glassContrast'
+import { glassChromeAlpha, glassSurfaceAlpha, parseCssColor, resolveGlassSlider } from './lib/glassContrast'
 import { useGlassA11y } from './lib/useGlassA11y'
 import { GlassRefraction } from './components/GlassRefraction'
 import { isLiquidGlass } from './lib/appTheme'
@@ -84,7 +84,7 @@ export default function App() {
   // of the theme that effect just applied. An unparseable token leaves the chrome opaque.
   const liquidGlass = isLiquidGlass(useSettings((s) => s.settings.appTheme))
   // The Glass slider moves every surface between Clear and Tinted through its own readable alpha
-  // (glassSliderAlpha); `--glass-t` scales the blur and `--glass-sheen` the specular wash in CSS.
+  // (glassSliderAlpha); `--glass-t` scales the blur in CSS.
   const glassSlider = resolveGlassSlider(useSettings((s) => s.settings.glassTint))
   // Reduce Transparency / Increase Contrast outrank the slider (opaque / Tinted), like iOS.
   const glassA11y = useGlassA11y()
@@ -94,7 +94,6 @@ export default function App() {
       delete root.dataset.ntGlass
       root.style.removeProperty('--glass-chrome-bg')
       root.style.removeProperty('--glass-t')
-      root.style.removeProperty('--glass-sheen')
       return
     }
     // Read the tokens with the glass overrides OFF: under them `--panel` IS the glass fill, and a
@@ -112,7 +111,6 @@ export default function App() {
         : panel
     )
     root.style.setProperty('--glass-t', glassSlider.toFixed(3))
-    root.style.setProperty('--glass-sheen', glassA11y.reduceTransparency ? '0' : glassSheen(glassSlider).toFixed(3))
     root.dataset.ntGlass = 'on'
   }, [liquidGlass, appTheme, glassSlider, glassA11y])
 

@@ -3893,13 +3893,13 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   guarantee is off. Measured: chrome dark 0.20 / 0.70 / 0.95, chrome light 0.20 / 0.745 / 0.95,
   nodeterm-dark 0.20 / 0.675 / 0.95 (Clear / Readable / Tinted). App.tsx sets `--glass-t` (blur
   16→28px on chrome and × 0.85 = 13.6→23.8px on terminal nodes via `--glass-term-blur`, saturation
-  200→145%) and `--glass-sheen`. **Refraction** is ONE shared SVG filter
+  200→145%). **Refraction** is ONE shared SVG filter
   (`components/GlassRefraction.tsx`, `#nt-refract`: a 256² edge-lens displacement map generated once,
   `primitiveUnits="objectBoundingBox"` so one filter fits every element), referenced from
-  `--glass-blur` as `url(#nt-refract)` — no per-node filters. Its scale is `0.06 × (1 − t)`; it moves
-  backdrop pixels, never the tint, so it cannot touch contrast. The specular sheen is a background
-  gradient scaled by `glassSheen(t)`, which is ZERO from the tick on — it lightens the surface, so it
-  may only exist where the promise is already off. Node blur+refraction pause while the camera moves
+  `--glass-blur` as `url(#nt-refract)` — no per-node filters. Its scale is `0.025 × (1 − t)`; it moves
+  backdrop pixels, never the tint, so it cannot touch contrast. Glass NODES carry a 1px rim light instead of a sheen: a
+  masked-ring `::before` (anchored to the React Flow wrapper), brightest top-left; a surface-wide
+  diagonal sheen was tried and washed the pane out. Refraction scale max is 0.025 (was 0.06). Node blur+refraction pause while the camera moves
   (`.canvas-moving`) ONLY when **Keep blur while moving** is off (`settings.glassBlurWhileMoving`,
   default ON, read through `keepGlassBlurWhileMoving` — only a literal `false` pauses): on, Canvas
   never adds the class, so the glass stays live through a pan at a GPU cost; chrome keeps both always. MEASURED on the live dev build (CDP computed style):
@@ -3914,7 +3914,7 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
 - **Accessibility outranks the slider** (HIG liquid-glass.md, like iOS). `lib/useGlassA11y.ts`
   reads `prefers-reduced-transparency` and `prefers-contrast: more` (one subscription, Electron and
   browser alike) and `glassSurfaceAlpha` applies them to every tint alpha: **Reduce Transparency**
-  = alpha 1, no blur, no refraction filter in the DOM, no sheen, and the slider row is disabled
+  = alpha 1, no blur, no refraction filter in the DOM, no rim light, and the slider row is disabled
   with the reason; **Increase Contrast** = the slider pins to Tinted, `--glass-edge` goes to 0.5,
   terminal borders thicken and the `--sys-*` palette takes HIG's increased-contrast columns
   (`SYSTEM_COLORS.darkContrast|lightContrast`, pinned to the CSS). The alpha half lives in JS

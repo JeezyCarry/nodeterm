@@ -13534,11 +13534,10 @@ body.focus-mode .dock:hover {
   --tabbar-bg: var(--glass-chrome-bg);
   --glass-edge: rgba(var(--tint-rgb), 0.2);
   /* The Glass slider (App.tsx sets the live values inline; these are the Readable-tick defaults):
-     `--glass-t` 0 = Clear … 1 = Tinted, `--glass-sheen` the specular wash (0 from the tick on).
+     `--glass-t` 0 = Clear … 1 = Tinted.
      Clearer glass blurs a little less and saturates a little more, and refracts at its rim
      (`#nt-refract`, components/GlassRefraction.tsx — its strength also follows the slider). */
   --glass-t: 0.7;
-  --glass-sheen: 0;
   --glass-refract: url(#nt-refract);
   --glass-blur: var(--glass-refract) blur(calc(16px + 12px * var(--glass-t)))
     saturate(calc(200% - 55% * var(--glass-t)));
@@ -13546,17 +13545,6 @@ body.focus-mode .dock:hover {
      windows): same curve, radius × 0.85, same saturation and refraction. */
   --glass-term-blur: var(--glass-refract) blur(calc((16px + 12px * var(--glass-t)) * 0.85))
     saturate(calc(200% - 55% * var(--glass-t)));
-  /* A diagonal light across the surface, strongest at the top-left rim. Painted as a background
-     layer (under the content), and only left of the Readable tick: it lightens the surface, so it
-     may only appear where the contrast promise is already off. */
-  --glass-sheen-image: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, calc(0.22 * var(--glass-sheen))) 0%,
-    rgba(255, 255, 255, calc(0.04 * var(--glass-sheen))) 22%,
-    rgba(255, 255, 255, 0) 50%,
-    rgba(255, 255, 255, calc(0.06 * var(--glass-sheen))) 85%,
-    rgba(255, 255, 255, calc(0.14 * var(--glass-sheen))) 100%
-  );
 }
 
 /* Outermost chrome: fill + blur. */
@@ -13587,9 +13575,38 @@ body.focus-mode .dock:hover {
     .nt-settings
   ) {
   background: var(--glass-chrome-bg) !important;
-  background-image: var(--glass-sheen-image) !important;
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
+}
+
+/* Rim light: a 1px specular edge, brightest at the top-left and faint along the rest, drawn as a
+   masked ring on the node's ::before (it anchors to the React Flow wrapper, which is the node's
+   box). It replaces a diagonal sheen across the whole surface, which washed out the pane; an edge
+   highlight is all the light a pane needs, and it never sits under text. */
+:root[data-nt-glass='on'] :is(.term-node, .files-node, .loop-node, .subagent-node, .trigger-node, .dino-node)::before {
+  --glass-rim: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.1) 30%,
+    rgba(255, 255, 255, 0.04) 60%,
+    rgba(255, 255, 255, 0.28) 100%
+  );
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  z-index: 4;
+  background: var(--glass-rim);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
 }
 
 /* Nested inside a blurred container (or unknown nesting): the fill only. */
@@ -13615,7 +13632,6 @@ body.focus-mode .dock:hover {
   background: var(--glass-chrome-bg);
 }
 :root[data-nt-glass='on'] :is(.term-node, .files-node, .loop-node, .subagent-node, .trigger-node, .dino-node) {
-  background-image: var(--glass-sheen-image);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }
@@ -13724,8 +13740,9 @@ body.focus-mode .dock:hover {
   :root[data-nt-glass='on'] {
     --glass-blur: none;
     --glass-term-blur: none;
-    --glass-sheen: 0;
-    --glass-sheen-image: none;
+  }
+  :root[data-nt-glass='on'] :is(.term-node, .files-node, .loop-node, .subagent-node, .trigger-node, .dino-node)::before {
+    display: none;
   }
 }
 
@@ -13765,6 +13782,9 @@ body.focus-mode .dock:hover {
   }
   :root[data-nt-glass='on'] .term-node {
     border-width: 1.5px;
+  }
+  :root[data-nt-glass='on'] :is(.term-node, .files-node, .loop-node, .subagent-node, .trigger-node, .dino-node)::before {
+    --glass-rim: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.3) 30%, rgba(255, 255, 255, 0.2) 60%, rgba(255, 255, 255, 0.5) 100%);
   }
 }
 

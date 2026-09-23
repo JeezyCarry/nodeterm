@@ -230,15 +230,9 @@ export function glassSliderAlpha(t: number, readable: number): number {
   return readable + ((tinted - readable) * (t - GLASS_READABLE_TICK)) / (1 - GLASS_READABLE_TICK)
 }
 
-/** Specular sheen strength, 0..1: full at Clear, ZERO from the Readable tick on — the sheen is a
- *  white wash under the text, so it may only appear where the contrast promise is already off. */
-export function glassSheen(t: number): number {
-  return Math.max(0, (GLASS_READABLE_TICK - t) / GLASS_READABLE_TICK)
-}
-
 /** Edge-lens displacement (feDisplacementMap `scale`, objectBoundingBox units): strongest at
  *  Clear, flat at Tinted. It moves backdrop pixels, never the tint, so it cannot touch contrast. */
-export const GLASS_REFRACT_MAX = 0.06
+export const GLASS_REFRACT_MAX = 0.025
 export function glassRefraction(t: number): number {
   return GLASS_REFRACT_MAX * (1 - t)
 }
