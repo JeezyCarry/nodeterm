@@ -73,8 +73,8 @@ const licenseDir = path.join(repoRoot, 'resources', 'licenses')
 const markerFile = path.join(outDir, '.tmux-build-version')
 /** Bump when the build RECIPE changes in a way the pins above do not capture, so a binary built by
  *  the old recipe on the (self-hosted, persistent) release runner is rebuilt instead of reused.
- *  r2 = issue #896 (pipe2 weak import). */
-const RECIPE_REV = 'r2'
+ *  r3 = issue #896 (pipe2 and strtonum weak imports). */
+const RECIPE_REV = 'r3'
 const MARKER = `tmux-${TMUX_VERSION} libevent-${LIBEVENT_VERSION} utf8proc-${UTF8PROC_VERSION} universal(${ARCHS.map((a) => a.arch).join('+')}) ${RECIPE_REV}\n`
 
 const force = process.argv.includes('--force')
@@ -221,7 +221,12 @@ function buildArch({ arch, triple, minOs }, work, tarballs) {
   // link is static with no -static flag and no chance of picking up a system libevent.dylib.
   const tmuxEnv = {
     ...env,
-    CPPFLAGS: `-I${path.join(prefix, 'include')}`,
+    // tmux tests strtonum with AC_RUN_IFELSE, which has no cache variable to pre-answer. On an
+    // Apple Silicon runner executing Node under Rosetta, the x86_64 probe runs successfully and
+    // selects the new SDK symbol even for our 10.15 deployment target. Rename every reference so
+    // the probe cannot link, tmux adds compat/strtonum.c, and that definition plus every caller
+    // resolve to the private bundled symbol instead of weak-importing libSystem's `_strtonum`.
+    CPPFLAGS: `-I${path.join(prefix, 'include')} -Dstrtonum=nodeterm_strtonum`,
     LDFLAGS: `${flags} -L${path.join(prefix, 'lib')}`,
     // Pre-answer tmux's PKG_CHECK_MODULES for utf8proc. That macro is invoked with NO
     // action-if-not-found, so with pkg-config disabled it would abort configure outright
@@ -246,9 +251,6 @@ function buildArch({ arch, triple, minOs }, work, tarballs) {
       // rendering the same. The price is the third vendored library above: one more pinned
       // tarball to download, verify, cross-build statically and carry a license for.
       '--enable-utf8proc',
-      // tmux itself probes strtonum (not libevent). The runner SDK exposes it even though our
-      // deployment target does not, so force tmux's bundled compat implementation.
-      'ac_cv_func_strtonum=no',
       ...hostArg
     ],
     { cwd: tmuxDir, env: tmuxEnv }
