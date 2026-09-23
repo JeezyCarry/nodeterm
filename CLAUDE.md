@@ -3048,6 +3048,11 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   that host (cache eviction still runs against the FULL target list, so switching between two SSH
   projects doesn't throw each host's cache away).
 
+- **Usage failure readouts** — an empty Claude snapshot with `status: error` says "Could not
+  read usage." in both the single-account and multi-account popovers, including beside healthy
+  provider rows. Nonempty snapshots retain their last-known bars on error; no error-specific
+  authentication advice is inferred from the status.
+
 - **Remote usage** (SSH hosts, `src/core/usage/remote-claude-usage.ts`) — the source behind the
   SSH scope above. v1 excluded remote accounts, which left a user whose Claude only ever runs on a
   server staring at an empty indicator while the host had perfectly good numbers.

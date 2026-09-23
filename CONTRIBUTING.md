@@ -622,6 +622,10 @@ examples). If the same effect also WRITES, latch its first run: otherwise switch
 mid-session applies stored state to whatever the user is doing right then, which is a different
 feature from the one they asked for.
 
+**Usage readouts distinguish failed reads from empty data.** For Claude, show the failure when
+`status` is `error` and limits are empty, including beside other providers; preserve last-known
+bars when limits remain. Keep both single-account and multi-account views covered.
+
 **A context capacity needs session provenance.** Claude's effective `CLAUDE_CODE_MAX_CONTEXT_TOKENS`
 is reported by its managed hook, accepted only with verified node identity, and validated as a
 positive decimal safe integer. Never read the app's global env for another session or let a
