@@ -56,6 +56,14 @@ handler needs something only Electron has (an SSH ControlMaster, a native dialog
 **injected dep** whose absence is a documented degrade — see `registerTranscriptIpc` /
 `registerContextEnsureIpc` — rather than a reason to keep the whole handler in `src/main`.
 
+Windows installer safety (#829): `build/installer.nsh` overrides NSIS's process-killing check.
+A running app or session host blocks install/uninstall, and a failed process query blocks too.
+Never restore automatic host termination: quitting the app preserves those live sessions.
+Update preparation must keep saved canvas nodes: exit programs normally, quit, then have the user
+verify and stop any remaining host. Never recommend **End session** (it deletes nodes). Cold agent
+resume depends on supported, saved conversation history; it does not preserve running tasks.
+See `docs/windows-session-host.md` for the user-controlled preparation/recovery steps and limits.
+
 ## Three surfaces
 
 A feature is not done until you have decided how it behaves on each — even if the decision is "not
@@ -260,6 +268,12 @@ lane unaffected.
   "fix" this by installing the key into `administrators_authorized_keys`. The phone tries SSH before
   the relay, so a key that works locks it onto a path that cannot work. CLAUDE.md, "Remote access",
   has the details.
+
+- **A relay channel that names a project needs a row in `relay-project-scope.ts`.** A relay guest
+  bound to one shared project must never reach another, and the jail is keyed on channel class:
+  anything named `githubIssues:*`, `board-log:*` or `projects.*` is refused on a scoped session
+  unless that table can read its projectId. Add the row in the same PR as the channel, or the verb
+  is refused for every scoped guest (and `relay-project-scope.test.ts` goes red telling you so).
 
 - **Normalize BOTH sides of a path comparison, through one function.** A marker normalized where
   it is built and matched raw where it is used is a no-op on the machine you wrote it on and a

@@ -4230,7 +4230,14 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   changes via fs.watch; desktop SSH projects poll 5s while subscribed; inline projects show a
   hint. Relay tabs BRIDGE boardLog to the host (pre-dispatch `sharedProjectId` scope guard in the
   relay dispatch — an out-of-scope projectId is refused before any registry/path resolution; a
-  connection drop replays its outstanding onChanged unsubscribes). Deliberate v1 gaps: column-level
+  connection drop replays its outstanding onChanged unsubscribes). **The relay-guest scope jail is
+  keyed on channel CLASS, not a per-feature list** (`main/remote/relay-project-scope.ts`): every
+  method whose name starts with `githubIssues:` / `board-log:` / `projects.` is project-scoped, and
+  one the table cannot read a projectId out of is REFUSED on a scoped session. The switch it
+  replaced had a `default: not project-scoped` arm, so a new verb in one of those namespaces reached
+  another project's data with no refusal anywhere. A new channel in a scoped class therefore needs a
+  table row to become reachable — and `relay-project-scope.test.ts` fails if a live IPC channel in a
+  scoped class has none, so the fail-closed default cannot silently swallow a shipped verb. Deliberate v1 gaps: column-level
   events are stored but no card feed shows them; canvas-born nodes get no card-created; no
   card-deleted type.
   Per-column "+ New session" menus create agents/terminal/sticky nodes assigned to the column
@@ -4239,11 +4246,24 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   as a SIBLING of the node root — the roots are overflow:hidden — hidden for Ungrouped/dangling,
   click opens the board). Server Edition works as-is (pure renderer + workspace.save). Scope: no
   agent-driven card movement yet, no board undo.
-  **Mobile (nodeterm-ios) reaches the board through two relay verbs**, both landing in
-  `WorkspaceStore.ensureRemoteBoard` / `setRemoteCardColumn` (host-service `handleKanban`; wired in
-  `main/index.ts`'s `hostBridge.kanban`; pure transforms in `core/project-kanban-write.ts`):
-  `projects.ensureBoard` seeds the default columns on a project that has none, `projects.setCardColumn`
-  moves one card. Three things make them necessary rather than convenient. (1) The desktop board is a
+  **Mobile (nodeterm-ios) reaches the board through three relay verbs**, all landing in
+  `WorkspaceStore.ensureRemoteBoard` / `setRemoteCardColumn` / `editRemoteCardLabels` (host-service
+  `handleKanban`; wired in `main/index.ts`'s `hostBridge.kanban`; pure transforms in
+  `core/project-kanban-write.ts`): `projects.ensureBoard` seeds the default columns on a project that
+  has none, `projects.setCardColumn` moves one card, and `projects.editCardLabels` adds / removes /
+  creates **board labels** on one card (the phone's long-press label sheet, 2026-09). There is ONE
+  label model — the per-project palette in `kanban.labels` plus per-card ids in `kanban.meta[].labels`
+  — and the label verb writes it through the SAME transforms the canvas node's "+ Label" row and the
+  kanban card use: the card-meta + label half of `lib/kanban.ts` moved to `@shared/kanban-labels`
+  (re-exported, renderer call sites unchanged) so core can apply it; a test pins that a phone edit
+  produces the board `toggleCardLabel` produces. Params are validated at the write site
+  (`parseCardLabelEdit`: bounded control-free ids, 1–60-char control-free names, colour from the closed
+  palette, no id both added and removed) because they land in a git-shared, hand-editable file; a
+  created name matching an existing label case-insensitively REUSES it (the picker offers no Create
+  on an exact match); the first label on a board-less project seeds the default board, as the
+  desktop's first "+ Label" does; a stale `add` answers `edited:false` with the CURRENT palette so the
+  phone can redraw. Deleting/renaming palette entries is deliberately desktop-only (it touches every
+  card). The iOS direct-SSH path has a Swift twin of the transform for projects on the host it dials. Three things make them necessary rather than convenient. (1) The desktop board is a
   LAZY default — `kanban` is not written until the user's first board edit — so most project files
   carry NO board and the phone, which knows a project only by its file, could not offer one
   (measured: 1 of 13 project files on the author's machine had a `kanban` block). The default columns
@@ -4674,6 +4694,14 @@ component is absent, which otherwise fails only after the full install with `MSB
 `/opt:lldltojobs` with `LNK1117`. These are gyp overrides, not a reason to reject a Node version
 allowed by `package.json`. `.github/workflows/win-package-smoke.yml` is a
 **workflow_dispatch-only** packaging smoke on windows-latest — build only, never publishes.
+Windows installer safety (#829): `build/installer.nsh` overrides NSIS's process-killing check.
+A running app or session host blocks install/uninstall, and a failed process query blocks too.
+Never restore automatic host termination: quitting the app preserves those live sessions.
+Update preparation must keep saved canvas nodes: exit programs normally, quit, then have the user
+verify and stop any remaining host. Never recommend **End session** (it deletes nodes). Cold agent
+resume depends on supported, saved conversation history; it does not preserve running tasks.
+See `docs/windows-session-host.md` for the user-controlled preparation/recovery steps and limits.
+
 **Follow-ups, in order:** code signing, then Windows auto-update wiring (electron-updater NSIS leg
 + `latest.yml` on the nodeterm.dev feed — blocked on signing: an unsigned auto-update is a
 downgrade in trust), and the fork's PE-identity polish (electron-builder leaves `OriginalFilename`
