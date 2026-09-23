@@ -61,6 +61,15 @@ metadata even when credentials already include an email, and degrade to the emai
 metadata cannot be read. Managed usage must never fall back to an unscoped system Keychain token:
 that would label one account's limits with another account's organization.
 
+Context-link maps authorize reads. Publish changes to edges, linked metadata, and background
+projects independently of canvas geometry updates; a debounce reset by every node render can
+starve publication indefinitely. Only merge projects owned by the same core, and use the rendered
+canvas's project epoch during tab switches. Core must revoke removed links before asynchronous
+transcript discovery or debug-file writes finish; an older write must never restore that access.
+Coalesce renderer updates before building the workspace map, without resetting the scheduled task.
+Intermediate publications retain resolved transcript paths only for unchanged identities; changing
+a session/account/location/hook path or removing the target invalidates that cache immediately.
+
 Windows installer safety (#829): `build/installer.nsh` overrides NSIS's process-killing check.
 A running app or session host blocks install/uninstall, and a failed process query blocks too.
 Never restore automatic host termination: quitting the app preserves those live sessions.
@@ -621,6 +630,11 @@ arrangement on screen both confirm first, because layout edits are not in the un
 does not, because it is. Whether a dialog claims the edit reaches other people comes from
 `layoutIsShared`, which is true for an SSH project as well as a folder one.
 
+**Keep-alive webview ghosts must stay mounted, but must not enter minimap geometry.**
+They use `display:none`, not React Flow's `hidden` (which unmounts the guest). Render canvas maps
+through `VisibleMiniMap`: it filters both drawing and bounds in a minimap-only store while sharing
+the live camera. A transparent rectangle alone still distorts the map's scale.
+
 **React Flow's `fitView` is queued, not immediate — never use it to frame something automatically.**
 Calling it sets `fitViewQueued` and the fit runs from a later `setNodes` (only once every node is
 measured) or the next `updateNodeInternals`, against whatever the node lookup holds by then; a fit
@@ -809,6 +823,13 @@ Two files, two audiences:
 **If you change or discover something other contributors must know, update this file too.** An
 invariant that only lives in a commit message is one refactor away from being violated by someone
 who never saw it.
+
+**Phone consent belongs to the verified handshake, not the browse socket.** A standing phone's
+SAS request survives transport closure only until its 120-second deadline; approval requires the
+issued id and displayed box key together. Keep request/reply outcomes distinct (stale request,
+failed pin save, missing IPC response, saved-but-disconnected). All production pin/revoke writers
+must use `updateApprovedDevices` for the whole read/modify/write, so concurrent updates cannot
+lose approvals or resurrect revoked keys. Server Edition does not host this legacy relay path.
 
 Managed Codex login terminals are agent-less: core identifies their provider from the saved
 account list. Before opening one, await `useSettings.getState().flush()` after adding the account.

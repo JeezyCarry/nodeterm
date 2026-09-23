@@ -1327,8 +1327,8 @@ export function initRemoteHost(
   // so an event meant for the phone must not disturb an already-approved interactive session.
   ipcMain.on(IPC.remoteHostApprove, (_e, msg: { id?: string; pub?: string } = {}) => {
     const matched =
-      (pendingApprovalId && msg?.id === pendingApprovalId) ||
-      (pendingApprovalPub && msg?.pub === pendingApprovalPub)
+      pendingApprovalId && msg?.id === pendingApprovalId &&
+      (msg.pub === undefined || msg.pub === pendingApprovalPub)
     if (!matched) return
     pendingApprovalId = null
     pendingApprovalPub = null
@@ -1337,8 +1337,8 @@ export function initRemoteHost(
   // Host human rejected the pending device → drop the connection entirely (pending sessions only).
   ipcMain.on(IPC.remoteHostReject, (_e, msg: { id?: string; pub?: string } = {}) => {
     const matched =
-      (pendingApprovalId && msg?.id === pendingApprovalId) ||
-      (pendingApprovalPub && msg?.pub === pendingApprovalPub)
+      pendingApprovalId && msg?.id === pendingApprovalId &&
+      (msg.pub === undefined || msg.pub === pendingApprovalPub)
     if (!matched) return
     pendingApprovalId = null
     pendingApprovalPub = null

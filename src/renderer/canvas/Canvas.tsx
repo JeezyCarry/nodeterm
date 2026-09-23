@@ -1,8 +1,10 @@
+import { VisibleMiniMap } from './VisibleMiniMap'
 import { LINK_ENDPOINT_NOT_FOUND } from '@shared/canvas-link'
 import { createControlOpenBatch } from '../lib/controlOpenBatch'
 import { commitOwnedLaunchAttempt, registerLaunchCommit } from '../terminal/launch-attempt'
 import { launchCommand } from '../terminal/launch-command'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useContextLinkSync } from './useContextLinkSync'
 import { useShallow } from 'zustand/react/shallow'
 import { playSfx, primeSfx } from '@renderer/lib/sfx'
 import { fanoutStillWorking } from '@renderer/lib/completionAlert'
@@ -14,7 +16,6 @@ import {
   ControlButton,
   Controls,
   MarkerType,
-  MiniMap,
   ReactFlow,
   SelectionMode,
   useEdgesState,
@@ -206,6 +207,7 @@ import { CapabilityNotice } from '../components/CapabilityNotice'
 import { ClosedTranscriptDialog } from '../components/ClosedTranscriptDialog'
 import { SetupConsentDialog } from '../components/SetupConsentDialog'
 import { ConsentNotice } from '../remote/ConsentNotice'
+import { approvePhoneWithFeedback } from '../lib/phone-approval'
 import { peerApprovalView } from '@shared/remote/approval'
 import { promptDialog } from '../components/promptDialog'
 import { UpgradeDialog } from '../components/UpgradeDialog'
@@ -463,7 +465,7 @@ import {
   reconnectRelayTab,
   type RelayTab,
 } from '../session/relay-tab'
-import { buildBackgroundLinkMaps, buildContextLinkNote, buildLinkMap, buildNotePushMessage, classifyLink, hiddenLinkIds, linkIdsCoveredByRopes, pairKey, planBridges, type LinkEndpoint } from '../lib/noteLink'
+import { buildContextLinkNote, buildNotePushMessage, classifyLink, hiddenLinkIds, linkIdsCoveredByRopes, pairKey, planBridges, type LinkEndpoint } from '../lib/noteLink'
 import {
   launchesToFire,
   queueControlLaunch,
@@ -769,6 +771,7 @@ interface MergeState {
   hasOrigin: boolean
 }
 interface PendingPeerState {
+  standing?: boolean
   sas: string | null
   id: string
   /** Human-facing peer name, if the tunnel carries one. The relay `RelayPeerPending` payload does
@@ -996,7 +999,7 @@ function StatusAwareMiniMap({ onNodeDoubleClick }: { onNodeDoubleClick: (node: N
     [statusById]
   )
   return (
-    <MiniMap
+    <VisibleMiniMap
       className="minimap"
       position="bottom-right"
       pannable
@@ -3131,11 +3134,8 @@ export function Canvas() {
   // Host connection-approval gate: when a client finishes the handshake, prompt the host to
   // verify the SAS and allow/deny before any remote pty/fs RPC is served.
   //
-  // Sourced off the NEW relay tunnel (`relayHost`, Stage 4 Task 2), NOT the legacy
-  // `remoteHost.onPeerPending`. Migrating means the old standing-host (phone) path no longer raises
-  // THIS dialog — deliberate: the phone is being moved to the relay tunnel separately
-  // (docs/ios-protocol-migration.md) and Task 10 deletes the `remoteHost` dialect outright. So we
-  // fully migrate rather than keep both sources alive (which would only complicate that removal).
+  // Team relay and legacy phone handshakes share the SAS dialog until the mobile protocol
+  // migration is complete. Standing phone consent has a request/reply persistence outcome.
   useEffect(() => {
     return window.nodeTerminal.relayHost.onPeerPending((info) =>
       setPendingPeer({ ...info, source: 'relay' })
@@ -3667,63 +3667,14 @@ export function Canvas() {
     })
   }, [nodes])
 
-  // Rewrite link files when a linked node's session starts/changes: main resolves
-  // codex/gemini transcripts by sessionId, so a session that appears after the edge was
-  // drawn must trigger a rewrite. agentId is part of the signature for the same reason: a
-  // plain terminal's identity arrives from hooks after the fact, and the map entry gains
-  // its agentId/sessionId only once it's known. Primitive signature, not the byId map (see
-  // loopSig).
-  const linkSessionSig = useAgentStatus((s) => {
-    let sig = ''
-    for (const e of linkEdges) {
-      const a = s.byId[e.source]
-      const b = s.byId[e.target]
-      sig += `${a?.agentId ?? ''}:${a?.sessionId ?? ''}|${b?.agentId ?? ''}:${b?.sessionId ?? ''}|`
-    }
-    return sig
-  })
+  useContextLinkSync({ projectId: nodesProjectIdRef.current, nodes, edges: linkEdges })
 
-  // Prune links whose endpoints were deleted, then push the link map to main (debounced) so
-  // it can rewrite the per-node link files the context CLI reads.
+  // Pruning is separate from publication: node geometry changes must not postpone link writes.
   useEffect(() => {
     const ids = new Set(nodes.map((n) => n.id))
     const valid = linkEdges.filter((e) => ids.has(e.source) && ids.has(e.target))
-    if (valid.length !== linkEdges.length) {
-      setLinkEdges(valid)
-      return // re-runs with the pruned set
-    }
-    const infoOf = (id: string) => {
-      const n = nodes.find((nn) => nn.id === id)
-      const sticky = n?.type === 'sticky'
-      const agentId = sticky ? undefined : agentIdOf(id)
-      return {
-        id,
-        title: (n?.data.title as string) || id,
-        cwd: (n?.data.cwd as string) || '',
-        note: sticky ? ((n?.data.text as string) ?? '') : undefined,
-        sticky,
-        agentId,
-        sessionId: agentId ? useAgentStatus.getState().byId[id]?.sessionId : undefined,
-        accountId: sticky ? undefined : ((n?.data.accountId as string) || undefined)
-      }
-    }
-    // Merge in the link maps of every OTHER project (from their serialized nodes + bridges):
-    // main clears all link files before writing the pushed map, so pushing only the active
-    // project's map would sever the links of background projects whose agents keep running.
-    const { projects, activeProjectId } = useProjects.getState()
-    const map = {
-      ...buildBackgroundLinkMaps(
-        projects,
-        activeProjectId,
-        (id) => useAgentStatus.getState().byId[id]?.sessionId,
-        (id) => useAgentStatus.getState().byId[id]?.agentId
-      ),
-      ...buildLinkMap(valid, infoOf)
-    }
-    const t = setTimeout(() => void window.nodeTerminal.contextLink.setLinks(map), 150)
-    return () => clearTimeout(t)
-    // linkSessionSig is read only as an effect trigger — infoOf re-reads sessionIds via getState().
-  }, [linkEdges, nodes, setLinkEdges, agentIdOf, linkSessionSig])
+    if (valid.length !== linkEdges.length) setLinkEdges(valid)
+  }, [linkEdges, nodes, setLinkEdges])
 
   // Reflect Claude nodes with unread output as a macOS Dock badge count (across all projects).
   // Subscribes to the derived count (a primitive), not the byId map, for the same reason as
@@ -15259,7 +15210,12 @@ export function Canvas() {
           enterConfirms={false}
           danger
           onConfirm={() => {
-            if (pendingPeer.source === 'phone') {
+            if (pendingPeer.source === 'phone' && pendingPeer.standing) {
+              void approvePhoneWithFeedback(
+                () => window.nodeTerminal.remoteHost.approvePhone(pendingPeer.id, pendingPeer.pub ?? ''),
+                setCopyError
+              )
+            } else if (pendingPeer.source === 'phone') {
               window.nodeTerminal.remoteHost.approve(pendingPeer.id, pendingPeer.pub ?? undefined)
             } else {
               window.nodeTerminal.relayHost.confirm(peerApprovalView(pendingPeer).confirmId)

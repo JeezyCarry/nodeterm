@@ -1483,6 +1483,14 @@ the wire never see any of it):
   every returning page until the fallback; live→ghost never did). A genuinely deleted node's entry
   is dropped at the deletion funnels (handleNodesChange's `remove`, `deleteNodes`, the peer-mutation
   remove, project deletion/prune), with the next retire as backstop — never by the merge.
+- **The minimap must exclude ghosts from BOTH its node list and its bounds lookup** (#850/#786).
+  React Flow's MiniMap ignores CSS `display:none`; setting `hidden` on the real node instead
+  unmounts the guest. `canvas/VisibleMiniMap.tsx` projects the live flow store into a provider
+  scoped to the map, preserving internal absolute positions, measured sizes and the original
+  panZoom instance. Only the map's node collections are filtered; persistence and pool lifecycle
+  are untouched. The real MiniMap regression tests cover ghost/live transitions, empty bounds,
+  removals, grouped geometry and camera interaction. When upgrading React Flow, keep those
+  tests: the projection deliberately mirrors the state fields consumed by MiniMap.
 - **Memory bounds** (same posture as park/WebGL: a lever must not end live work): a ghost is
   hidden, so the existing Browser Memory Saver discards its guest after `BROWSER_DISCARD_MS`
   unless loading/audible/agent-driven — `onGuestDiscarded` then drops the entry (a husk would hold
@@ -2801,13 +2809,25 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   retired — its embedded-JS parser now lives as tested TS in `core/context-link-render.ts`:
   parsers for **all four** formats — claude JSONL / codex rollout / gemini event-sourced chat /
   opencode export — plus `renderContextLink` over injected fetchers). `src/core/context-link.ts`
+  coalesces renderer updates before workspace-map construction with a non-resetting task.
+  Intermediate ACL publications retain previously resolved paths keyed by node, agent, session,
+  account, cwd, remote/local placement and hook path. Ingest prunes changed/removed identities,
+  so changing back during queued discovery cannot revive an invalidated path. Reinitialization
+  clears the cache, and only current-revision discovery may refill it. The service
   holds the link docs in memory (per-node files under `<userData>/context-links/` remain as a
   debug aid), carries per-entry `agentId`/`sessionId`/`accountId`, and answers the route;
   **authorization** = the doc is selected by the REQUESTER's node id, so a token-holding caller
   can only read nodes in its own (directional) link map. Codex/gemini paths resolve via the
   handoff locators (`locateCodex`/`locateGemini` by sessionId); claude keeps the hook-fed path +
-  `locateClaude(sessionId, accountId)` fallback (cwd-newest is claude-only); Canvas rewrites link
-  files when a linked node's sessionId appears (`linkSessionSig`). **SSH projects:** the shim +
+  `locateClaude(sessionId, accountId)` fallback (cwd-newest is claude-only).
+  `useContextLinkSync` publishes semantic map changes from live edges and subscribes to
+  background project/status changes. Geometry/status render churn cannot postpone publication;
+  relay-bound projects never enter the local core's map. A render-captured project epoch prevents
+  outgoing live nodes replacing the incoming project's persisted map during a tab switch. Core
+  replaces the read authorization map synchronously, then enriches/writes debug documents through
+  a recoverable serialized queue; revision checks prevent obsolete enrichment restoring a removed
+  link. Transcript paths can be temporarily unavailable while the current snapshot is enriched.
+  **SSH projects:** the shim +
   skill are installed on the remote host at connect (`RemoteHooks.installContextLink`, gated on
   the VERIFIED reverse hook tunnel; POSTs ride `--unix-socket` through it); a remote node's
   transcript is read over the ControlMaster (`initContextLink(ptyManager, deps)` — `src/main`
@@ -4941,3 +4961,20 @@ sessions is a hazard whatever kills it; this removes the hazard, not a proven ca
     follow-up note rather than same-PR work — but flag it so it isn't forgotten.
   When a change is genuinely desktop-only (native menus, auto-update, Keychain), say so; the
   point is to make the call consciously, not to leave the other surfaces to rot.
+
+### Standing phone consent lifetime (#819)
+
+A browse socket can close before the human clicks the SAS dialog. `core/phone-approval.ts` retains
+only the handshake-bound id/key for 120 seconds, at most 64 requests, one per key. Socket closure
+releases presence and transport but does not discard that bounded consent; replacement, rejection,
+expiry and host stop clear the exact dialog id. Approval requires BOTH id and displayed key (no
+key-only match or mismatched-key fallback), consumes once, then persists before granting access.
+`remote:phone:approve` is raw, owner-window Electron IPC, never a relay RPC. Its response separates
+stale/persistence failure from approved/saved-disconnected; renderer rejection/timeout is explicitly
+unconfirmed. SAS derivation and mutual trust verification are unchanged. Legacy interactive offers
+remain session-only, and Server Edition rejects standing phone approval as unsupported.
+
+Pin/revoke mutations use `updateApprovedDevices` to queue the entire read/modify/write in process;
+unique-temp atomic rename alone cannot prevent lost updates. Non-ENOENT reads and malformed JSON
+reject rather than overwrite unknown trust state. The queue is not a cross-process lock. A click
+accepted before host stop may finish its disk save, but must never open the now-closed session.
