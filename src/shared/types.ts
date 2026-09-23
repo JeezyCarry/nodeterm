@@ -1418,6 +1418,13 @@ export interface Settings {
    *  (settings.json is hand-editable): an unknown id falls back to the default theme, whose
    *  colours reproduce the pre-feature hardcoded `#1e1e1e`/`#e6e6e6` exactly. */
   terminalTheme: string
+  /** Desktop wallpaper behind the canvas (Liquid Glass appearance). Opt-in; `none` draws the
+   *  canvas exactly as before. Hand-editable: read through `normalizeWallpaper` (shared/wallpaper). */
+  desktopWallpaper: import('./wallpaper').DesktopWallpaper
+  /** Frosted-glass terminal nodes: translucent tint + backdrop blur, with the tint's opacity
+   *  computed per terminal theme so text keeps WCAG 4.5:1 over any backdrop
+   *  (renderer/lib/glassContrast.ts). Terminal nodes only. Opt-in. */
+  glassTerminals: boolean
   /** Weight for normal text. xterm's own default is `normal` (400). */
   fontWeight: number
   /** Weight for BOLD text. xterm's own default is `bold` (700). Lowering it is how you keep bold
@@ -1851,6 +1858,8 @@ export const DEFAULT_SETTINGS: Settings = {
   uiScale: 1,
   windowTitleActiveSession: false,
   terminalTheme: 'nodeterm-dark',
+  desktopWallpaper: { kind: 'none' },
+  glassTerminals: false,
   fontWeight: 400,
   fontWeightBold: 700,
   drawBoldTextInBrightColors: true,
