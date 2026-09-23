@@ -1172,3 +1172,37 @@ describe('the managed script bail path (issues #186/#187), under /bin/sh', () =>
     }
   )
 })
+
+describe('session context env on the executed hook wire', () => {
+  const shAvailable = spawnSync('sh', ['-c', 'exit 0']).status === 0
+  it.skipIf(!shAvailable)('reports only Claude decimal context env and sends empty to invalidate it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hook-context-'))
+    try {
+      const bin = join(dir, 'bin')
+      mkdirSync(bin)
+      const log = join(dir, 'curl.log')
+      writeFileSync(join(bin, 'curl'), fakeCurlScript(log), { mode: 0o755 })
+      const script = join(dir, 'hook.sh')
+      for (const [agent, value, expected] of [
+        ['claude', '1048576', '1048576'],
+        ['claude', '', ''],
+        ['claude', '32000oops', ''],
+        ['claude', '9'.repeat(17), ''],
+        ['codex', '1048576', '']
+      ]) {
+        writeFileSync(script, buildManagedScript(agent, null))
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn('sh', [script], {
+            env: { PATH: `${bin}:${process.env.PATH}`, HOME: dir, NODETERM_NODE_ID: 'fixture', NODETERM_HOOK_PORT: '1', CLAUDE_CODE_MAX_CONTEXT_TOKENS: value },
+            stdio: ['pipe', 'pipe', 'pipe']
+          })
+          child.stdin.on('error', reject)
+          child.on('error', reject)
+          child.on('close', code => code === 0 ? resolve() : reject(new Error(`exit ${code}`)))
+          child.stdin.end('{"hook_event_name":"Stop"}')
+        })
+        expect(curlCalls(log).at(-1)?.argv).toContain(`--data-urlencode nodeterm_context_window=${expected} --data-urlencode`)
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+})

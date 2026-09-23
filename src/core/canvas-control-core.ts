@@ -423,7 +423,7 @@ export function buildCanvasControlInstructions(shimPath: string): string {
     'Verbs:',
     '- `list` — current nodes (id, kind, title). Start here when you need a node id.',
     '- `help` — print the verb list. Answered by the shim itself, so it works even if the app is down.',
-    '- `open-terminal [--count N] [--cwd P] [--cmd C] [--group <id>] [--after <id,id>] [--project <id>]` — open N plain terminals.',
+    '- `open-terminal [--count N] [--cwd P] [--cmd C] [--group <id>] [--after <id,id>] [--project <id>]` — open N plain terminals. `--cmd` requires verified node identity.',
     '- `open-claude [--count N] [--cwd P] [--prompt T | --prompt-file F] [--model M] [--group <id>] [--after <id,id>] [--project <id>]` — open N Claude sessions.',
     `- \`open-agent --agent ${agentChoices} [--count N] [--cwd P] [--prompt T | --prompt-file F] [--model M] [--group <id>] [--after <id,id>] [--project <id>]\` — open`,
     '  any agent CLI. `--group` parents the node(s) into a group frame; a worktree-bound group also',
@@ -448,14 +448,16 @@ export function buildCanvasControlInstructions(shimPath: string): string {
     '  returned to YOU in this session. A session opened into a non-active project',
     '  starts when the user next views that project — do not poll for it.',
     '  `--group`/`--after` cannot be combined with `--project`.',
-    '  The reply reports whether anything actually started: `queued` is true (and `queuedIds`',
-    '  lists which) when a node was opened ARMED — waiting on `--after`, on a worktree\'s',
+    '  The reply reports delivery: `queued` is true (and `queuedIds`',
+    '  lists which) while launch delivery is pending, including a visible node waiting for its PTY,',
+    '  or one waiting on `--after`, on a worktree\'s',
     '  setup script, or on a project the user has not viewed yet (a `--project` target, or your',
     '  own project while they are looking elsewhere). A queued node',
-    '  exists on the canvas but has no process behind it: do not route work to it, do not',
+    '  exists on the canvas but its agent launch has not been delivered: do not route work to it, do not',
     '  `send` to it and do not report it as started. It launches itself when its wait ends,',
     '  then reports through the ordinary status hooks — there is nothing to poll.',
-    '  `queued: false` means the session is running.',
+    '  `queued: false` is not proof the agent is running. `deliveredIds` confirms command delivery only.',
+    '  `list` names QUEUED, LAUNCH FAILED, DROPPED and AGENT STATUS UNCONFIRMED where observed.',
     '  `--prompt` arrives on ONE LINE: every run of whitespace in it, newlines included, is',
     '  collapsed to a single space before the session starts (the prompt rides the launch command',
     '  line typed into the pane). For a structured or multi-line brief use `--prompt-file <abs',
@@ -877,7 +879,7 @@ Verbs:
   not seven. It clears itself the moment that station completes another turn.
 - \`help\` — print the verb list. The shim answers this itself, without reaching the app, so it
   is also what to run when you are unsure whether the control endpoint is alive.
-- \`open-terminal [--count N] [--cwd P] [--cmd C] [--group <id>] [--after <id,id>] [--project <id>]\` — open N plain terminals (default 1).
+- \`open-terminal [--count N] [--cwd P] [--cmd C] [--group <id>] [--after <id,id>] [--project <id>]\` — open N plain terminals (default 1). \`--cmd\` requires verified node identity.
 - \`open-claude [--count N] [--cwd P] [--prompt T | --prompt-file F] [--model M] [--group <id>] [--after <id,id>] [--project <id>]\` — open N Claude sessions (default 1).
 - \`open-agent --agent ${agentChoices} [--count N] [--cwd P] [--prompt T | --prompt-file F] [--model M] [--group <id>] [--after <id,id>] [--project <id>]\` — open N sessions of any agent CLI.
   \`--group\` parents the node(s) into an existing group frame; a worktree-bound group also
@@ -910,14 +912,15 @@ Verbs:
   **closed**, the node is still saved into it and the reply says so; the tab is not reopened for
   you. So: opening a station is safe to do at any time, but a station you opened while the user was
   elsewhere is not running yet — read \`queued\` before you route work to it.
-  **The reply tells you whether anything actually started.** \`queued\` is true — and
-  \`queuedIds\` names which of the returned ids — whenever a node was opened **armed**: waiting on
+  **The reply reports launch delivery, not agent health.** \`queued\` is true — and
+  \`queuedIds\` names which of the returned ids — while launch delivery is pending: waiting for its PTY, or on
   \`--after\`, on a worktree's setup script, or on a project the user has not viewed yet (a
   \`--project\` target, or your own project while they are looking elsewhere).
-  A queued node exists on the canvas but has **no process behind it**, so do not route work
+  A queued node exists on the canvas but its **agent launch has not been delivered**, so do not route work
   to it, do not \`send\` to it and do not report it as started. It launches itself when its wait
   ends and then reports through the ordinary status hooks, so there is nothing to poll.
-  \`queued: false\` means the session is running.
+  \`queued: false\` does not prove the agent is running. \`deliveredIds\` confirms command delivery only.
+  \`list\` names QUEUED, LAUNCH FAILED, DROPPED and AGENT STATUS UNCONFIRMED where observed.
   \`--prompt\` arrives on ONE LINE. Every run of whitespace in it — newlines included — is
   collapsed to a single space before the session starts, because the prompt is passed as an
   argument on the agent CLI's launch command line and that line is typed into the pane. Two

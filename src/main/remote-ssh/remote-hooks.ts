@@ -12,6 +12,7 @@ import { GROK_EVENTS } from '../../core/agents/hooks/grok'
 import { GROK_HOOK_FILE, isSafeRemoteGrokHome } from '../../core/agents/grok-paths'
 import { isSafeNodeId, isSafeRemoteHome } from '../../core/remote-safety'
 import { hookServer } from '../../core/agents/hook-server'
+import { updateRemoteSettingsFile } from '../../core/agents/hooks/remote-settings-file'
 import { remoteAtomicWrite } from '../remote-atomic-write'
 import { curlHeaderConfigLine } from '../../core/agents/hook-curl-config-sh'
 import { buildManagedScript } from '../../core/agents/hooks/managed-script'
@@ -37,7 +38,7 @@ import {
   type HooksConfig as CodexHooksConfig
 } from '../../core/agents/hooks/codex'
 import { upsertHookTrustEntriesInContent } from '../../core/agents/hooks/codex-trust'
-import { ensureFullscreenTui, type TuiSettings } from '../../core/agents/hooks/claude-tui'
+import { ensureFullscreenTui } from '../../core/agents/hooks/claude-tui'
 import {
   CONTROL_SHIM_SCRIPT,
   buildCanvasControlInstructions,
@@ -421,23 +422,9 @@ export class RemoteHooks {
         ),
         buildManagedScript(target.agentId, REMOTE_IDENTITY_ROOT)
       )
-      const { stdout: cfgRaw } = await this.r.run(
-        childArgs(conn, controlPath, `cat ${posixQuote(config)} 2>/dev/null || echo '{}'`)
-      )
-      let cfg: HookSettings = {}
-      try {
-        cfg = JSON.parse(cfgRaw || '{}') as HookSettings
-      } catch {
-        cfg = {}
-      }
-      const merged = mergeManagedHook(cfg, buildManagedHookCommand(script), target.events)
-      await this.r.run(
-        // `$(dirname …)` is itself QUOTED (same reason as installGrokRemote): a home with a
-        // space would otherwise word-split into two mkdir args, the directory would never be
-        // created, and the correctly-quoted `cat >` would then fail — silently, fail-open.
-        childArgs(conn, controlPath, `mkdir -p "$(dirname ${posixQuote(config)})" && cat > ${posixQuote(config)}`),
-        JSON.stringify(merged, null, 2)
-      )
+      await updateRemoteSettingsFile(config,
+        (cmd, stdin) => this.r.run(childArgs(conn, controlPath, cmd), stdin),
+        (cfg) => mergeManagedHook(cfg, buildManagedHookCommand(script), target.events))
     } catch {
       /* fail-open: this agent's remote sessions run without status hooks */
     }
@@ -656,20 +643,9 @@ export class RemoteHooks {
         childArgs(conn, controlPath, `mkdir -p ${posixQuote(`${remoteDir}/agent-hooks`)} && cat > ${posixQuote(script)} && chmod 755 ${posixQuote(script)}`),
         buildManagedScript('claude', REMOTE_IDENTITY_ROOT)
       )
-      const { stdout: cfgRaw } = await this.r.run(
-        childArgs(conn, controlPath, `cat ${posixQuote(config)} 2>/dev/null || echo '{}'`)
-      )
-      let cfg: HookSettings = {}
-      try {
-        cfg = JSON.parse(cfgRaw || '{}') as HookSettings
-      } catch {
-        cfg = {}
-      }
-      const merged = mergeManagedHook(cfg, buildManagedHookCommand(script), events)
-      await this.r.run(
-        childArgs(conn, controlPath, `mkdir -p ${posixQuote(accountDir)} && cat > ${posixQuote(config)}`),
-        JSON.stringify(merged, null, 2)
-      )
+      await updateRemoteSettingsFile(config,
+        (cmd, stdin) => this.r.run(childArgs(conn, controlPath, cmd), stdin),
+        (cfg) => mergeManagedHook(cfg, buildManagedHookCommand(script), events))
     } catch {
       /* fail-open: the account session simply runs without status hooks */
     }
@@ -894,34 +870,9 @@ export class RemoteHooks {
   /** Read-merge-write the fullscreen-tui key at one absolute remote config path, over the master.
    *  Same read-if-present, write-only-if-changed, fail-open mechanics as the hook merge above. */
   private async ensureFullscreenTuiAt(conn: SshConnection, controlPath: string, config: string): Promise<void> {
-    try {
-      const { stdout: raw } = await this.r.run(
-        childArgs(conn, controlPath, `cat ${posixQuote(config)} 2>/dev/null || echo '{}'`)
-      )
-      let cfg: TuiSettings = {}
-      if (raw.trim() && raw.trim() !== '{}') {
-        try {
-          cfg = JSON.parse(raw) as TuiSettings
-        } catch {
-          // The file EXISTS but does not parse (`|| echo '{}'` only fires when it is missing):
-          // never replace the user's settings with {tui:...} — same guard as the local wrapper.
-          return
-        }
-      }
-      const { config: next, changed } = ensureFullscreenTui(cfg)
-      if (!changed) return // key already present (any value) → never overwrite the user's `/tui`
-      await this.r.run(
-        // `$(dirname …)` QUOTED, like the other three sites. Unquoted, a home with a space
-        // (`/Users/Enes Kirca`) word-splits the substitution into two mkdir args — measured
-        // ARGC=2 — so junk directories are created, the correctly-quoted `cat >` then fails, and
-        // the catch below swallows it. Symptom: fullscreen-TUI silently never written for any
-        // macOS user whose home has a space in it.
-        childArgs(conn, controlPath, `mkdir -p "$(dirname ${posixQuote(config)})" && cat > ${posixQuote(config)}`),
-        JSON.stringify(next, null, 2)
-      )
-    } catch {
-      /* fail-open: a failed remote read/write must never break the connect */
-    }
+    await updateRemoteSettingsFile(config,
+      (cmd, stdin) => this.r.run(childArgs(conn, controlPath, cmd), stdin),
+      (cfg) => ensureFullscreenTui(cfg).config)
   }
 
   /**

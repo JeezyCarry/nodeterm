@@ -1905,6 +1905,33 @@ export class SshProjectManager {
     }
   }
 
+  /**
+   * Has this managed remote account completed its device login? The same gate the local waitLogin
+   * uses — a REAL `auth.json`, never a symlink (shared assets are symlinked in from the system home;
+   * a credential riding the system login is not this account's). `null` = could not ask (not
+   * connected, unsafe `$HOME`, failed ssh), which a poll treats as "not yet", never as "yes".
+   */
+  async remoteCodexAuthPresent(projectId: string, accountId: string): Promise<boolean | null> {
+    assertCodexAccountId(accountId)
+    const c = this.conns.get(projectId)
+    if (!c || !isSafeRemoteHome(c.remoteHome)) return null
+    const auth = `${remoteCodexHome(c.remoteHome as string, accountId)}/auth.json`
+    try {
+      const { code, stdout } = await this.r.run(
+        childArgs(
+          c.conn,
+          c.controlPath,
+          `if test -f ${posixQuote(auth)} && test ! -L ${posixQuote(auth)}; then echo yes; else echo no; fi`
+        )
+      )
+      if (code !== 0) return null
+      const answer = stdout.trim().split('\n').pop()
+      return answer === 'yes' ? true : answer === 'no' ? false : null
+    } catch {
+      return null
+    }
+  }
+
   /** Stop the account's app-server and delete its home (credential jar included). Runs entirely on
    *  the host — the credential never travels. No-op false when not connected. */
   async remoteCodexAccountRemove(projectId: string, accountId: string): Promise<boolean> {

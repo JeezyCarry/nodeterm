@@ -1,3 +1,4 @@
+import { sessionContextWindow } from '../model-window'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
 import { randomUUID, timingSafeEqual } from 'crypto'
 import { readFileSync, mkdirSync, chmodSync, unlinkSync } from 'fs'
@@ -192,6 +193,8 @@ function observedClaudeAccount(
  * it. A later task makes the label useful; until then, false must cost a caller nothing.
  */
 export interface HookEventMeta {
+  /** undefined: old/unverified client; null: observed env has no valid override. */
+  contextWindow?: number | null
   verified: boolean
 }
 
@@ -261,6 +264,7 @@ export const REPORT_ISSUE_CONTROL_REFUSAL = 'Issue reporting refused.'
 
 /** The verified-only refusal, worded for the verb that was refused. */
 export function verifiedRefusalFor(verb: string): string {
+  if (verb === 'open-terminal') return 'Terminal command refused.'
   if (verb === 'settings') return SETTINGS_CONTROL_REFUSAL
   if (verb === 'report-issue') return REPORT_ISSUE_CONTROL_REFUSAL
   if (verb === 'sticky') return STICKY_CONTROL_REFUSAL
@@ -639,7 +643,11 @@ export class HookServer {
           // VERIFIED-ONLY VERBS, decided on the VERDICT and never on the decision: the policy's
           // `decision` is what the escape hatch and the warning window can reach, and neither may
           // reach these. See `requiresVerified` for the whole argument.
-          if (requiresVerified.has(verb) && verdict !== 'verified') {
+          // Issue #653: command execution requires proof even when rollout policy allows
+          // legacy callers. Presence (including empty --cmd and dry runs) decides this;
+          // plain terminals keep their existing policy. Both shells and transports use this gate.
+          const commandOpen = verb === 'open-terminal' && args.cmd !== undefined
+          if ((requiresVerified.has(verb) || commandOpen) && verdict !== 'verified') {
             const refusal = verifiedRefusalFor(verb)
             if (wantsText) {
               res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' })
@@ -794,7 +802,12 @@ export class HookServer {
           if (form.nodeterm_answered) payload.nodeterm_answered = form.nodeterm_answered
           // Raw listener first: it drives the transcript-tailing features (which need
           // transcript_path). Inside the try so a throwing raw listener still ends 204.
-          this.rawListener?.(agentId, nodeId, payload, { verified })
+          this.rawListener?.(agentId, nodeId, payload, {
+            verified,
+            ...(verified && agentId === 'claude' && form.nodeterm_context_window !== undefined
+              ? { contextWindow: sessionContextWindow(form.nodeterm_context_window) }
+              : {})
+          })
           // WHICH CLAUDE ACCOUNT this session is on. A third LABEL alongside
           // `verified`/`clientRevision`, computed HERE so ONE implementation serves both shells —
           // the "both raw listeners change together" rule is sidestepped rather than violated,
