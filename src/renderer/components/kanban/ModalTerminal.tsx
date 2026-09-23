@@ -1,3 +1,4 @@
+import { useContextEnsure } from '../../terminal/useContextEnsure'
 import { ptyRefusal } from '@shared/pty-refusal'
 
 import { patchImeModeSwitch } from '../../terminal/ime-mode-switch'
@@ -106,12 +107,15 @@ export function ModalTerminal({ nodeId, spawn, searchOpen, onCloseSearch }: Moda
   const fitRef = useRef<FitAddon | null>(null)
   const transportRef = useRef<LocalTransport | null>(null)
   const agentSessionId = useAgentStatus((s) => s.byId[nodeId]?.sessionId)
+  const observedAgentId = useAgentStatus((s) => s.byId[nodeId]?.agentId)
   // MIRROR TerminalNode: transcript READS go to the account the session is actually running as,
   // which for a plain terminal is only ever the observed one. The spawn below keeps
   // `spawn.accountId` — launch identity stays creation-time.
   const observedAccount = useAgentStatus((s) => s.byId[nodeId]?.account)
   // …resolved against the live account list, so linking the dir repoints the reader at once.
   const claudeAccounts = useSettings((s) => s.settings.claudeAccounts)
+  useContextEnsure(api.context, nodeId, spawn.agentId ?? observedAgentId, agentSessionId, spawn.cwd,
+    effectiveAccountId(spawn.accountId, observedAccount, claudeAccounts))
   // One shallow-compared subscription for the whole appearance slice — see useXtermVisualSettings.
   // MIRROR TerminalNode: scoped to the OWNING project (`owningProjectId`, the active one — a modal
   // only ever opens over it), deliberately NOT this card's connection scope. `sshConnectionScope`

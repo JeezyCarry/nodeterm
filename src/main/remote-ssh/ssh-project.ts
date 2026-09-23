@@ -1443,6 +1443,26 @@ export class SshProjectManager {
    * SshFs ops take). Returns `undefined` when the project isn't connected, so the `sshFs:*` IPC
    * handlers can fail open (empty result) rather than throw.
    */
+  private readonly connectionKeys = new WeakMap<object, string>()
+  private nextConnectionKey = 0
+
+  /** A reused control socket path is not a connection generation. New Conn objects invalidate
+   * in-flight metrics/discovery even when reconnect uses the same host, project and socket. */
+  connectionKeyFor(projectId: string): string | undefined {
+    const connection = this.conns.get(projectId)
+    if (!connection) return undefined
+    let key = this.connectionKeys.get(connection)
+    if (!key) { key = String(++this.nextConnectionKey); this.connectionKeys.set(connection, key) }
+    return key
+  }
+
+  connectionKeyForControlPath(controlPath: string): string | undefined {
+    for (const [projectId, connection] of this.conns) {
+      if (connection.controlPath === controlPath) return this.connectionKeyFor(projectId)
+    }
+    return undefined
+  }
+
   refForProject(
     projectId: string
   ): { conn: SshConnection; controlPath: string; remoteCwd?: string } | undefined {

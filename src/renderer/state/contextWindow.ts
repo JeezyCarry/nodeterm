@@ -25,7 +25,8 @@ function load(): Record<string, ContextWindowUsage> {
 
 function persistable(map: Record<string, ContextWindowUsage>): Record<string, ContextWindowUsage> {
   // Older records have no provenance; invalidate them instead of guessing their agent.
-  return Object.fromEntries(Object.entries(map).filter(([, usage]) => usage?.windowSource === 'transcript'))
+  return Object.fromEntries(Object.entries(map).filter(([, usage]) =>
+    usage?.windowSource === 'transcript' && !usage.nodeId && !usage.cleared))
 }
 
 /** Keep only the MAX_SESSIONS most-recently-updated entries (LRU by updatedAt). */
@@ -55,13 +56,26 @@ function scheduleSave(bySessionId: Record<string, ContextWindowUsage>): void {
 
 interface ContextWindowState {
   bySessionId: Record<string, ContextWindowUsage>
+  /** Remote observations are node-owned and never restored from browser storage. */
+  byNodeId: Record<string, ContextWindowUsage>
   set(usage: ContextWindowUsage): void
 }
 
 export const useContextWindow = create<ContextWindowState>((set) => ({
   bySessionId: load(),
+  byNodeId: {},
   set: (usage) =>
     set((s) => {
+      if (usage.nodeId) {
+        if (usage.cleared) {
+          if (s.byNodeId[usage.nodeId]?.sessionId !== usage.sessionId) return s
+          const byNodeId = { ...s.byNodeId }
+          delete byNodeId[usage.nodeId]
+          return { byNodeId }
+        }
+        return { byNodeId: prune({ ...s.byNodeId, [usage.nodeId]: usage }) }
+      }
+      if (usage.cleared) return s
       const merged = { ...s.bySessionId, [usage.sessionId]: usage }
       const bySessionId = prune(merged)
       scheduleSave(bySessionId)

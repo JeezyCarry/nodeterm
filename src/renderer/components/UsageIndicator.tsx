@@ -220,7 +220,7 @@ function RemoteUsageBlock({
   onUse,
   move
 }: {
-  row: RemoteAccountUsage
+  row: Extract<RemoteAccountUsage, { provider?: 'claude' }>
   mode: 'used' | 'remaining' | 'tokens'
   isDefault?: boolean
   onUse?: () => void
@@ -263,12 +263,14 @@ function labelFor(provider: string): string {
   return providerLabel(provider, agentLabel)
 }
 
-function ProviderBlock({ u, mode }: { u: ProviderUsage; mode: 'used' | 'remaining' | 'tokens' }) {
+function ProviderBlock({ u, mode, hostKey }: { u: ProviderUsage; mode: 'used' | 'remaining' | 'tokens'; hostKey?: string }) {
   if (u.status === 'unavailable') return null
   const label = labelFor(u.provider)
   return (
     <div className="usage-account">
-      <div className="usage-account__label">{label}</div>
+      <div className="usage-account__label">{label}
+        {hostKey && <span className="usage-account__host" title={`Read on ${hostKey} over SSH`}>{hostKey} · SSH</span>}
+      </div>
       {u.account && <div className="usage-account__email">{u.account}</div>}
       {u.limits.map((l) => (
         <LimitRow key={limitKey(l)} limit={l} mode={mode} />
@@ -422,7 +424,13 @@ export function UsageIndicator({
   // pill stays empty until you click it). Never polled: each row is an ssh exec plus an HTTPS
   // request made on the host, which is not a price to pay every 15 minutes for a pill nobody may
   // be looking at.
-  const sshUp = useSshConn((s) => !!s.byProject[activeProjectId])
+  const sshConnection = useSshConn((s) => s.byProject[activeProjectId])
+  const sshUp = !!sshConnection
+  const remoteScope = useRef({ activeProjectId, scopeHostKey, sshConnection })
+  if (remoteScope.current.activeProjectId !== activeProjectId || remoteScope.current.scopeHostKey !== scopeHostKey ||
+      remoteScope.current.sshConnection !== sshConnection) {
+    remoteScope.current = { activeProjectId, scopeHostKey, sshConnection }
+  }
   useEffect(() => {
     if (!scopeHostKey || !sshUp) {
       // Leaving the rows up after a switch would attribute one machine's numbers to another.
@@ -436,7 +444,7 @@ export function UsageIndicator({
     return () => {
       cancelled = true
     }
-  }, [open, scopeHostKey, sshUp])
+  }, [open, scopeHostKey, sshUp, sshConnection])
 
   // Fetch each account's usage on demand when the popover opens (system row uses `usage`).
   // Skipped entirely on an SSH project: those identities are not what this project spends.
@@ -490,7 +498,7 @@ export function UsageIndicator({
     providers: providers.filter((p) => !hidden.has(p.provider)),
     // Its own switch, not Claude's: hiding the local rows must not silently take the SSH hosts
     // down with them, and vice versa.
-    remote: hidden.has('claude-remote') ? [] : remote
+    remote: remote.filter(r => !hidden.has(r.provider === 'codex' ? 'codex' : 'claude-remote'))
   })
   const claudeUsage = scoped.claude
   const visibleProviders = scoped.providers
@@ -499,7 +507,8 @@ export function UsageIndicator({
   // Only providers the user has actually enabled reach the pill; render whenever ANY of them
   // (Claude included) has something to say. Both rules are pure and pinned by tests — gating on
   // Claude alone, which is what this did, left a Codex-only user with no pill at all.
-  const enabled = enabledProviders(visibleProviders)
+  const enabled = enabledProviders([...visibleProviders,
+    ...visibleRemote.flatMap(r => r.provider === 'codex' ? [r.usage] : [])])
   if (!hasAnyUsage(claudeUsage, visibleProviders, visibleRemote)) return null
 
   // On an SSH project these are the HOST's limits — same shape, same labels, read somewhere else.
@@ -507,8 +516,10 @@ export function UsageIndicator({
   const status = claudeUsage?.status ?? visibleRemote[0]?.usage.status ?? 'unavailable'
   const hasData = limits.length > 0 || enabled.length > 0
   const fetching = refreshing
-  const providerError = visibleProviders.some((p) => p.status === 'error')
-  const claudeError = status === 'error'
+  const providerError = visibleProviders.some((p) => p.status === 'error') ||
+    visibleRemote.some(r => r.provider === 'codex' && r.usage.status === 'error')
+  const claudeError = claudeUsage?.status === 'error' ||
+    visibleRemote.some(r => r.provider !== 'codex' && r.usage.status === 'error')
   const isError = claudeError || providerError
   // The pill leads with whatever is closest to biting, so a scoped model cap that is nearly
   // exhausted can't hide behind a comfortable 5h window. Considers every enabled provider, not
@@ -520,16 +531,16 @@ export function UsageIndicator({
     e.stopPropagation()
     if (refreshing) return
     setRefreshing(true)
+    const requestedScope = remoteScope.current
     try {
       // ⟳ refreshes what is actually on screen. On an SSH project that is the host — forced past
       // its debounce, since this is the only way to make it re-read before the cache expires —
       // and the local snapshot is left alone rather than spending a request on rows nobody can see.
       if (scope.kind === 'ssh') {
-        setRemote(
-          await window.nodeTerminal.usage
-            .remote({ hostKey: scope.hostKey, force: true })
-            .catch((): RemoteAccountUsage[] => [])
-        )
+        const rows = await window.nodeTerminal.usage
+          .remote({ hostKey: scope.hostKey, force: true })
+          .catch((): RemoteAccountUsage[] => [])
+        if (remoteScope.current === requestedScope) setRemote(rows)
       } else {
         setUsage(await window.nodeTerminal.usage.refresh())
       }
@@ -571,7 +582,7 @@ export function UsageIndicator({
           const worst = primaryLimit(p.limits)
           if (!worst) return null
           return (
-            <span key={p.provider} className="usage-pill__provider">
+            <span key={providerRowKey(p)} className="usage-pill__provider">
               {(limits.length > 0 || i > 0) && <span className="usage-pill__sep">·</span>}
               <span className="usage-pill__num">
                 {percentNumber(worst.usedPercent, percentMode)}% {labelFor(p.provider)}
@@ -664,7 +675,9 @@ export function UsageIndicator({
                 were read somewhere other than this machine. */}
             {/* The same offer on an SSH project's rows — scoped as ever: only the host's system
                 identity and THIS host's managed accounts are actionable (accountRowAction). */}
-            {visibleRemote.map((r) => (
+            {visibleRemote.map((r) => r.provider === 'codex' ? (
+              <ProviderBlock key={`codex:${r.hostKey}:${r.accountId ?? ''}`} u={r.usage} mode={percentMode} hostKey={r.hostKey} />
+            ) : (
               <RemoteUsageBlock
                 key={`${r.hostKey}#${r.accountId ?? ''}`}
                 row={r}
