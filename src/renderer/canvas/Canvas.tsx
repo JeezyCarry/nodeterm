@@ -1,3 +1,4 @@
+import { VisibleMiniMap } from './VisibleMiniMap'
 import { LINK_ENDPOINT_NOT_FOUND } from '@shared/canvas-link'
 import { createControlOpenBatch } from '../lib/controlOpenBatch'
 import { commitOwnedLaunchAttempt, registerLaunchCommit } from '../terminal/launch-attempt'
@@ -15,7 +16,6 @@ import {
   ControlButton,
   Controls,
   MarkerType,
-  MiniMap,
   ReactFlow,
   SelectionMode,
   useEdgesState,
@@ -999,7 +999,7 @@ function StatusAwareMiniMap({ onNodeDoubleClick }: { onNodeDoubleClick: (node: N
     [statusById]
   )
   return (
-    <MiniMap
+    <VisibleMiniMap
       className="minimap"
       position="bottom-right"
       pannable
