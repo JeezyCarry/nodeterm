@@ -1,4 +1,5 @@
 import { useContextEnsure } from '../../terminal/useContextEnsure'
+import { FIND_DECORATIONS } from '../../lib/palette'
 import { ptyRefusal } from '@shared/pty-refusal'
 
 import { patchImeModeSwitch } from '../../terminal/ime-mode-switch'
@@ -154,12 +155,7 @@ export function ModalTerminal({ nodeId, spawn, searchOpen, onCloseSearch }: Moda
   })
   // MIRROR TerminalNode's findOpts — one source for the highlight colors.
   const findOpts = {
-    decorations: {
-      matchBackground: '#ffd54f55',
-      activeMatchBackground: '#ffb300',
-      matchOverviewRuler: '#ffd54f',
-      activeMatchColorOverviewRuler: '#ffb300'
-    }
+    decorations: FIND_DECORATIONS
   }
   const handleNext = useCallback(() => {
     search.next()

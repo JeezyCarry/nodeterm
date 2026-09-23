@@ -3667,6 +3667,34 @@ colour. MEASURED against the live hook server before the change; both faces are 
   iOS follow-up (@eneskirca), not a desktop one.
 
 
+## Semantic colours (one role per meaning)
+
+Status and accent colours are TOKENS in `styles.css`, never hues at a call site. Two layers:
+the Apple system palette `--sys-red … --sys-gray` (dark values in `:root`, light values in the light
+block) and the ROLES that rules actually name — `--state-working | attention | unread | error |
+success | warning | queued | automation` and `--git-modified | added | deleted | renamed |
+conflict`. A role is a FILL value (glow, dot, stroke, and chip washes via
+`color-mix(in srgb, var(--state-x) N%, transparent)`); text in a status hue keeps the text-safe
+tokens `--danger --warn --caution --success --agent-working`, which the light theme darkens.
+
+- **An appearance re-maps a MEANING by redefining a role**, not by restyling rules. The default look
+  keeps its historical hues (working clay, unread = accent, attention red, warning orange); Liquid
+  Glass maps them to the HIG semantics (see its section).
+- **JS that needs a literal** (xterm find decorations, canvas-drawn sprites, the notch HUD, which does
+  not load styles.css) reads `renderer/lib/palette.ts`; `styles.palette.test.ts` pins `--sys-*` to
+  that table. JS that styles the DOM passes `'var(--role)'` strings (the minimap strokes, the git
+  status letters, kanban priorities). Hex-with-alpha suffixes (`${c}2e`) do not work on a var —
+  use `color-mix`.
+- **Git status colours have ONE table**, `renderer/lib/gitStatusColors.ts`, used by Source Control
+  and the history commit list; an unknown status draws in `--text`.
+- **The minimap strokes read the same roles as the node glows**; they used to be crossed (working
+  yellow, unread clay). The palette test pins canvas glow = minimap stroke = minimap halo per state.
+- **Left as-is on purpose:** agent brand colours (`AGENT_CONFIG`) on Claude-identity surfaces (the
+  subagent node, the usage pill icon, the mascot), the node colour swatches (`node-colors.ts` is an
+  allowlist — stored project colours must stay valid), node-kind default colours (persisted into
+  project files at creation), kanban label chips (own palette), presence colours, the onboarding
+  scenes, the notch HUD's own stylesheet.
+
 ## Node icons (emoji or picture)
 
 A node may carry `data.icon` (`NodeIcon` in `@shared/node-icon`): `{type:'emoji', value}` or

@@ -1,4 +1,5 @@
 import { useContextEnsure } from '../terminal/useContextEnsure'
+import { FIND_DECORATIONS } from '../lib/palette'
 import { ptyRefusal } from '@shared/pty-refusal'
 
 import { patchImeModeSwitch } from '../terminal/ime-mode-switch'
@@ -2025,12 +2026,7 @@ export function TerminalNode({
   // Single source of truth for the on-screen highlight colors (used by both the
   // initial-highlight effect and the prev/next nav handlers below).
   const findOpts = {
-    decorations: {
-      matchBackground: '#ffd54f55',
-      activeMatchBackground: '#ffb300',
-      matchOverviewRuler: '#ffd54f',
-      activeMatchColorOverviewRuler: '#ffb300'
-    }
+    decorations: FIND_DECORATIONS
   }
 
   // Navigation steps the hook's authoritative cursor AND xterm's on-screen highlight.

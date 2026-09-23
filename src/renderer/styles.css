@@ -46,7 +46,44 @@
   --danger: #ff453a;
   --warn: #ff9f0a;
   --caution: #ffd60a;
-  --success: #32d74b;
+  --success: #30d158;
+
+  /* The Apple system colours (HIG color.md), dark values; the light block restates them with the
+     light values. `lib/palette.ts` holds the same table for the JS that needs a literal (xterm
+     search decorations) and `styles.palette.test.ts` pins the two together. */
+  --sys-red: #ff453a;
+  --sys-orange: #ff9f0a;
+  --sys-yellow: #ffd60a;
+  --sys-green: #30d158;
+  --sys-mint: #63e6e2;
+  --sys-teal: #40cbe0;
+  --sys-cyan: #64d2ff;
+  --sys-blue: #0a84ff;
+  --sys-indigo: #5e5ce6;
+  --sys-purple: #bf5af2;
+  --sys-pink: #ff375f;
+  --sys-brown: #ac8e68;
+  --sys-gray: #98989d;
+
+  /* Semantic roles: ONE colour per meaning. Rules name a role, never a hue, so an appearance
+     re-maps a meaning in one place (Liquid Glass does, at the end of the sheet). These are the
+     FILL values — glows, dots, strokes, chip washes via color-mix. Text in a status hue uses the
+     text-safe tokens above (--danger, --warn, --caution, --success, --agent-working), which the
+     light theme darkens for a pale field. */
+  --state-working: #d97757; /* the default look keeps the working clay */
+  --state-attention: var(--sys-red); /* needs you */
+  --state-unread: var(--accent); /* finished, not yet seen */
+  --state-error: var(--sys-red); /* error, deny, destructive, failed */
+  --state-success: var(--sys-green); /* done, approve, passed, added */
+  --state-warning: var(--sys-orange); /* non-blocking warning, caution */
+  --state-queued: var(--sys-gray); /* queued, idle, disarmed */
+  --state-automation: var(--sys-purple); /* loop / schedule / trigger status */
+  /* Git file status, read by `lib/gitStatusColors.ts` (the ONE table both git panels draw). */
+  --git-modified: var(--caution);
+  --git-added: var(--success);
+  --git-deleted: var(--danger);
+  --git-renamed: var(--sys-purple);
+  --git-conflict: var(--sys-teal);
 
   /* THE CANVAS. Deliberately blacker than `--bg` in dark — the nodes are the content and the
      field behind them recedes. In light it has to go the other way, off-white and slightly
@@ -100,13 +137,13 @@
   --canvas-dot: #303030;
   --minimap-mask: rgba(10, 12, 18, 0.6);
   --git-graph-ref: var(--accent);
-  --git-graph-remote-ref: #bf5af2;
-  --git-graph-base-ref: #ff9f0a;
-  --git-graph-lane-1: #32d74b;
-  --git-graph-lane-2: #ffd60a;
-  --git-graph-lane-3: #6ac4dc;
-  --git-graph-lane-4: #ff453a;
-  --git-graph-lane-5: #ac8e68;
+  --git-graph-remote-ref: var(--sys-purple);
+  --git-graph-base-ref: var(--sys-orange);
+  --git-graph-lane-1: var(--sys-green);
+  --git-graph-lane-2: var(--sys-yellow);
+  --git-graph-lane-3: var(--sys-teal);
+  --git-graph-lane-4: var(--sys-red);
+  --git-graph-lane-5: var(--sys-brown);
   --radius: 8px;
   --radius-sm: 6px;
   --radius-lg: 12px;
@@ -224,6 +261,23 @@
      not just a dot. Darkened at the same hue (15°) into the band the other status hues occupy,
      so "working" still reads as the same colour in both themes. */
   --agent-working: #b04a28;
+
+  /* Apple's light-mode system colours (see the dark block). */
+  --sys-red: #ff3b30;
+  --sys-orange: #ff9500;
+  --sys-yellow: #ffcc00;
+  --sys-green: #34c759;
+  --sys-mint: #00c7be;
+  --sys-teal: #30b0c7;
+  --sys-cyan: #32ade6;
+  --sys-blue: #007aff;
+  --sys-indigo: #5856d6;
+  --sys-purple: #af52de;
+  --sys-pink: #ff2d55;
+  --sys-brown: #a2845e;
+  --sys-gray: #8e8e93;
+  /* The glows always drew the dark clay, in both themes. */
+  --state-working: #d97757;
 
   /* Dots must read as a grid, not as noise: the dark-mode grey is far too heavy on a pale field,
      and a neutral one would be the only cold thing on screen. */
@@ -694,7 +748,7 @@ body,
 }
 
 .tab-menu button.danger:hover:not(:disabled) {
-  background: rgba(247, 118, 142, 0.15);
+  background: color-mix(in srgb, var(--state-error) 15%, transparent);
 }
 
 /* "Default Claude account" inline expandable group inside the caret menu. */
@@ -800,7 +854,7 @@ body,
 }
 
 .dock-btn.active {
-  background: rgba(10, 132, 255, 0.22);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--accent-hover);
 }
 
@@ -1181,8 +1235,8 @@ body,
 }
 
 .dictation__mic--active {
-  background: rgba(255, 69, 58, 0.18);
-  border-color: rgba(255, 69, 58, 0.5);
+  background: color-mix(in srgb, var(--state-error) 18%, transparent);
+  border-color: color-mix(in srgb, var(--state-error) 50%, transparent);
   color: var(--danger);
   animation: dictation-pulse 1.4s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
@@ -1196,10 +1250,10 @@ body,
 @keyframes dictation-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.4);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-error) 40%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(255, 69, 58, 0);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--state-error) 0%, transparent);
   }
 }
 
@@ -1313,15 +1367,15 @@ body,
   border-radius: 8px;
   font-size: 12px;
   color: var(--danger);
-  background: rgba(255, 69, 58, 0.12);
-  border: 1px solid rgba(255, 69, 58, 0.35);
+  background: color-mix(in srgb, var(--state-error) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--state-error) 35%, transparent);
 }
 
 .dictation__error-action {
   flex-shrink: 0;
   background: transparent;
   border: none;
-  color: #0a84ff;
+  color: var(--accent);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -1514,8 +1568,8 @@ body,
 .term-node.unread {
   border-color: var(--accent);
   box-shadow:
-    0 0 0 1px rgba(10, 132, 255, 0.5),
-    0 0 16px 1px rgba(10, 132, 255, 0.35),
+    0 0 0 1px color-mix(in srgb, var(--state-unread) 50%, transparent),
+    0 0 16px 1px color-mix(in srgb, var(--state-unread) 35%, transparent),
     0 8px 28px rgba(0, 0, 0, calc(0.4 * var(--shadow-k)));
 }
 
@@ -1527,8 +1581,8 @@ body,
   pointer-events: none;
   z-index: -1;
   box-shadow:
-    0 0 0 1px rgba(10, 132, 255, 0.8),
-    0 0 26px 4px rgba(10, 132, 255, 0.6);
+    0 0 0 1px color-mix(in srgb, var(--state-unread) 80%, transparent),
+    0 0 26px 4px color-mix(in srgb, var(--state-unread) 60%, transparent);
   opacity: 0;
   animation: nt-unread-glow 2s ease-in-out infinite;
   will-change: opacity;
@@ -1551,8 +1605,8 @@ body,
    is false while working). Shadows only — the top border keeps the node's own color. */
 .term-node.working {
   box-shadow:
-    0 0 0 1px rgba(217, 119, 87, 0.35),
-    0 0 14px 1px rgba(217, 119, 87, 0.22),
+    0 0 0 1px color-mix(in srgb, var(--state-working) 35%, transparent),
+    0 0 14px 1px color-mix(in srgb, var(--state-working) 22%, transparent),
     0 8px 28px rgba(0, 0, 0, calc(0.4 * var(--shadow-k)));
 }
 
@@ -1564,8 +1618,8 @@ body,
   pointer-events: none;
   z-index: -1;
   box-shadow:
-    0 0 0 1px rgba(217, 119, 87, 0.45),
-    0 0 22px 3px rgba(217, 119, 87, 0.35);
+    0 0 0 1px color-mix(in srgb, var(--state-working) 45%, transparent),
+    0 0 22px 3px color-mix(in srgb, var(--state-working) 35%, transparent);
   opacity: 0.25;
   animation: nt-working-glow 2.6s ease-in-out infinite;
   will-change: opacity;
@@ -1585,8 +1639,8 @@ body,
    a touch more insistent than working (deeper pulse, faster cycle): it's asking for you. */
 .term-node.attention {
   box-shadow:
-    0 0 0 1px rgba(255, 69, 58, 0.4),
-    0 0 14px 1px rgba(255, 69, 58, 0.25),
+    0 0 0 1px color-mix(in srgb, var(--state-attention) 40%, transparent),
+    0 0 14px 1px color-mix(in srgb, var(--state-attention) 25%, transparent),
     0 8px 28px rgba(0, 0, 0, calc(0.4 * var(--shadow-k)));
 }
 
@@ -1598,8 +1652,8 @@ body,
   pointer-events: none;
   z-index: -1;
   box-shadow:
-    0 0 0 1px rgba(255, 69, 58, 0.55),
-    0 0 22px 3px rgba(255, 69, 58, 0.4);
+    0 0 0 1px color-mix(in srgb, var(--state-attention) 55%, transparent),
+    0 0 22px 3px color-mix(in srgb, var(--state-attention) 40%, transparent);
   opacity: 0.15;
   animation: nt-attention-glow 1.8s ease-in-out infinite;
   will-change: opacity;
@@ -1831,14 +1885,14 @@ body,
   white-space: nowrap;
   font-size: 11px;
   color: var(--muted);
-  background: rgba(10, 132, 255, 0.14);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
   border-radius: 6px;
 }
 
 /* Account folder missing at spawn → session fell back to the system account (orange warning). */
 .node-account-chip--warning {
   color: var(--warn);
-  background: rgba(255, 159, 10, 0.16);
+  background: color-mix(in srgb, var(--state-warning) 16%, transparent);
 }
 
 /* Observed-account variants. The base chip is the managed-account look; these keep the three
@@ -1853,7 +1907,7 @@ body,
 /* A config dir the user linked: theirs, not one nodeterm minted — a hairline instead of a fill. */
 .node-account-chip--linked {
   background: transparent;
-  box-shadow: inset 0 0 0 1px rgba(10, 132, 255, 0.35);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 /* A config dir nodeterm has no record of. Dashed = provisional: the tooltip says to link it in
@@ -1887,7 +1941,7 @@ body,
 
 /* RUNNING matches the working spinner + node glow (clay #d97757), not the base green. */
 .term-node__status--busy {
-  color: #d97757;
+  color: var(--agent-working);
 }
 
 .term-node__status--busy .term-node__status-dot {
@@ -1899,7 +1953,7 @@ body,
    it reads as agent activity, but it carries a label + a Stop button, so it is wider than the plain
    status badges. Always on — no setting hides it (decision 4). */
 .term-node__status--driven {
-  color: #d97757;
+  color: var(--agent-working);
   max-width: 100%;
   min-width: 0;
 }
@@ -1933,8 +1987,8 @@ body,
 }
 
 .browser-driving__stop:hover {
-  color: #d97757;
-  border-color: rgba(217, 119, 87, 0.5);
+  color: var(--agent-working);
+  border-color: color-mix(in srgb, var(--state-working) 50%, transparent);
 }
 
 /* The dot's pulse is decoration; the state still reads frozen at the lit end (matches the mascot
@@ -2049,7 +2103,7 @@ body,
 }
 
 .term-node__status--loop {
-  color: #bf7af0;
+  color: var(--state-automation);
 }
 
 /* DROPPED: the agent process is gone and nothing accounted for it (see agent-liveness.ts). Warn
@@ -2134,7 +2188,7 @@ body,
 /* QUEUED: a node armed with canvas-control `--after`, holding its launch until the stations it
    waits on go idle. Grey — it is not an alert, it is "not started yet". */
 .term-node__status--queued {
-  color: #8e8e93;
+  color: var(--state-queued);
   gap: 4px;
 }
 
@@ -2143,7 +2197,7 @@ body,
    Amber rather than the NEEDS-YOU red: nothing is broken in the user's work, but the session they
    were told would start has not, and that must not be discoverable only in a console.warn. */
 .term-node__status--queued-warn {
-  color: #ffb340;
+  color: var(--warn);
 }
 
 /* Copy receipt (1.6 s) — green like the base chip, and deliberately quieter than RUNNING /
@@ -2183,19 +2237,19 @@ body,
 }
 .term-node__approve-btn--allow {
   color: var(--success);
-  border-color: rgba(48, 209, 88, 0.5);
-  background: rgba(48, 209, 88, 0.12);
+  border-color: color-mix(in srgb, var(--state-success) 50%, transparent);
+  background: color-mix(in srgb, var(--state-success) 12%, transparent);
 }
 .term-node__approve-btn--allow:hover {
-  background: rgba(48, 209, 88, 0.22);
+  background: color-mix(in srgb, var(--state-success) 22%, transparent);
 }
 .term-node__approve-btn--deny {
   color: var(--danger);
-  border-color: rgba(255, 69, 58, 0.5);
-  background: rgba(255, 69, 58, 0.12);
+  border-color: color-mix(in srgb, var(--state-error) 50%, transparent);
+  background: color-mix(in srgb, var(--state-error) 12%, transparent);
 }
 .term-node__approve-btn--deny:hover {
-  background: rgba(255, 69, 58, 0.22);
+  background: color-mix(in srgb, var(--state-error) 22%, transparent);
 }
 
 @keyframes nt-pulse {
@@ -2445,7 +2499,7 @@ body,
 }
 
 .term-node__find-tag--claude {
-  background: rgba(10, 132, 255, 0.22);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--accent-text);
 }
 
@@ -3022,7 +3076,7 @@ body,
 }
 .term-chat__msg--user {
   align-self: flex-end;
-  background: var(--accent, #0a84ff);
+  background: var(--accent);
   color: #fff;
 }
 .term-chat__msg--assistant {
@@ -3062,7 +3116,7 @@ body,
 }
 .term-chat__tool-name {
   font-weight: 600;
-  color: var(--accent, #0a84ff);
+  color: var(--accent);
 }
 .term-chat__tool-arg {
   overflow: hidden;
@@ -3097,7 +3151,7 @@ body,
 }
 .term-chat__input:focus {
   outline: none;
-  border-color: var(--accent, #0a84ff);
+  border-color: var(--accent);
 }
 .term-chat__input:disabled {
   opacity: 0.5;
@@ -3483,7 +3537,7 @@ body,
   padding: 1px 7px;
   border-radius: 999px;
   color: var(--success);
-  background: rgba(48, 209, 88, 0.14);
+  background: color-mix(in srgb, var(--state-success) 14%, transparent);
 }
 
 .welcome__recent-del {
@@ -3510,7 +3564,7 @@ body,
 }
 
 .welcome__recent-del:hover {
-  background: rgba(255, 69, 58, 0.15);
+  background: color-mix(in srgb, var(--state-error) 15%, transparent);
   color: var(--danger);
 }
 
@@ -3577,7 +3631,7 @@ body,
 }
 
 .ctx-item.danger:hover:not(:disabled) {
-  background: rgba(247, 118, 142, 0.15);
+  background: color-mix(in srgb, var(--state-error) 15%, transparent);
 }
 
 /* Submenu row + its flyout. The flyout nests inside the row so moving the cursor across
@@ -4104,7 +4158,7 @@ body,
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.25);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .set-value {
@@ -4239,7 +4293,7 @@ body,
 }
 
 .announce-banner__btn:hover {
-  background: rgba(10, 132, 255, 0.12);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .announce-banner__close {
@@ -4268,8 +4322,8 @@ body,
   gap: 12px;
   max-width: 560px;
   padding: 6px 12px;
-  background: rgba(255, 159, 10, 0.15);
-  border: 1px solid rgba(255, 159, 10, 0.4);
+  background: color-mix(in srgb, var(--state-warning) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--state-warning) 40%, transparent);
   border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, calc(0.45 * var(--shadow-k)));
   font-size: 12.5px;
@@ -4280,7 +4334,7 @@ body,
   flex: none;
   padding: 2px 10px;
   background: transparent;
-  border: 1px solid rgba(255, 159, 10, 0.6);
+  border: 1px solid color-mix(in srgb, var(--state-warning) 60%, transparent);
   border-radius: 7px;
   color: var(--text);
   font-size: 12px;
@@ -4289,22 +4343,22 @@ body,
 }
 
 .conflict-bar button:hover {
-  background: rgba(255, 159, 10, 0.18);
+  background: color-mix(in srgb, var(--state-warning) 18%, transparent);
 }
 
 /* The whole-workspace save did not land. Red, not amber: the conflict bar asks a question, this
    one reports that the canvas on screen is not the canvas on disk. */
 .save-failure-bar {
-  background: rgba(255, 69, 58, 0.15);
-  border-color: rgba(255, 69, 58, 0.45);
+  background: color-mix(in srgb, var(--state-error) 15%, transparent);
+  border-color: color-mix(in srgb, var(--state-error) 45%, transparent);
 }
 
 .save-failure-bar button {
-  border-color: rgba(255, 69, 58, 0.6);
+  border-color: color-mix(in srgb, var(--state-error) 60%, transparent);
 }
 
 .save-failure-bar button:hover {
-  background: rgba(255, 69, 58, 0.18);
+  background: color-mix(in srgb, var(--state-error) 18%, transparent);
 }
 
 /* Direct children only — the presence facepile's face buttons are nested inside .presence-facepile
@@ -4874,16 +4928,16 @@ body,
 
 .scm-diff .d-add {
   color: var(--success);
-  background: rgba(158, 206, 106, 0.08);
+  background: color-mix(in srgb, var(--state-success) 8%, transparent);
 }
 
 .scm-diff .d-del {
   color: var(--danger);
-  background: rgba(247, 118, 142, 0.08);
+  background: color-mix(in srgb, var(--state-error) 8%, transparent);
 }
 
 .scm-diff .d-hunk {
-  color: #6ac4dc;
+  color: var(--accent-text);
 }
 
 .scm-diff .d-meta {
@@ -4941,7 +4995,7 @@ body,
 
 .scm-message:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .scm-gen {
@@ -4953,8 +5007,8 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 132, 255, 0.14);
-  border: 1px solid rgba(10, 132, 255, 0.32);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
   color: var(--accent-text);
   border-radius: 7px;
   font-size: 13px;
@@ -4964,7 +5018,7 @@ body,
 }
 
 .scm-gen:hover:not(:disabled) {
-  background: rgba(10, 132, 255, 0.26);
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
 }
 
 .scm-gen:active:not(:disabled) {
@@ -5447,9 +5501,9 @@ body,
 .bind-error {
   margin: 0 0 12px;
   padding: 8px 10px;
-  border: 1px solid rgba(255, 69, 58, 0.4);
+  border: 1px solid color-mix(in srgb, var(--state-error) 40%, transparent);
   border-radius: 6px;
-  background: rgba(255, 69, 58, 0.12);
+  background: color-mix(in srgb, var(--state-error) 12%, transparent);
   color: var(--danger);
   font-size: 11px;
   line-height: 1.4;
@@ -6249,7 +6303,7 @@ body,
   flex-shrink: 0;
 }
 .palette__secondary:hover {
-  background: rgba(10, 132, 255, 0.18);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent-text);
 }
 
@@ -6321,8 +6375,8 @@ body,
    for this case), go muted/warning. */
 .group-node--worktree-stale {
   border-style: dashed;
-  border-color: rgba(255, 159, 10, 0.5);
-  background: rgba(255, 159, 10, 0.05);
+  border-color: color-mix(in srgb, var(--state-warning) 50%, transparent);
+  background: color-mix(in srgb, var(--state-warning) 5%, transparent);
 }
 
 /* Floating label pill, sitting on the top border (opaque so it "cuts" the dashes).
@@ -6678,7 +6732,7 @@ button.group-node__setup:disabled {
   padding: 10px 12px;
   background: var(--surface-deep);
   border: 1px solid var(--border);
-  border-left: 3px solid #bf7af0;
+  border-left: 3px solid var(--state-automation);
   border-radius: 10px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, calc(0.4 * var(--shadow-k)));
   font-size: 12px;
@@ -6718,7 +6772,7 @@ button.group-node__setup:disabled {
   height: 8px;
   flex: none;
   border-radius: 50%;
-  background: #bf7af0;
+  background: var(--state-automation);
 }
 
 .loop-node.working .loop-node__dot {
@@ -6733,7 +6787,7 @@ button.group-node__setup:disabled {
 .loop-node__count {
   font-size: 10.5px;
   font-weight: 700;
-  color: #bf7af0;
+  color: var(--state-automation);
   font-variant-numeric: tabular-nums;
 }
 
@@ -6752,16 +6806,16 @@ button.group-node__setup:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(191, 122, 240, 0.18);
-  border: 1px solid #bf7af0;
+  background: color-mix(in srgb, var(--state-automation) 18%, transparent);
+  border: 1px solid var(--state-automation);
   border-radius: 6px;
-  color: #bf7af0;
+  color: var(--state-automation);
   font-size: 10px;
   cursor: pointer;
 }
 
 .loop-node__play:hover {
-  background: rgba(191, 122, 240, 0.32);
+  background: color-mix(in srgb, var(--state-automation) 32%, transparent);
 }
 
 /* Dismiss the card (job itself is untouched). Sits at the right edge; when Play is present
@@ -6826,7 +6880,7 @@ button.group-node__setup:disabled {
 }
 
 .loop-node__item-n {
-  color: #bf7af0;
+  color: var(--state-automation);
   font-weight: 700;
 }
 
@@ -6892,7 +6946,7 @@ button.group-node__setup:disabled {
    `color`. */
 .react-flow__controls-button.canvas-lock-btn.locked {
   color: var(--accent);
-  background: rgba(10, 132, 255, 0.14);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 /* ---- Minimap ---- */
@@ -6909,8 +6963,8 @@ button.group-node__setup:disabled {
   box-shadow: 0 8px 28px rgba(0, 0, 0, calc(0.4 * var(--shadow-k)));
 }
 
-/* Minimap-scale status glow: same language as the node glows (amber working / red
-   needs-you / accent unread). A static drop-shadow provides the halo; only
+/* Minimap-scale status glow: the SAME roles as the node glows (--state-working /
+   --state-attention / --state-unread), so the map and the canvas cannot disagree. A static drop-shadow provides the halo; only
    stroke-opacity animates (cheap on tiny svg rects), cadence matching each canvas glow. */
 .minimap .mm-working,
 .minimap .mm-attention,
@@ -6918,20 +6972,20 @@ button.group-node__setup:disabled {
   stroke-width: 4px;
 }
 .minimap .mm-working {
-  filter: drop-shadow(0 0 3px rgba(255, 214, 10, 0.8));
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--state-working) 80%, transparent));
   animation: mm-pulse-soft 2.6s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
 }
 .minimap .mm-attention {
-  filter: drop-shadow(0 0 3px rgba(255, 69, 58, 0.9));
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--state-attention) 90%, transparent));
   animation: mm-pulse 1.8s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
 }
-/* Unread = clay, the agent-hook colour (RUNNING badge, working glow). Its own keyframes: at
-   minimap scale a node is a few pixels tall, so opacity alone reads as a faint flicker — the
-   stroke THICKENS on the beat as well, which is what makes it findable on a busy map. */
+/* Unread: its own keyframes — at minimap scale a node is a few pixels tall, so opacity alone reads
+   as a faint flicker; the stroke THICKENS on the beat as well, which is what makes it findable on a
+   busy map (and apart from an uncoloured node's plain accent stroke). */
 .minimap .mm-unread {
-  filter: drop-shadow(0 0 4px rgba(217, 119, 87, 0.95));
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--state-unread) 95%, transparent));
   animation: mm-pulse-unread 1.6s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
 }
@@ -7830,9 +7884,9 @@ button.group-node__setup:disabled {
   gap: 8px;
   margin: 0 0 10px;
   padding: 8px 10px;
-  border: 1px solid rgba(255, 69, 58, 0.4);
+  border: 1px solid color-mix(in srgb, var(--state-error) 40%, transparent);
   border-radius: 6px;
-  background: rgba(255, 69, 58, 0.12);
+  background: color-mix(in srgb, var(--state-error) 12%, transparent);
 }
 .scm-error__msg {
   flex: 1;
@@ -8012,7 +8066,7 @@ button.group-node__setup:disabled {
    the header's 120px cap and `flex-shrink: 0` are what crushed the title here. Same scale as
    `.ss-chip` beside it, and it yields before the name — its tooltip keeps the full label. */
 .ss-account { margin-left: 0; max-width: 5.5rem; font-size: 10px; padding: 0 5px; flex: 0 1 auto; min-width: 0; }
-.ss-loop { font-size: 9.5px; color: var(--caution); border: 1px solid rgba(255, 214, 10, 0.4); border-radius: 4px; padding: 0 4px; flex: 0 0 auto; }
+.ss-loop { font-size: 9.5px; color: var(--caution); border: 1px solid color-mix(in srgb, var(--sys-yellow) 40%, transparent); border-radius: 4px; padding: 0 4px; flex: 0 0 auto; }
 .ss-meta { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); min-width: 0; }
 .ss-meta__cwd { font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ss-meta__ssh { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
@@ -8222,7 +8276,7 @@ button.group-node__setup:disabled {
   transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
 .sessions-sidebar__history-item:hover .sessions-sidebar__history-del { opacity: 1; }
-.sessions-sidebar__history-del:hover { background: rgba(255, 69, 58, 0.15); color: var(--danger); }
+.sessions-sidebar__history-del:hover { background: color-mix(in srgb, var(--state-error) 15%, transparent); color: var(--danger); }
 
 /* "Read transcript" on a closed session row (issue #531) — same reveal-on-hover affordance as the
    discard ×, beside it. Kept visible while DISABLED so the reason (in its title) is reachable:
@@ -8677,7 +8731,7 @@ button.group-node__setup:disabled {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 69, 58, 0.9);
+  background: color-mix(in srgb, var(--state-error) 90%, transparent);
   color: #fff;
   font-size: 12px;
   padding: 4px 8px;
@@ -8850,15 +8904,15 @@ button.group-node__setup:disabled {
 }
 /* RUNNING matches the working spinner + node glow (clay #d97757). */
 .chat-node__badge--working {
-  color: #d97757;
-  background: rgba(217, 119, 87, 0.15);
+  color: var(--agent-working);
+  background: color-mix(in srgb, var(--state-working) 15%, transparent);
   animation: nt-pulse 1.1s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
 }
 /* NEEDS YOU is red everywhere (same as the terminal attention badge). */
 .chat-node__badge--needs {
   color: var(--danger);
-  background: rgba(255, 69, 58, 0.15);
+  background: color-mix(in srgb, var(--state-error) 15%, transparent);
   animation: nt-pulse 1.1s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
 }
@@ -8929,8 +8983,8 @@ button.group-node__setup:disabled {
   border-radius: 8px;
   font-size: 12px;
   color: var(--danger);
-  background: rgba(255, 69, 58, 0.12);
-  border: 1px solid rgba(255, 69, 58, 0.35);
+  background: color-mix(in srgb, var(--state-error) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--state-error) 35%, transparent);
 }
 .chat-node__error span {
   flex: 1 1 auto;
@@ -8956,8 +9010,8 @@ button.group-node__setup:disabled {
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-top: 1px solid rgba(255, 69, 58, 0.35);
-  background: rgba(255, 69, 58, 0.1);
+  border-top: 1px solid color-mix(in srgb, var(--state-error) 35%, transparent);
+  background: color-mix(in srgb, var(--state-error) 10%, transparent);
 }
 .chat-node__errorbar-msg {
   flex: 1 1 auto;
@@ -8970,19 +9024,19 @@ button.group-node__setup:disabled {
   font-size: 12px;
   font-weight: 600;
   border-radius: 6px;
-  border: 1px solid rgba(255, 69, 58, 0.5);
-  background: rgba(255, 69, 58, 0.15);
+  border: 1px solid color-mix(in srgb, var(--state-error) 50%, transparent);
+  background: color-mix(in srgb, var(--state-error) 15%, transparent);
   color: var(--danger);
   cursor: pointer;
 }
 .chat-node__errorbar-reconnect:hover {
-  background: rgba(255, 69, 58, 0.25);
+  background: color-mix(in srgb, var(--state-error) 25%, transparent);
 }
 .chat-node__permission {
   padding: 10px;
   border-radius: 8px;
   background: rgba(var(--tint-rgb), 0.04);
-  border: 1px solid var(--accent, #0a84ff);
+  border: 1px solid var(--accent);
 }
 .chat-node__permission-title {
   font-size: 12px;
@@ -9064,13 +9118,13 @@ button.group-node__setup:disabled {
   font-size: 12px;
   font-weight: 600;
   border-radius: 6px;
-  border: 1px solid rgba(255, 69, 58, 0.5);
-  background: rgba(255, 69, 58, 0.15);
+  border: 1px solid color-mix(in srgb, var(--state-error) 50%, transparent);
+  background: color-mix(in srgb, var(--state-error) 15%, transparent);
   color: var(--danger);
   cursor: pointer;
 }
 .chat-node__stop:hover {
-  background: rgba(255, 69, 58, 0.25);
+  background: color-mix(in srgb, var(--state-error) 25%, transparent);
 }
 /* Clickable diff-preview summary line on a tool card (file +n −m → opens a diff node). */
 .term-chat__tool-arg--link {
@@ -9156,7 +9210,7 @@ button.group-node__setup:disabled {
   cursor: pointer;
 }
 .chat-node__attach-chip button:hover {
-  background: rgba(255, 69, 58, 0.85);
+  background: color-mix(in srgb, var(--state-error) 85%, transparent);
 }
 .chat-node__attach-note {
   flex: 1 1 100%;
@@ -9593,7 +9647,7 @@ button.group-node__setup:disabled {
   border: none;
   padding: 0;
   font-size: 12px;
-  color: var(--accent, #0a84ff);
+  color: var(--accent);
   cursor: pointer;
 }
 .phone-pair__footer { align-self: flex-start; }
@@ -9712,7 +9766,7 @@ button.group-node__setup:disabled {
 /* Trello-style "this column will take the drop" state. */
 .kanban-col--drop {
   border-color: var(--accent);
-  background: rgba(10, 132, 255, 0.07);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
   box-shadow: 0 0 0 1px var(--accent), 0 8px 24px rgba(0, 0, 0, calc(0.35 * var(--shadow-k)));
 }
 .kanban-col__header {
@@ -9891,7 +9945,7 @@ button.group-node__setup:disabled {
   color: #a371f7;
 }
 .github-pull-state--closed {
-  color: #f85149;
+  color: var(--danger);
 }
 .github-pull-badge {
   margin-left: 6px;
@@ -9911,7 +9965,7 @@ button.group-node__setup:disabled {
   color: #a371f7;
 }
 .github-pull-badge--closed {
-  color: #f85149;
+  color: var(--danger);
 }
 .github-issue-source {
   flex: 0 0 auto;
@@ -10275,14 +10329,14 @@ button.group-node__setup:disabled {
 }
 .kanban-badge--running {
   color: var(--success);
-  background: rgba(50, 215, 75, 0.12);
+  background: color-mix(in srgb, var(--state-success) 12%, transparent);
   /* reuse the terminal-header badge pulse (nt-pulse) rather than a bespoke keyframe */
   animation: nt-pulse 1.1s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
 }
 .kanban-badge--needs {
   color: var(--warn);
-  background: rgba(255, 159, 10, 0.12);
+  background: color-mix(in srgb, var(--state-warning) 12%, transparent);
 }
 /* Eco: the agent CLI was exited to reclaim RAM. Quiet — the session is fine. */
 .kanban-badge--sleeping {
@@ -10293,7 +10347,7 @@ button.group-node__setup:disabled {
    does need the user — but for a different reason, which is why it gets its own label. */
 .kanban-badge--dropped {
   color: var(--warn);
-  background: rgba(255, 159, 10, 0.12);
+  background: color-mix(in srgb, var(--state-warning) 12%, transparent);
 }
 .kanban-card__unread {
   width: 7px;
@@ -10323,7 +10377,7 @@ button.group-node__setup:disabled {
 .kanban-add-col:hover {
   color: var(--text-strong);
   border-color: var(--accent);
-  background: rgba(10, 132, 255, 0.06);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 
@@ -10376,7 +10430,7 @@ button.group-node__setup:disabled {
 .kanban-col__new:hover {
   color: var(--text-strong);
   border-color: var(--accent);
-  background: rgba(10, 132, 255, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 /* GitHub Issues settings — the "Advanced" (token/provider) disclosure. Collapsed by default so the
    common gh-signed-in case shows no token noise. */
@@ -11343,7 +11397,7 @@ button.group-node__setup:disabled {
   color: rgba(var(--tint-rgb), 0.75);
 }
 .kanban-due--overdue {
-  background: rgba(255, 69, 58, 0.18);
+  background: color-mix(in srgb, var(--state-error) 18%, transparent);
   color: #ff6961;
 }
 .kanban-card__metarow {
@@ -12229,7 +12283,7 @@ button.group-node__setup:disabled {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgb(48, 209, 88);
+  background: var(--state-success);
   animation: onb-blob 1.6s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
 }
@@ -12265,8 +12319,8 @@ button.group-node__setup:disabled {
   margin-left: auto;
   font-size: 9px;
   font-weight: 600;
-  color: #0a84ff;
-  background: rgba(10, 132, 255, 0.18);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   border-radius: 4px;
   padding: 1px 5px;
 }
@@ -12576,7 +12630,7 @@ button.group-node__setup:disabled {
   inset: 6px;
   border: 2px dashed var(--accent);
   border-radius: 8px;
-  background: rgba(10, 132, 255, 0.06);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
   pointer-events: none;
   z-index: 3;
 }
@@ -13039,10 +13093,10 @@ body.focus-mode .dock:hover {
   border-radius: 999px;
   border: 1px solid transparent;
 }
-.trigger-node__chip--armed { color: #30d158; border-color: rgba(48, 209, 88, 0.5); }
-.trigger-node__chip--disarmed { color: #8e8e93; border-color: rgba(142, 142, 147, 0.5); }
-.trigger-node__chip--changed { color: #ff9f0a; border-color: rgba(255, 159, 10, 0.5); }
-.trigger-node__chip--invalid { color: #ff9f0a; border-color: rgba(255, 159, 10, 0.5); }
+.trigger-node__chip--armed { color: var(--success); border-color: color-mix(in srgb, var(--state-success) 50%, transparent); }
+.trigger-node__chip--disarmed { color: var(--state-queued); border-color: color-mix(in srgb, var(--state-queued) 50%, transparent); }
+.trigger-node__chip--changed { color: var(--warn); border-color: color-mix(in srgb, var(--state-warning) 50%, transparent); }
+.trigger-node__chip--invalid { color: var(--warn); border-color: color-mix(in srgb, var(--state-warning) 50%, transparent); }
 .trigger-node__body {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -13069,7 +13123,7 @@ body.focus-mode .dock:hover {
 }
 .trigger-node__state-line,
 .trigger-node__note { color: rgba(255, 255, 255, 0.55); font-size: 11px; }
-.trigger-node__error { color: #ff9f0a; font-size: 11px; }
+.trigger-node__error { color: var(--warn); font-size: 11px; }
 .trigger-node__row { display: flex; gap: 6px; }
 .trigger-node__row button {
   background: rgba(255, 255, 255, 0.08);
@@ -13106,9 +13160,9 @@ body.focus-mode .dock:hover {
   border: 1px solid transparent;
   text-transform: uppercase;
 }
-.trigger-node__run-chip--ok { color: #30d158; border-color: rgba(48, 209, 88, 0.5); }
-.trigger-node__run-chip--warn { color: #ff9f0a; border-color: rgba(255, 159, 10, 0.5); }
-.trigger-node__run-chip--muted { color: #8e8e93; border-color: rgba(142, 142, 147, 0.5); }
+.trigger-node__run-chip--ok { color: var(--success); border-color: color-mix(in srgb, var(--state-success) 50%, transparent); }
+.trigger-node__run-chip--warn { color: var(--warn); border-color: color-mix(in srgb, var(--state-warning) 50%, transparent); }
+.trigger-node__run-chip--muted { color: var(--state-queued); border-color: color-mix(in srgb, var(--state-queued) 50%, transparent); }
 .trigger-node__run-time { color: rgba(255, 255, 255, 0.45); font-size: 10px; }
 .trigger-node__confirm { display: flex; flex-direction: column; gap: 6px; text-align: left; font-size: 12px; }
 .trigger-node__confirm .trigger-node__payload { max-height: 140px; }

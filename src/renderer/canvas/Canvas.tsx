@@ -976,19 +976,15 @@ function StatusAwareMiniMap({ onNodeDoubleClick }: { onNodeDoubleClick: (node: N
     },
     [onNodeDoubleClick]
   )
-  // Status language matches the canvas glows/badges: amber = working, red = needs you,
-  // clay = unread. The classes below add the minimap-scale glow/pulse (styles.css).
-  //
-  // Unread is CLAY (#d97757) — the agent-hook colour the RUNNING badge and the node's working glow
-  // already use — and not the accent blue it used to be: blue is also the fallback stroke for a
-  // node that carries no colour of its own, so "finished while you were away" was painted the
-  // exact shade as "nothing to report" and vanished into the map.
+  // Status strokes read the SAME role tokens as the node glows (styles.css --state-*), so the map
+  // and the canvas cannot disagree; the classes below add the minimap-scale glow/pulse. Unread
+  // also pulses a thicker stroke, which keeps it apart from an uncoloured node's accent stroke.
   const nodeStrokeColor = useCallback(
     (n: Node): string => {
       const st = statusById[n.id]
-      if (st?.state === 'working') return '#ffd60a'
-      if (st?.state === 'waiting' || st?.state === 'blocked') return '#ff453a'
-      if (st?.unread) return '#d97757'
+      if (st?.state === 'working') return 'var(--state-working)'
+      if (st?.state === 'waiting' || st?.state === 'blocked') return 'var(--state-attention)'
+      if (st?.unread) return 'var(--state-unread)'
       return (n.data as { color?: string })?.color ?? '#0a84ff'
     },
     [statusById]
@@ -14684,7 +14680,9 @@ export function Canvas() {
                   padding: '6px 12px',
                   fontSize: 12,
                   color: 'var(--text)',
-                  background: isError ? 'rgba(120,40,40,0.92)' : 'rgba(90,72,30,0.92)',
+                  background: isError
+                    ? 'color-mix(in srgb, var(--state-error) 36%, var(--surface-overlay))'
+                    : 'color-mix(in srgb, var(--state-warning) 22%, var(--surface-overlay))',
                   border: '1px solid var(--border)',
                   borderRadius: 8
                 }}
@@ -14695,7 +14693,7 @@ export function Canvas() {
                       width: 8,
                       height: 8,
                       borderRadius: '50%',
-                      background: '#ff6b6b'
+                      background: 'var(--state-error)'
                     }}
                   />
                 ) : (
