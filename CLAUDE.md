@@ -3851,6 +3851,25 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   mounted (it paints text BELOW the nodes, so a tint would cover it), and the blur is dropped while
   the camera moves (`.canvas-moving`, toggled by `onMoveStart`/`onMoveEnd` via classList so a pan
   does not re-render Canvas) — the tint alone carries the contrast guarantee.
+- **App-painted cell backgrounds become glass** (`terminal/glass-cell-backgrounds.ts`). addon-webgl
+  0.18.0 paints every background rectangle at alpha 1 (`RectangleRenderer._updateRectangle`,
+  `$a = 1`), so full-screen TUIs read as slabs: Grok's `48;2;20;20;20` screen fill, Codex's composer,
+  Claude's bubble — and, worse, every DIM/ITALIC/hyperlink run on the DEFAULT bg, because those flags
+  live in the bg word and the run gets a theme-background rectangle at alpha 1 (Codex's all-dim
+  header box). No xterm option exists, so the private method is wrapped on the shared prototype
+  (installed from `acquireWebgl`, original kept under a `Symbol.for` key so a hot reload never
+  double-wraps; fail-open). Per run: inverse → opaque; attribute-only (default bg) → the theme bg's
+  alpha (0 under glass); rendered bg ≠ the buffer cell's raw bg = a renderer override (selection,
+  block cursor, search/decoration) → opaque; a panel nearer the theme fg than its bg (light bar on a
+  dark theme) → opaque; else the node's tint alpha (`GlassTint.alpha`, so the slider and Reduce
+  Transparency apply). Written premultiplied as `(c·√k, √k)` — the canvas is premultiplied and the
+  addon blends alpha with SRC_ALPHA, so this stores exactly `(c·k, k)`. Only terminals registered
+  through `setGlassCellAlpha` (TerminalNode, `glassOn` only) are touched — others are byte-identical;
+  an alpha change calls `term.clearTextureAtlas()` because backgrounds only rebuild for changed
+  cells. The test pins addon-webgl 0.18.0 and every private name — an upgrade must re-derive them
+  (or delete the wrap if upstream honours bg alpha). Ceilings: panels stack on the node tint
+  (Grok reads denser than a shell); the DOM-renderer fallback keeps explicit backgrounds opaque
+  (inline truecolor `background-color`).
 - **Liquid Glass chrome** (`:root[data-nt-glass='on']`, set by App.tsx only for that appearance, so
   every other look is byte-identical). ONE chrome fill, `--glass-chrome-bg` = the resolved `--panel`
   at `glassChromeAlpha(--text, --panel)` — **dark 0.70, light 0.745** on the shipped palettes. The

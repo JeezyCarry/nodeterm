@@ -3,6 +3,7 @@ import { FIND_DECORATIONS } from '../lib/palette'
 import { ptyRefusal } from '@shared/pty-refusal'
 
 import { patchImeModeSwitch } from '../terminal/ime-mode-switch'
+import { installGlassCellBackgrounds, setGlassCellAlpha } from '../terminal/glass-cell-backgrounds'
 
 import { deliverRelayInitialLaunch } from '../terminal/relay-initial-launch'
 import { commitLaunch } from '../terminal/launch-attempt'
@@ -1252,18 +1253,25 @@ export function TerminalNode({
   const glass = isLiquidGlass(useSettings((s) => s.settings.appTheme))
   const glassSlider = resolveGlassSlider(useSettings((s) => s.settings.glassTint))
   const glassA11y = useGlassA11y()
-  const glassVars = useMemo(() => {
-    if (!glass) return null
-    const tint = glassTint(resolveTerminalTheme(visual.terminalTheme).theme, glassSlider, glassA11y)
-    return tint
-      ? ({
-          '--term-glass-bg': tint.background,
-          '--term-glass-header-bg': tint.header,
-          '--term-glass-chip-wash': tint.chipWash,
-          '--term-glass-fg': tint.foreground
-        } as React.CSSProperties)
-      : null
-  }, [glass, glassSlider, glassA11y, visual.terminalTheme])
+  const tint = useMemo(
+    () => (glass ? glassTint(resolveTerminalTheme(visual.terminalTheme).theme, glassSlider, glassA11y) : null),
+    [glass, glassSlider, glassA11y, visual.terminalTheme]
+  )
+  const glassVars = useMemo(
+    () =>
+      tint
+        ? ({
+            '--term-glass-bg': tint.background,
+            '--term-glass-header-bg': tint.header,
+            '--term-glass-chip-wash': tint.chipWash,
+            '--term-glass-fg': tint.foreground
+          } as React.CSSProperties)
+        : null,
+    [tint]
+  )
+  // The alpha app-painted cell backgrounds follow on this node (null = not glass, stock rendering).
+  // A ref too, because `acquireWebgl` (inside the lifecycle closure) syncs every fresh addon to it.
+  const glassCellAlphaRef = useRef<number | null>(null)
   // The account list, for the chip and for the READERS below: a config dir the user links while
   // this pane sits quiet must resolve to its new account immediately, not at the next hook event.
   const claudeAccounts = useSettings((s) => s.settings.claudeAccounts)
@@ -2284,6 +2292,10 @@ export function TerminalNode({
         })
         term.loadAddon(a)
         webgl = a
+        // Glass: app-painted cell backgrounds become tinted glass (glass-cell-backgrounds.ts). A
+        // fresh addon starts from an empty model, so the repaint below already applies the alpha.
+        installGlassCellBackgrounds(a)
+        setGlassCellAlpha(term, glassCellAlphaRef.current)
         // THE RESTORE PATH — rebuild, never trust the addon's in-place recovery.
         //
         // When the GPU process resets (returning from a GPU-heavy app; sleep/wake; memory
@@ -4862,6 +4874,16 @@ export function TerminalNode({
     if (metricsChanged) applyFitRef.current?.()
     if (themeChanged) fullRepaintRef.current?.()
   }, [visual, glass])
+
+  // Glass cell backgrounds follow the node's tint alpha (slider, Reduce Transparency). Backgrounds
+  // are only recomputed for CHANGED cells, so an alpha change rebuilds the WebGL model; the shared
+  // glyph grid stands glass down, and so does this.
+  const glassCellAlpha = tint && !glyphMounted ? tint.alpha : null
+  useEffect(() => {
+    glassCellAlphaRef.current = glassCellAlpha
+    const term = termRef.current
+    if (term && setGlassCellAlpha(term, glassCellAlpha)) term.clearTextureAtlas()
+  }, [glassCellAlpha])
 
   // glyphgrid participation — whether this node should hold a grid RIGHT NOW.
   //

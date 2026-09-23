@@ -158,6 +158,9 @@ export interface GlassTint {
   /** The theme foreground: header text sits on the TERMINAL's tint, so it takes the terminal's
    *  text colour, not the app's (a light app theme over a dark terminal theme measured 1.31:1). */
   foreground: string
+  /** The fill's alpha as a number — app-painted cell backgrounds follow it
+   *  (`terminal/glass-cell-backgrounds.ts`). */
+  alpha: number
 }
 
 /** CSS for a theme's glass at a Glass-slider position (default: the Readable tick), or null when
@@ -179,7 +182,8 @@ export function glassTint(
     background: `rgba(${rgb}, ${alpha.toFixed(3)})`,
     header: `rgba(${rgb}, ${HEADER_LAYER_ALPHA})`,
     chipWash: `${Math.round(chipWash * 100)}%`,
-    foreground
+    foreground,
+    alpha
   }
 }
 
