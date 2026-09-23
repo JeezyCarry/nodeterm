@@ -1483,6 +1483,14 @@ the wire never see any of it):
   every returning page until the fallback; live→ghost never did). A genuinely deleted node's entry
   is dropped at the deletion funnels (handleNodesChange's `remove`, `deleteNodes`, the peer-mutation
   remove, project deletion/prune), with the next retire as backstop — never by the merge.
+- **The minimap must exclude ghosts from BOTH its node list and its bounds lookup** (#850/#786).
+  React Flow's MiniMap ignores CSS `display:none`; setting `hidden` on the real node instead
+  unmounts the guest. `canvas/VisibleMiniMap.tsx` projects the live flow store into a provider
+  scoped to the map, preserving internal absolute positions, measured sizes and the original
+  panZoom instance. Only the map's node collections are filtered; persistence and pool lifecycle
+  are untouched. The real MiniMap regression tests cover ghost/live transitions, empty bounds,
+  removals, grouped geometry and camera interaction. When upgrading React Flow, keep those
+  tests: the projection deliberately mirrors the state fields consumed by MiniMap.
 - **Memory bounds** (same posture as park/WebGL: a lever must not end live work): a ghost is
   hidden, so the existing Browser Memory Saver discards its guest after `BROWSER_DISCARD_MS`
   unless loading/audible/agent-driven — `onGuestDiscarded` then drops the entry (a husk would hold
@@ -2064,14 +2072,39 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     "control endpoint unreachable" — in the field, a reviewer launch silently dropped. Now shared,
     one definition. Two server-side halves in `hook-server.ts`: a FAILED `listen()` un-wedges the
     singleton (it used to leave `this.server` set, making every retry a silent no-op at port 0)
-    and both `stop()` and the failed-start path delete `hook-endpoint.env` — publication reflects
-    listener liveness; a crash skips that, which is exactly what the client walk exists for. An
-    HTTP answer of any code is authoritative: only a dead transport (curl 000/'') fails over, so a
-    403/400 is never re-sent to another instance. The walk is skipped under
-    `CODEX_SANDBOX_NETWORK_DISABLED` (#367 — the sandbox denies every connect, the hint is the
-    right diagnosis) and the final error now distinguishes "no endpoint anywhere" from "an
+    and `stop()` deletes only the endpoint contents this run published — a failed start cannot
+    erase another owner's advertisement. A crash skips cleanup, which is why clients still walk
+    the candidates.
+    HTTP 421 means the bearer belongs to a different endpoint and is rejected BEFORE dispatch;
+    it joins dead transport (curl 000/'') in the bounded discovery walk. A node-identity 403/400
+    remains final and is never re-sent to another instance. The walk is skipped under
+    `CODEX_SANDBOX_NETWORK_DISABLED` for transport failures (#367); an explicit 421 proves
+    transport worked and still permits discovery. The final error distinguishes "no endpoint
+    anywhere" from "an
     advertised endpoint that is not listening" (`STALE_ENDPOINT_HINT`). Desktop quit calls
     `hookServer.stop()` on the second before-quit pass, after the flush window.
+
+  - **Hook endpoint ownership (#826):** startup first probes every transport in an existing
+    endpoint advertisement and preserves a live or uncertain owner. The local Unix listener probes its socket before
+    cleanup. Only `ECONNREFUSED` plus the same device/inode permits removal; a live listener,
+    non-socket, symlink or uncertain probe disables hooks without replacing its endpoint.
+    Both shells use `startForApp`: Desktop creates its window and then shows an actionable warning;
+    Server Edition logs the same warning and continues boot. An authenticated owner must answer
+    `/verify` with 204 for the advertised bearer AND reject a random bearer (403/421); unrelated
+    HTTP responses are uncertain listeners, not authenticated nodeterm. Probes have a hard deadline.
+    Endpoint writes are atomic and stop removes only the run's own advertised contents. SSH setup
+    never removes a socket before binding: every forward gets a fresh random path, while discovery
+    is stable per project + installation identity hash. Only a verified replacement is advertised;
+    then this run cancels its previous forward. A legacy project endpoint is migrated only when its
+    bearer matches the current run, the previous installation-qualified advertisement, or a stale
+    conventional local advertisement retained at boot. Publication rechecks the snapshot digest,
+    refuses symlinks, uses a migration lock and a private temp, and never places credentials in argv.
+    Without ownership proof (including a first upgrade after the old local advertisement was deleted),
+    it preserves the file and logs instructions to restart affected agent sessions; discovery still
+    works but may incur the old dead-tunnel delay until then. No real-host upgrade is claimed by unit tests. A reused tunnel that loses bearer verification
+    emits hook-only health updates: the desktop shows a warning and clears it after repair, without
+    reconnecting terminals. These changes share the core listener in Desktop and Server Edition;
+    the mobile wire protocol and node-identity rules are unchanged.
 
   Enforcement is dated (`NODE_IDENTITY_STRICT_AFTER`, 2026-10-13, read through `isStrictInstant` so a
   clock years ahead cannot enter strict mode early) with a `settings.hookIdentityStrict` escape hatch
@@ -2776,13 +2809,25 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   retired — its embedded-JS parser now lives as tested TS in `core/context-link-render.ts`:
   parsers for **all four** formats — claude JSONL / codex rollout / gemini event-sourced chat /
   opencode export — plus `renderContextLink` over injected fetchers). `src/core/context-link.ts`
+  coalesces renderer updates before workspace-map construction with a non-resetting task.
+  Intermediate ACL publications retain previously resolved paths keyed by node, agent, session,
+  account, cwd, remote/local placement and hook path. Ingest prunes changed/removed identities,
+  so changing back during queued discovery cannot revive an invalidated path. Reinitialization
+  clears the cache, and only current-revision discovery may refill it. The service
   holds the link docs in memory (per-node files under `<userData>/context-links/` remain as a
   debug aid), carries per-entry `agentId`/`sessionId`/`accountId`, and answers the route;
   **authorization** = the doc is selected by the REQUESTER's node id, so a token-holding caller
   can only read nodes in its own (directional) link map. Codex/gemini paths resolve via the
   handoff locators (`locateCodex`/`locateGemini` by sessionId); claude keeps the hook-fed path +
-  `locateClaude(sessionId, accountId)` fallback (cwd-newest is claude-only); Canvas rewrites link
-  files when a linked node's sessionId appears (`linkSessionSig`). **SSH projects:** the shim +
+  `locateClaude(sessionId, accountId)` fallback (cwd-newest is claude-only).
+  `useContextLinkSync` publishes semantic map changes from live edges and subscribes to
+  background project/status changes. Geometry/status render churn cannot postpone publication;
+  relay-bound projects never enter the local core's map. A render-captured project epoch prevents
+  outgoing live nodes replacing the incoming project's persisted map during a tab switch. Core
+  replaces the read authorization map synchronously, then enriches/writes debug documents through
+  a recoverable serialized queue; revision checks prevent obsolete enrichment restoring a removed
+  link. Transcript paths can be temporarily unavailable while the current snapshot is enriched.
+  **SSH projects:** the shim +
   skill are installed on the remote host at connect (`RemoteHooks.installContextLink`, gated on
   the VERIFIED reverse hook tunnel; POSTs ride `--unix-socket` through it); a remote node's
   transcript is read over the ControlMaster (`initContextLink(ptyManager, deps)` — `src/main`
@@ -3118,6 +3163,8 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   every canvas edit. ⟳ refreshes only what is on screen, and `usage.remote({hostKey})` reads only
   that host (cache eviction still runs against the FULL target list, so switching between two SSH
   projects doesn't throw each host's cache away).
+
+- **Grok billing failures** retain per-view HTTP status or a safe timeout/network/invalid-response category in `ProviderUsage.diagnostics`. The default view still runs after a credits failure; recovered limits keep their diagnostic. Only two successful empty views imply no quota. Never include raw exceptions, URLs or response bodies, or refresh/write credentials. Desktop and Server share the core reader and popover; provider-only errors must keep the pill visible.
 
 - **Usage failure readouts** — an empty Claude snapshot with `status: error` says "Could not
   read usage." in both the single-account and multi-account popovers, including beside healthy
@@ -4911,3 +4958,20 @@ list and a safe resolved `remoteHome`. `remoteAccountScopeEnvArgs` then supplies
 not fall back to the host's system login. System Codex retains the host environment even before
 home discovery during early attach. Never guess HOME/CODEX_HOME. Desktop and Server share this
 core gate; Desktop supports the remote lifecycle, while Server account management remains unavailable.
+
+### Standing phone consent lifetime (#819)
+
+A browse socket can close before the human clicks the SAS dialog. `core/phone-approval.ts` retains
+only the handshake-bound id/key for 120 seconds, at most 64 requests, one per key. Socket closure
+releases presence and transport but does not discard that bounded consent; replacement, rejection,
+expiry and host stop clear the exact dialog id. Approval requires BOTH id and displayed key (no
+key-only match or mismatched-key fallback), consumes once, then persists before granting access.
+`remote:phone:approve` is raw, owner-window Electron IPC, never a relay RPC. Its response separates
+stale/persistence failure from approved/saved-disconnected; renderer rejection/timeout is explicitly
+unconfirmed. SAS derivation and mutual trust verification are unchanged. Legacy interactive offers
+remain session-only, and Server Edition rejects standing phone approval as unsupported.
+
+Pin/revoke mutations use `updateApprovedDevices` to queue the entire read/modify/write in process;
+unique-temp atomic rename alone cannot prevent lost updates. Non-ENOENT reads and malformed JSON
+reject rather than overwrite unknown trust state. The queue is not a cross-process lock. A click
+accepted before host stop may finish its disk save, but must never open the now-closed session.

@@ -2024,6 +2024,8 @@ export type SshProjectStatus = 'connecting' | 'connected' | 'disconnected' | 're
  * Absent = not probed / nothing new ⇒ the renderer keeps omitting the `auto` flag (fail-open).
  */
 export interface SshProjectStatusEvent {
+  /** Hook-only health update; it does not imply an SSH reconnect or terminal restart. */
+  hookTunnelVerified?: boolean
   projectId: string
   status: SshProjectStatus
   error?: string
@@ -2440,9 +2442,18 @@ export interface UsageLimit {
  * One provider's usage snapshot. `ClaudeUsage` below is the Claude-shaped superset kept for the
  * existing pill; new providers use this leaner shape (they have no per-account story yet).
  */
+/** Safe billing diagnostics: never include URLs, response bodies, or exception messages. */
+export type UsageDiagnostic = {
+  view: 'credits' | 'default'
+} & ({ reason: 'http'; httpStatus: number } | {
+  reason: 'timeout' | 'network' | 'invalid-response'
+})
+
 export interface ProviderUsage {
   /** Agent id the limits belong to: 'claude' | 'codex' | … */
   provider: string
+  /** Failed billing views, including failures recovered by a successful fallback. */
+  diagnostics?: UsageDiagnostic[]
   limits: UsageLimit[]
   /** Signed-in identity, when the provider exposes one cheaply (email / account label). */
   account: string | null
@@ -3178,6 +3189,10 @@ export interface LicenseApi {
   releaseOthers(): Promise<LicenseDetail>
 }
 
+export type PhoneApprovalResult = {
+  status: 'persisted' | 'approved' | 'saved-disconnected' | 'stale' | 'persistence-failed'
+}
+
 export interface RemoteHostApi {
   /**
    * Enter host mode: mint a pairing token, connect to the relay as the host, and return the
@@ -3203,16 +3218,17 @@ export interface RemoteHostApi {
    * verification code to display. Returns an unsubscribe function.
    */
   onPeerPending(
-    listener: (info: { sas: string | null; id: string; pub?: string | null }) => void
+    listener: (info: { sas: string | null; id: string; pub?: string | null; standing?: boolean }) => void
   ): () => void
   /** The pending prompt expired host-side (120 s) — the dialog must drop or re-arm, else its
    *  Approve is a silent no-op against a dead id (issue #372). */
   onPeerPendingCleared(
     listener: (info: { id: string | null; pub?: string | null }) => void
   ): () => void
-  /** Approve the pending client → the host begins serving its pty/fs RPCs. `pub` (the peer's
-   *  stable box key) survives the phone's reconnect churn where the per-attach `id` does not —
-   *  pass both when known. */
+  /** Standing phone consent: persist the displayed handshake identity before granting access.
+   *  Both fields must match a bounded pending request. Desktop-only; Server rejects explicitly. */
+  approvePhone(id: string, pub: string): Promise<PhoneApprovalResult>
+  /** Legacy interactive (single-use offer) approval; does not persist a device pin. */
   approve(id: string, pub?: string): void
   /** Reject the pending client → the connection is dropped. Same id/pub matching as approve. */
   reject(id: string, pub?: string): void

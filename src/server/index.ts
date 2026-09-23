@@ -616,7 +616,8 @@ export async function startServer(
     // this baseline hook pass stays unchanged when the feature flag is off.
     installHooksIntoLocalAccounts(settingsStore.get().claudeAccounts ?? [])
   }
-  await hookServer.start()
+  const hookStartupWarning = await hookServer.startForApp()
+  if (hookStartupWarning) console.error('[nodeterm-server]', hookStartupWarning)
   // Safe default and rollback path. The opt-in runtime replaces this handler only after its
   // workspace-backed services are ready; a failed initialization therefore degrades to the same
   // named permanent refusal rather than a half-wired execution surface.
