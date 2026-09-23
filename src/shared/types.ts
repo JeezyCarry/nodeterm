@@ -337,6 +337,8 @@ export type NodeKind = 'terminal' | 'sticky' | 'group' | 'editor' | 'diff' | 'vi
  * a stalled station must never be a dead end.
  */
 export interface PendingLaunch {
+  /** false proves no input attempt; true/absent require explicit recovery after reload. */
+  attempted?: boolean
   /** An attempted/uncertain delivery requires explicit Run now; never replay on hooks. */
   manualOnly?: boolean
   /**

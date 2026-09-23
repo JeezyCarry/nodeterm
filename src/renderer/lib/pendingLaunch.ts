@@ -37,7 +37,7 @@ export function queueControlLaunch<T extends { data: { initialCommand?: string; 
     data: {
       ...node.data,
       initialCommand: undefined,
-      pendingLaunch: { after, command, ...(awaitSetupGroup ? { awaitSetupGroup } : {}) }
+      pendingLaunch: { after, command, attempted: false, ...(awaitSetupGroup ? { awaitSetupGroup } : {}) }
     }
   }
 }

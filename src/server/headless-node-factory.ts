@@ -1176,6 +1176,7 @@ export class HeadlessNodeFactory {
               after,
               command,
               executor: 'server' as const,
+              attempted: !mustWait,
               ...(!mustWait ? { manualOnly: true } : {}),
               ...(awaitWorking.length ? { awaitWorking: [...awaitWorking] } : {})
             }
@@ -1413,6 +1414,7 @@ export class HeadlessNodeFactory {
           // Persist the attempt BEFORE input. A failed/uncertain send (or a crash before its
           // acknowledgement save) must never be replayed by an unrelated hook.
           pending.manualOnly = true
+          pending.attempted = true
           await this.deps.workspaceStore.save(workspace)
           markChanged()
           if (!isLaunchShell(await this.deps.ptyManager.paneCommand(node.id).catch(() => null))) continue

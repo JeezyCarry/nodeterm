@@ -867,13 +867,13 @@ describe('pendingLaunch round-trip', () => {
     })
   })
 
-  it('retains an ordinary node’s unsubmitted command for explicit recovery', () => {
+  it('retains an ordinary node’s never-attempted command', () => {
     const node = {
       id: 'term-4', type: 'terminal', position: { x: 0, y: 0 }, width: 1, height: 1,
       data: { title: 'T', color: '#888', group: null, initialCommand: 'claude' }
     } as unknown as CanvasNode
     const states = flowToNodeStates([node])
-    expect(states[0].pendingLaunch).toEqual({ after: [], command: 'claude', manualOnly: true })
+    expect(states[0].pendingLaunch).toEqual({ after: [], command: 'claude', attempted: false })
     // The command is persisted as recoverable intent, never as a second initialCommand.
     expect((states[0] as { initialCommand?: string }).initialCommand).toBeUndefined()
   })

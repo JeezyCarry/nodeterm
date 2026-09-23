@@ -1113,6 +1113,7 @@ describe('HeadlessNodeFactory', () => {
     expect(workspace.projects[0].nodes.find((node) => node.id === id)?.pendingLaunch).toEqual({
       after: ['term-upstream'],
       command: "claude 'consume result'",
+      attempted: false,
       executor: 'server'
     })
     expect(workspace.projects[0].bridges).toEqual(

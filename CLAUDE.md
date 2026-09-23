@@ -2574,13 +2574,20 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   (4) Desktop automatic and manual launch delivery share `terminal/launch-command.ts`, which
   uses `deliverCommand`: echo verification, bounded Ctrl-U repair, platform kill-line and overlong
   line refusal. The PTY-lifetime writer coalesces concurrent requests and remembers submission
-  across parked views. A warm attach never automatically replays a retained launch: its clearing
-  autosave may have been lost after Enter. Explicit Run now rechecks the foreground shell and
+  across parked views. New intent has `attempted:false`; the writer awaits a workspace save of
+  `attempted:true, manualOnly:true` before input, then rechecks the shell after that save. A warm
+  attach may automatically deliver never-attempted intent, preserving long-running `--after`
+  graphs through project switches/park expiry. Attempted/legacy-unknown intent stays manual: its
+  clearing autosave may have been lost after Enter. Explicit Run now rechecks the foreground shell and
   clears any incomplete line; a refused/throwing/cancelled launch stays held, `manualOnly`.
   (5) UI `initialCommand` stays until submission; serialization converts unsubmitted UI intent
-  into a manual-only `pendingLaunch`, including a project switch during shell settle. Server
-  saves `manualOnly` BEFORE sending and only clears the command after acknowledgment. Failed
+  into a never-attempted `pendingLaunch`, including a project switch during shell settle. A live
+  initialCommand alias on remount cannot reset an attempted marker. Server saves
+  `attempted:true, manualOnly:true` BEFORE sending and only clears the command after acknowledgment. Failed
   independent/dependent launches are never retried by unrelated hooks. Boot remains inert.
+  Server deferred delivery is deliberately one-shot: a transient probe/send failure needs Run now.
+  Desktop keeps the attached echo-verification transport even for offscreen held nodes; a large
+  long-waiting fan-out therefore keeps those xterm instances in memory until delivery/recovery.
   (6) Canvas subscribes to `armedDepSig`, NOT `useAgentStatus(s => s.byId)` —
   the same discipline as `loopSig`; the full map re-renders the canvas on every hook event.
   Pure logic + refusal matrix in `renderer/lib/pendingLaunch.ts` (unit-tested);

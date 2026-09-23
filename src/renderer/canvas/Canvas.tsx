@@ -1,3 +1,5 @@
+import { createControlOpenBatch } from '../lib/controlOpenBatch'
+import { commitLaunchAttempt, registerLaunchCommit } from '../terminal/launch-attempt'
 import { launchCommand } from '../terminal/launch-command'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -1941,7 +1943,7 @@ export function Canvas() {
       launchInFlight.current.add(f.id)
       const attempt = (launchAttempts.current.get(f.id) ?? 0) + 1
       launchAttempts.current.set(f.id, attempt)
-      void launchCommand(f.id, f.command).then((outcome) => {
+      void launchCommand(f.id, f.command, false, activeSession.api).then((outcome) => {
         if (outcome === 'submitted') {
           setNodes((ns) =>
             ns.map((n) => (n.id === f.id ? { ...n, data: { ...n.data, pendingLaunch: undefined } } : n))
@@ -1953,7 +1955,7 @@ export function Canvas() {
         // The verified writer already exhausted its bounded echo repair. A failed launch
         // needs an explicit retry; unrelated hooks and remounts must never inject it later.
         setNodes((ns) => ns.map((n) => n.id === f.id && n.data.pendingLaunch
-          ? { ...n, data: { ...n.data, pendingLaunch: { ...n.data.pendingLaunch, manualOnly: true } } }
+          ? { ...n, data: { ...n.data, pendingLaunch: { ...n.data.pendingLaunch, attempted: true, manualOnly: true } } }
           : n))
         markDirty()
         useLaunchDelivery.getState().markFailed(f.id, attempt)
@@ -2776,6 +2778,42 @@ export function Canvas() {
     commitActiveToStore()
     await writeDisk()
   }, [commitActiveToStore, writeDisk])
+
+  // Persist the attempt before a writer can send even its first byte. React Flow remains the
+  // live source: update its ref synchronously before serializing, not after an async setNodes.
+  useEffect(() => registerLaunchCommit(activeSession.api, async (nodeId, command, manual) => {
+    const projectId = useProjects.getState().activeProjectId
+    if (!canCommitCanvas(nodesProjectIdRef.current, projectId)) return false
+    const node = nodesRef.current.find((n) => n.id === nodeId)
+    if (!node) return false
+    return commitLaunchAttempt({
+      pending: node.data.pendingLaunch,
+      command,
+      manual,
+      update: (pendingLaunch) => {
+        const next = nodesRef.current.map((n) => n.id === nodeId
+          ? { ...n, data: { ...n.data, pendingLaunch } } : n)
+        nodesRef.current = next
+        setNodes(next)
+        markDirty()
+        commitActiveToStore()
+      },
+      save: async () => {
+        if (activeSession.api === api) {
+          await api.workspace.save(useProjects.getState().toWorkspace())
+        } else {
+          // Relay projects are intentionally absent from the local workspace serializer.
+          // Save on the owning core, preserving its other projects and the node's full content.
+          const workspace = await activeSession.api.workspace.load()
+          const matches = workspace.projects.flatMap((p) => p.nodes).filter((n) => n.id === nodeId)
+          if (matches.length !== 1 || matches[0].pendingLaunch?.command !== command)
+            throw new Error('launch intent changed before persistence')
+          matches[0].pendingLaunch = { ...matches[0].pendingLaunch!, attempted: true, manualOnly: true }
+          await activeSession.api.workspace.save(workspace)
+        }
+      }
+    })
+  }), [activeSession.api, api, commitActiveToStore, markDirty, setNodes])
 
   // Global kanban reads ALL lanes from serialized `p.nodes`, but the active project's
   // live React Flow nodes may have uncommitted edits (title rename, new node). Commit
@@ -10896,7 +10934,7 @@ export function Canvas() {
               return
             }
             // Every command is held until delivery, including a visible node with no deps.
-            const queuedIds: string[] = []
+            const openBatch = createControlOpenBatch()
             const make = (i: number): CanvasNode => {
               const node = armAfter(
                 createTerminalNode(
@@ -10909,26 +10947,21 @@ export function Canvas() {
                 after ?? [],
                 intoGroupId
               )
-              if (node.data.pendingLaunch) queuedIds.push(node.id)
-              return node
+              return openBatch.add(node)
             }
             const ids = intoGroupId
               ? addGrouped(intoGroupId, count, make)
               : Array.from({ length: count }, (_, i) => addAndConnect(make(i)))
             ropeDeps(ids, after)
+            const openResult = openBatch.result(after ?? [])
+            const { queuedIds } = openResult
             reply({
               ok: true,
               message:
                 `opened ${count} terminal(s): ${ids.join(', ')}` +
                 (queuedIds.length ? '\nqueued; awaiting launch delivery' : '') +
                 (after?.length ? `\nwaiting for ${after.join(', ')} before running` : ''),
-              result: {
-                ids,
-                id: ids[0],
-                after: after ?? [],
-                queued: queuedIds.length > 0,
-                queuedIds
-              }
+              result: openResult
             })
             return
           }
@@ -11026,7 +11059,7 @@ export function Canvas() {
             }
             // See the same list in open-terminal: which of these nodes end up ARMED is
             // `armAfter`'s per-node decision, recorded as it builds them.
-            const queuedIds: string[] = []
+            const openBatch = createControlOpenBatch()
             // A `--prompt` over the typed-line budget is spilled to a file and delivered through
             // the same `"$(cat …)"` substitution `--prompt-file` uses (#706). An explicit
             // `--prompt-file` already took that route and is passed through untouched.
@@ -11054,13 +11087,14 @@ export function Canvas() {
                 after ?? [],
                 intoGroupId
               )
-              if (node.data.pendingLaunch) queuedIds.push(node.id)
-              return node
+              return openBatch.add(node)
             }
             const ids = intoGroupId
               ? addGrouped(intoGroupId, count, make)
               : Array.from({ length: count }, (_, i) => addAndConnect(make(i)))
             ropeDeps(ids, after)
+            const openResult = openBatch.result(after ?? [])
+            const { queuedIds } = openResult
             // Context-link the new session(s) back to the opener (same rationale as spawn-team:
             // the fan-out needs a fan-in). The nodes were added via setNodes in this tick, so
             // resolve their endpoints from `agentId` rather than the not-yet-updated canvas.
@@ -11090,11 +11124,8 @@ export function Canvas() {
                     (depLinked.length ? ` (and linked to read them)` : '')
                   : ''),
               result: {
-                ids,
-                linked: bridged,
-                after: after ?? [],
-                queued: queuedIds.length > 0,
-                queuedIds
+                ...openResult,
+                linked: bridged
               }
             })
             return

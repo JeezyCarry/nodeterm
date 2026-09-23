@@ -225,7 +225,7 @@ describe('control opens retain an unacknowledged launch (#827/#811)', () => {
     const original = { id: 'new', data: { initialCommand: `${agent} brief`, pendingLaunch: undefined } }
     const node = queueControlLaunch(original)
     expect(node.data.initialCommand).toBeUndefined()
-    expect(node.data.pendingLaunch).toEqual({ after: [], command: `${agent} brief` })
+    expect(node.data.pendingLaunch).toEqual({ after: [], command: `${agent} brief`, attempted: false })
     expect(controlLaunchState(!!node.data.pendingLaunch, undefined)).toBe('queued')
     // Simulate a project save/view: only durable data survives; the command must still fire.
     const restored = JSON.parse(JSON.stringify(node))

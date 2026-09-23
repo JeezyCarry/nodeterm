@@ -1,3 +1,4 @@
+import { commitLaunch } from '../terminal/launch-attempt'
 import { isLaunchShell } from '@shared/agents/pane'
 import { createLaunchWriter, deliverInitialLaunch, launchCommand, registerLaunchWriter } from '../terminal/launch-command'
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -3434,7 +3435,7 @@ export function TerminalNode({
           })
         }
         const launchWriter = createLaunchWriter({
-          fresh: fresh && !freshUnverified,
+          claimAttempt: (manual, command) => commitLaunch(api, id, command, manual),
           io: { write: (d) => transport.write(sid, d), onData: (cb) => transport.onData(sid, cb) },
           // A fresh shell is known at spawn; subsequent/manual deliveries must recheck the pane.
           shellReady: async (manual) =>
@@ -3471,7 +3472,7 @@ export function TerminalNode({
         // node is armed is Canvas's question, it can change after the spawn resolves, and the
         // subscribers filter by id anyway.
         whenShellSettled(() => {
-          cleanups.push(registerLaunchWriter(id, launchWriter))
+          cleanups.push(registerLaunchWriter(id, launchWriter, api))
           setSessionReady(id, true)
         })
         // Paused (see agentStatus.paused) is the ONE exception to the "a cold start always resumes"
@@ -3546,6 +3547,7 @@ export function TerminalNode({
         if (data.initialCommand) {
           const command = data.initialCommand
           deliverInitialLaunch(command, {
+            pending: data.pendingLaunch,
             whenReady: whenShellSettled,
             write: launchWriter,
             update: (patch) => updateNodeData(id, patch),
@@ -5544,7 +5546,7 @@ export function TerminalNode({
                 // unconditionally threw the command away whenever the session was not up yet —
                 // and "not up yet" is precisely the state a user reaches for this button in, so
                 // the one escape hatch could destroy the thing it exists to rescue.
-                void launchCommand(id, pendingLaunch.command, true).then((outcome) => {
+                void launchCommand(id, pendingLaunch.command, true, api).then((outcome) => {
                   if (outcome === 'submitted') {
                     useLaunchDelivery.getState().clear(id)
                     updateNodeData(id, { initialCommand: undefined, pendingLaunch: undefined })

@@ -2036,7 +2036,7 @@ export function flowToNodeStates(nodes: CanvasNode[]): CanvasNodeState[] {
         // A not-yet-submitted UI command is durable too. Recover it explicitly on reload:
         // the old PTY may have accepted it before the clearing save landed.
         pendingLaunch: n.data.pendingLaunch ?? (n.data.initialCommand
-          ? { after: [], command: n.data.initialCommand, manualOnly: true }
+          ? { after: [], command: n.data.initialCommand, attempted: false }
           : undefined),
         ssh: n.data.ssh,
         sshRemoteTmux: n.data.sshRemoteTmux,

@@ -1,20 +1,28 @@
+import type { PendingLaunch } from '@shared/types'
 import { deliverCommand, type DeliveryIo, type DeliveryOutcome } from './command-delivery'
 
 // A writer belongs to the PTY lifetime (including a parked view), not a Canvas render.
-// Warm attachments never replay durable launch intent: a previous submission may have landed
-// just before its clearing autosave. The retained command is available for explicit recovery.
+// A durable write-ahead claim distinguishes a never-attempted warm launch from an uncertain
+// earlier submission whose clearing autosave may have been lost.
 type Writer = (command: string, manual: boolean) => Promise<DeliveryOutcome>
-const writers = new Map<string, Writer>()
-export function registerLaunchWriter(id: string, writer: Writer): () => void {
+const defaultScope = {}
+const scopedWriters = new WeakMap<object, Map<string, Writer>>()
+function writersFor(scope: object): Map<string, Writer> {
+  let writers = scopedWriters.get(scope)
+  if (!writers) { writers = new Map(); scopedWriters.set(scope, writers) }
+  return writers
+}
+export function registerLaunchWriter(id: string, writer: Writer, scope: object = defaultScope): () => void {
+  const writers = writersFor(scope)
   writers.set(id, writer)
   return () => { if (writers.get(id) === writer) writers.delete(id) }
 }
-export function launchCommand(id: string, command: string, manual = false): Promise<DeliveryOutcome> {
-  return writers.get(id)?.(command, manual) ?? Promise.resolve('cancelled')
+export function launchCommand(id: string, command: string, manual = false, scope: object = defaultScope): Promise<DeliveryOutcome> {
+  return writersFor(scope).get(id)?.(command, manual) ?? Promise.resolve('cancelled')
 }
 
 export function createLaunchWriter(opts: {
-  fresh: boolean
+  claimAttempt(manual: boolean, command: string): Promise<boolean>
   io: DeliveryIo
   shellReady(manual: boolean): Promise<boolean>
   killLine: string
@@ -28,9 +36,12 @@ export function createLaunchWriter(opts: {
   return (command, manual) => {
     if (submitted) return Promise.resolve('submitted') // stale UI/save; never paste twice
     if (inFlight) return inFlight
-    if (disposed || (!manual && (!opts.fresh || attempted))) return Promise.resolve('cancelled')
+    if (disposed || (!manual && attempted)) return Promise.resolve('cancelled')
     attempted = true
     inFlight = (async () => {
+      if (!(await opts.shellReady(manual)) || disposed) return 'cancelled' as const
+      if (!(await opts.claimAttempt(manual, command)) || disposed) return 'cancelled' as const
+      // Saving can take a remote round trip. Recheck after the barrier, before any input.
       if (!(await opts.shellReady(manual)) || disposed) return 'cancelled' as const
       return new Promise<DeliveryOutcome>((resolve) => {
         try {
@@ -50,22 +61,30 @@ export function createLaunchWriter(opts: {
 
 /** Keep UI launch intent through the asynchronous shell settle and submission boundary. */
 export function deliverInitialLaunch(command: string, opts: {
+  pending?: PendingLaunch
   whenReady(run: () => void): void
   write: Writer
   update(patch: {
     initialCommand?: undefined
-    pendingLaunch?: { after: string[]; command: string; manualOnly: true }
+    pendingLaunch?: { after: string[]; command: string; attempted: boolean; manualOnly?: boolean }
   }): void
   onFailure(outcome: DeliveryOutcome): void
 }): void {
-  const pendingLaunch = { after: [], command, manualOnly: true as const }
+  if (opts.pending && opts.pending.attempted !== false) {
+    // A park/remount can retain the live initialCommand alias while its first submission is
+    // still settling. Never let that alias reset the durable attempted mark.
+    opts.update({ initialCommand: undefined })
+    opts.onFailure('cancelled')
+    return
+  }
+  const pendingLaunch = { after: [], command, attempted: false }
   // Do not discard the live initialCommand before settle. The durable pending record also
-  // prevents the Canvas loop from racing this writer and survives a project switch.
+  // survives a project switch. Canvas and this callback share the same in-flight writer.
   opts.update({ pendingLaunch })
   opts.whenReady(() => {
     void opts.write(command, false).then((outcome) => {
       opts.update({ initialCommand: undefined,
-        pendingLaunch: outcome === 'submitted' ? undefined : pendingLaunch })
+        pendingLaunch: outcome === 'submitted' ? undefined : { ...pendingLaunch, attempted: true, manualOnly: true } })
       if (outcome !== 'submitted') opts.onFailure(outcome)
     })
   })

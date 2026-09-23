@@ -658,10 +658,13 @@ coordinate nodeterm, not external editors, so do not claim a filesystem-wide com
 until delivery is acknowledged, and report `queued` while it is held. A successful terminal send
 proves delivery only; never describe it as a healthy/running agent without agent evidence.
 Desktop launches (automatic and Run now) use the echo-verified command writer, not `sendText`.
-Keep unsubmitted UI intent durable through shell settle/unmount. Warm attachments never auto-replay
-retained launch intent; Run now checks the shell and only confirmed submission clears it. Server
-marks attempts manual-only on disk before input, so failed delivery cannot retry on unrelated hooks.
-Held Desktop launches retain their attached transport, including when offscreen with tmux.
+Keep unsubmitted UI intent durable through shell settle/unmount. New intent carries `attempted:false`;
+Desktop and Server save `attempted:true` before input. Never-attempted warm `--after` launches may
+proceed after shell verification; attempted/legacy-unknown intent requires Run now. Only confirmed
+submission clears intent. Desktop open replies use `createControlOpenBatch` for queued accounting;
+protect that contract and concurrent submission with behavior tests, never source-text pins.
+Held Desktop launches retain their attached transport even offscreen with tmux (large fan-outs cost
+memory). Server deferred delivery is one-shot: a failed probe/send needs explicit recovery.
 
 ## Testing
 
