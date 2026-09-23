@@ -3832,7 +3832,14 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   **ONE exception, and it is not a walk-back of that rule (issue #743): a MAXIMIZED node**
   (`isMaximized` — `data.premaxRect`, the flag `maximizeNodeToRect` writes and
   `restoreMaximizedNode` clears) is framed against the same rectangle `maximizeTargetRect` placed
-  it in, by passing `measurePinnedInsets(box)` to `viewportForRect`. The trade-off above rests on
+  it in, through `viewportForNodeFocus`, which passes `measureMaximizeInsets(box)` to
+  `viewportForRect` only for maximized nodes. `nodeFocus.policy.test.ts` exercises this shared
+  Canvas decision for ordinary, maximized and restored nodes in both zoom modes.
+  Maximize also measures `.controls-cluster` and `.dock` (#711): their screen rectangles reserve
+  top/bottom space with an 8px gap, consuming the existing 24px margin first. Chrome outside the
+  horizontally usable area contributes nothing. Menus and hover peeks never reserve a band. Both
+  focus zoom branches use these same vertical insets; refitting observes the persistent chrome
+  as well as pinned panels and compares all four insets. Zone snap retains its side-only policy. The trade-off above rests on
   ONE number — how much of the node ends up behind the panel — and for a maximized node that
   number is set by the PANEL rather than the node, **by construction**: maximize sized it to be
   *exactly* the free area, so centring it in the wider pane buries half the inset less the margin.
@@ -3842,10 +3849,9 @@ the Settings section and ShortcutsPanel start disagreeing about what a chord mea
   free area reproduces maximize's own origin (`marginPx + insets.left`) exactly — which is what
   makes this a fix rather than a second opinion about placement. It applies to BOTH zoom branches
   (the rectangle question is the same one; splitting it would be two rectangles again, which is
-  the bug), and with no pinned panel `insets` is zero and the whole thing is a mathematical no-op.
+  the bug). With no pinned panels or overlapping persistent controls, `insets` is zero.
   A pane narrower than the panels over it falls back to the whole pane rather than solving against
-  a negative width. `measurePinnedInsets` reads the DOM, so it is asked only for a node that can
-  use the answer.
+  a negative width. `measureMaximizeInsets` reads the DOM only when framing a maximized node.
   `settings.focusZoomToNode` (Behavior, default ON) is the escape hatch for the rescale: off, the
   camera keeps the zoom `getZoom()` reports and only pans, and that zoom is passed through
   **unclamped** — it is one the canvas is already displaying, and re-clamping it to the framing
