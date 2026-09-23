@@ -281,8 +281,8 @@ function WallpaperPicker(): React.JSX.Element {
     <div>
       <h4 className="text-[13px] font-medium text-text">Desktop wallpaper</h4>
       <p className="mt-1 text-[13px] leading-relaxed text-muted">
-        A picture behind the canvas. It stays put while you pan and zoom. Pairs with Glass
-        terminals below.
+        A picture behind the whole window. It stays put while you pan and zoom, and the Liquid
+        Glass appearance above frosts the interface over it.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <WallpaperTile label="None" selected={is(NO_WALLPAPER)} onClick={() => pick(NO_WALLPAPER)}>
@@ -356,9 +356,10 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
         <FieldRow
           label="Appearance"
           description={
-            "Follow terminal uses the colour theme you picked in Settings → Terminal, so a light terminal isn't framed by a dark window. " +
-            'Liquid Glass follows it too, and turns nodes, the tab bar, dock, menus, sidebar, dialogs and this page into frosted glass over the desktop wallpaper (one is picked for you if none is set); terminal windows drop their colour accents. ' +
-            'Tints keep regular text at 4.5:1 contrast whatever is behind it (a Solarized Light terminal is already below that and stays opaque); secondary text and coloured output such as red or blue can fade over bright parts of the wallpaper.'
+            'Follow terminal matches the theme picked in Settings → Terminal. Liquid Glass does too, and frosts the whole interface over the desktop wallpaper, without window colour accents.' +
+            (isLiquidGlass(appTheme)
+              ? ' Regular text keeps 4.5:1 contrast on glass; secondary text and coloured output can fade over bright wallpaper.'
+              : '')
           }
           control={
             <SegmentedPill
