@@ -623,6 +623,19 @@ terminal opens keep their existing identity policy; Server Edition still require
 for every control verb. Legacy mobile/SSH callers must present this instance’s node token for
 command-bearing opens; this does not add a human-confirm dialog or change mobile transport APIs.
 
+## User-owned agent settings
+
+Claude/Gemini settings must go through the guarded transactions in
+`src/core/agents/hooks/{settings-file,remote-settings-file}.ts`. Confirmed absence or a successfully read empty/whitespace file may start from `{}`;
+malformed, non-object and unreadable files must survive unchanged.
+Keep unrelated settings and foreign hook handlers. Stage writes, serialize nodeterm writers,
+and compare the original bytes again before publishing; never use `cat … || echo '{}'` or a
+catch-all read fallback. Local and SSH symlinked profiles update and lock the resolved target without replacing
+the link; recheck resolution before publishing. SSH uses plain readlink and cd -P (no GNU -f),
+and refuses dangling/cyclic links and newline paths. A conflicting/stale lock skips installation
+with a diagnostic naming the lock and safe manual recovery; do not steal it from another process. These locks
+coordinate nodeterm, not external editors, so do not claim a filesystem-wide compare-and-swap.
+
 ## Testing
 
 **Screenshot paste has one route per gesture.** On macOS, Cmd+V saves/uploads a file and

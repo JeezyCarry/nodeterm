@@ -2048,6 +2048,22 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   refuses TODAY, not on the cutoff** — which is why every token sweep must also call
   `hookServer.forgetProvenNode`. `/hook/*` never 403s a missing token: the phone, the cross-instance
   failover and every pre-token session legitimately have none.
+- **Shared Claude/Gemini settings are user data (issue #851).** The local hook install/remove
+  and Claude fullscreen writers share `core/agents/hooks/settings-file.ts`; SSH system/account
+  hook installs and fullscreen writes share `remote-settings-file.ts`. Only ENOENT / the remote
+  explicit missing-file status or a successfully read empty/whitespace file starts from `{}`.
+  Malformed/non-object/read-error settings are preserved. Each transaction stages the complete output, takes a `.nodeterm-lock` directory,
+  compares its original bytes before rename, and preserves the file mode. Remote snapshots and
+  replacements travel on stdin, with a byte-count check against truncated transport; the shell
+  needs no Python/Node/jq. Local profiles resolve symlinks and lock/update the shared target,
+  rechecking resolution before publication. SSH does the same with plain readlink + cd -P
+  (macOS-compatible, no GNU -f), bounding cycles and refusing dangling links/newline paths.
+  Grok's owned file heals malformed JSON and hook shapes by rebuilding its managed config.
+  A held or crash-left lock skips the update with a diagnostic naming the lock and instructing
+  the user to stop writers before inspecting/removing a stale lock; it never gets stolen. External editors need not honor our lock: the final comparison detects edits
+  during merge/staging, but cannot eliminate an external write between comparison and rename.
+  No claim that the reporter's historical wipe was proven to take this path: the catch-to-empty
+  writer and its data loss were reproduced in fixture homes.
 - **Fullscreen TUI (Claude)** — through the SAME `settings.json` seam the hook installer uses,
   nodeterm ensures Claude's `"tui": "fullscreen"` so a session takes the alternate screen + mouse
   and behaves natively in tmux (else a drag falls into copy-mode). Two guardrails: **write-if-absent**
@@ -2964,8 +2980,8 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     **from settings only** — never a dir named by the POST. **Removing a linked account only
     forgets the record**: the `rm -rf` names `accountConfigDir(userData, id)` directly, so it is
     structurally incapable of reaching outside the managed root even if the settings row is gone
-    before the IPC lands. The hook installer writes `settings.json` THROUGH a symlink
-    (`writeFileSync`) — a profile whose `settings.json` symlinks to `~/.claude/settings.json` (the
+    before the IPC lands. The hook installer resolves `settings.json` symlinks and atomically updates their target
+    (without replacing the link) — a profile whose `settings.json` symlinks to `~/.claude/settings.json` (the
     two-profile layout) stays a symlink; pinned by `claude-accounts-link-symlink.test.ts`, and
     switching that write to `renameAtomic` would be the regression (it replaces the link).
   - **Observed account** (`ObservedClaudeAccount`, `NormalizedAgentEvent.account`) — which account
@@ -4612,8 +4628,8 @@ the target BEFORE both complete paths are quoted, then the shell preserves the w
 while cleaning that exact temp. The temp leaf must stay independent of the target leaf — appending
 `.uuid.tmp` to a valid `NAME_MAX` target makes the write impossible. It currently protects
 filesystem API writes, tmux.conf, the private hook endpoint, node
-tokens, agent status and pending answers; generated hook scripts/config merges still use their
-existing direct writes and must not be described as atomic. Upload directories use UUIDs across app
+tokens, agent status and pending answers; some generated hook scripts/config merges still use direct writes; only the guarded shared
+Claude/Gemini settings transactions stage and rename here. Do not generalize that claim to every installer. Upload directories use UUIDs across app
 processes. Downloads and media-cache copies use hidden UUID `.part` names; user-visible downloads
 also hold an exclusive candidate lock until the rename and cleanup finish. Never simplify any of
 those back to `<target>.tmp` / `<target>.part` or a read-only "does the destination exist?" check —

@@ -247,7 +247,7 @@ export function registerClaudeAccountsIpc(deps: ClaudeAccountsDeps = {}): void {
     }
     // Same two writes an ADDED account gets, so a linked account reports agent status from its
     // very next session. `installClaudeHooksInto` MERGES into an existing settings.json and writes
-    // it back through `writeFileSync`, which follows a symlink — the two-profile layout where
+    // to its resolved target without replacing a symlink — the two-profile layout where
     // `<dir>/settings.json` is a symlink into `~/.claude/` keeps its symlink and the shared target
     // gains the managed hook (pinned by test).
     installClaudeHooksInto(configDir)
