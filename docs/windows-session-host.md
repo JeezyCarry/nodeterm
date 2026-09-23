@@ -69,6 +69,21 @@ Electron main process                    Session-host process (standalone, detac
   this backend between the tmux branch and the plain-shell fallback, and constructs a
   `SessionHostPty` instead of calling `pty.spawn` directly.
 
+## Availability notice
+
+`pty:tmux-status` retains its tmux-only `available` field and adds `persistence`: the
+user's `enabled` setting and the discovered `backend` (`tmux`, `session-host`, or null).
+Discovery does not start the host or certify runtime health. POSIX prefers tmux; Windows
+uses the session host. A missing/errored status stays unknown, including over Server Edition's
+WS bridge. Older peers without the field also remain unknown.
+
+The desktop/browser banner warns when protection is disabled, absent, or unknown; Settings
+shows the same state and refreshes it after a setting change and periodically. The state is
+about **new local terminals**, not SSH/relay hosts or an upgrade of existing plain shells.
+An installer is offered only from a local project, so it cannot run on the selected remote
+host by mistake. Runtime session-host attach failures still use the terminal's existing error
+path; a bundle being present is not proof an individual session attached successfully.
+
 ## Windows profile resolution
 
 The profile catalog is a trusted desktop service. Its public API returns only a stable `id`,

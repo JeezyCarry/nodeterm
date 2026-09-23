@@ -3560,11 +3560,23 @@ body,
   left: auto;
   right: calc(100% - 4px);
 }
+/* A flyout that holds submenu rows of its own must not scroll: `overflow-y: auto` would clip
+   the nested (absolutely positioned) flyout to nothing. Only short action lists host submenus;
+   long data lists (models, accounts) are leaves and keep the scroll cap above. */
+.ctx-submenu--host {
+  overflow: visible;
+  max-height: none;
+}
 .ctx-submenu .ctx-item {
   /* Keep the label and its default ✓ on one line (labels ellipsize past max-width). */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* …except a submenu row inside a flyout: its own flyout is an absolutely positioned CHILD of the
+   row, and `overflow: hidden` would clip it away entirely. */
+.ctx-submenu .ctx-item--submenu {
+  overflow: visible;
 }
 
 .ctx-sep {
@@ -6048,6 +6060,13 @@ body,
   font-size: 13px;
 }
 
+.shortcuts__note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .shortcut-label {
   color: var(--text);
 }
@@ -6904,6 +6923,7 @@ button.group-node__setup:disabled {
    The left offset clears the controls column, which shares this corner: --controls-w plus the 12px
    the other chrome already uses between two adjacent clusters (see .resume-card). */
 .canvas-pills {
+  width: max-content;
   position: absolute;
   left: calc(var(--float-gap) + var(--controls-w) + 12px);
   bottom: var(--float-gap);
@@ -7017,6 +7037,19 @@ button.group-node__setup:disabled {
   align-items: center;
   gap: 4px;
 }
+/* Only summary text may overflow: refresh and the usage opener remain reachable. Never clip
+   the indicator/row itself, since the popover must escape it. */
+.canvas-pills > .sysres-indicator { flex: 0 0 auto; }
+.usage-indicator { min-width: 0; }
+.usage-pill { min-width: 0; }
+.usage-pill__icon, .usage-refresh { flex: 0 0 auto; }
+.usage-pill__summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.usage-pill__summary > span + span { margin-left: 6px; }
 /* While the popover is open, rise above the sessions sidebar (z-index 12) — a tall sidebar
    reaches the bottom-left corner and would cover the panel. Closed pill keeps its low layer so
    it never draws over the sidebar itself.
