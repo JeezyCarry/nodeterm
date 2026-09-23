@@ -1158,6 +1158,13 @@ session.
   class the same way and no per-element opt-out can reach it); hoisting it to the whole NODE would
   additionally take wheel-zoom-to-cursor away over every node, which is exactly where a
   `wheelZoom` user aims.
+- **FitAddon reads the host's computed size, not its content rect.** The absolute, inset
+  canvas host uses `box-sizing: content-box` so its padding is excluded from that size
+  (#671). Its outer hit/plate rect still fills the body. The board modal instead keeps
+  padding on a separate wrapper. Do not put border-box padding back on a fit host:
+  it over-reports rows and clips the last line. `scripts/terminal-fit-layout.test.ts`
+  measures real xterm layout through resize sweeps at DPR 1, 1.25, 1.5 and 2 in Chrome
+  (`CHROME_BIN` overrides the executable); this does not verify GPU row-seam rendering.
 - A `ResizeObserver` drives `FitAddon.fit()` + `transport.resize`. Canvas zoom is a CSS
   transform, so it does *not* change `clientWidth` — cols/rows stay stable across zoom.
   `scale-fix.ts` patches xterm's mouse coords so text selection stays aligned when zoomed.
