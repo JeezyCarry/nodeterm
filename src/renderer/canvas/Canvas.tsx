@@ -645,6 +645,7 @@ import {
 import type { CodexAccount } from '@shared/codex-account'
 import { useSystemCodexAccount } from '../state/systemCodexAccount'
 import { toKanbanSession } from './toKanbanSession'
+import { useWallpaperBackground } from '../state/wallpaper'
 
 const isMac = /Mac/i.test(navigator.platform || navigator.userAgent)
 
@@ -1033,6 +1034,9 @@ export function Canvas() {
   // For the local session it IS window.nodeTerminal, so every call resolves identically.
   const session = useSession()
   const { api } = session
+  // Desktop wallpaper (Settings → Appearance): painted on the React Flow root, which is
+  // viewport-sized and never transformed, so it stays fixed while the canvas pans and zooms.
+  const wallpaperBg = useWallpaperBackground()
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>([])
   // Persistent context links between Claude nodes (separate from ephemeral subagent/loop edges).
   const [linkEdges, setLinkEdges, onLinkEdgesChange] = useEdgesState<Edge>([])
@@ -14796,6 +14800,8 @@ export function Canvas() {
             the key is always 'local', so this never remounts — zero behavior change. */}
         <SessionProvider session={sessionForProject(activeProjectId || '')} key={sessionForProject(activeProjectId || '').id}>
         <ReactFlow
+          className={wallpaperBg ? 'has-wallpaper' : undefined}
+          style={wallpaperBg ? { background: `${wallpaperBg}, var(--canvas-bg)` } : undefined}
           nodes={allNodes}
           edges={displayEdges}
           nodeTypes={nodeTypes}

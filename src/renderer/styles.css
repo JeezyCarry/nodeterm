@@ -3204,6 +3204,11 @@ body,
 .react-flow {
   background: var(--canvas-bg);
 }
+/* A desktop wallpaper (Settings → Appearance) is set inline on this element by Canvas. The dot grid
+   stays — it is what snapping aligns to — but faded, so the picture reads as the background. */
+.react-flow.has-wallpaper .react-flow__background {
+  opacity: 0.3;
+}
 
 .flow-wrap {
   flex: 1;
