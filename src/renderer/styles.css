@@ -92,6 +92,13 @@
   --git-deleted: var(--danger);
   --git-renamed: var(--sys-purple);
   --git-conflict: var(--sys-teal);
+  /* Minimap status strokes. The default look keeps its own map language — amber working, red needs
+     you, clay unread — because an uncoloured node's fallback stroke is the accent blue, and an
+     accent-blue "unread" would vanish among them (see nodeStrokeColor in Canvas.tsx). Liquid Glass
+     maps them to the state roles: its node fills are neutral ink, so there is nothing to clash with. */
+  --mm-working: #ffd60a;
+  --mm-attention: #ff453a;
+  --mm-unread: #d97757;
 
   /* THE CANVAS. Deliberately blacker than `--bg` in dark — the nodes are the content and the
      field behind them recedes. In light it has to go the other way, off-white and slightly
@@ -285,6 +292,9 @@
   --sys-brown: #a2845e;
   --sys-gray: #8e8e93;
   --orange-text: #a85c00;
+  --mm-working: #ffd60a;
+  --mm-attention: #ff453a;
+  --mm-unread: #d97757;
   --pink-text: #d30f45;
   /* The glows always drew the dark clay, in both themes. */
   --state-working: #d97757;
@@ -6973,8 +6983,8 @@ button.group-node__setup:disabled {
   box-shadow: 0 8px 28px rgba(0, 0, 0, calc(0.4 * var(--shadow-k)));
 }
 
-/* Minimap-scale status glow: the SAME roles as the node glows (--state-working /
-   --state-attention / --state-unread), so the map and the canvas cannot disagree. A static drop-shadow provides the halo; only
+/* Minimap-scale status glow (amber working / red needs-you / clay unread in the default look; the
+   state roles under Liquid Glass — see the --mm-* tokens). A static drop-shadow provides the halo; only
    stroke-opacity animates (cheap on tiny svg rects), cadence matching each canvas glow. */
 .minimap .mm-working,
 .minimap .mm-attention,
@@ -6982,20 +6992,20 @@ button.group-node__setup:disabled {
   stroke-width: 4px;
 }
 .minimap .mm-working {
-  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--state-working) 80%, transparent));
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--mm-working) 80%, transparent));
   animation: mm-pulse-soft 2.6s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
 }
 .minimap .mm-attention {
-  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--state-attention) 90%, transparent));
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--mm-attention) 90%, transparent));
   animation: mm-pulse 1.8s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
 }
-/* Unread: its own keyframes — at minimap scale a node is a few pixels tall, so opacity alone reads
-   as a faint flicker; the stroke THICKENS on the beat as well, which is what makes it findable on a
-   busy map (and apart from an uncoloured node's plain accent stroke). */
+/* Unread = clay, the agent-hook colour (RUNNING badge, working glow). Its own keyframes: at
+   minimap scale a node is a few pixels tall, so opacity alone reads as a faint flicker — the
+   stroke THICKENS on the beat as well, which is what makes it findable on a busy map. */
 .minimap .mm-unread {
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--state-unread) 95%, transparent));
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--mm-unread) 95%, transparent));
   animation: mm-pulse-unread 1.6s ease-in-out infinite;
   animation-play-state: var(--nt-anim-state);
 }
@@ -13723,6 +13733,9 @@ body.focus-mode .dock:hover {
   --git-renamed: var(--accent-text);
   --git-conflict: var(--danger);
   --priority-high: var(--pink-text);
+  --mm-working: var(--state-working);
+  --mm-attention: var(--state-attention);
+  --mm-unread: var(--state-unread);
 }
 
 /* Status labels on a glass header are ink, not coloured text: the hue tints the chip BEHIND the

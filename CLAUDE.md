@@ -3687,8 +3687,11 @@ tokens `--danger --warn --caution --success --agent-working`, which the light th
   use `color-mix`.
 - **Git status colours have ONE table**, `renderer/lib/gitStatusColors.ts`, used by Source Control
   and the history commit list; an unknown status draws in `--text`.
-- **The minimap strokes read the same roles as the node glows**; they used to be crossed (working
-  yellow, unread clay). The palette test pins canvas glow = minimap stroke = minimap halo per state.
+- **Minimap strokes are their own tokens, `--mm-working|attention|unread`.** The default look keeps
+  its map language exactly (amber working, red needs-you, CLAY unread) on purpose: an uncoloured
+  node's fallback stroke is the accent blue, so an accent "unread" would vanish into the map (the
+  comment on `nodeStrokeColor` in Canvas.tsx). Under Liquid Glass the tokens map to the state roles,
+  since node fills there are neutral ink and nothing can clash. The palette test pins both.
 - **Left as-is on purpose:** agent brand colours (`AGENT_CONFIG`) on Claude-identity surfaces (the
   subagent node, the usage pill icon, the mascot), the node colour swatches (`node-colors.ts` is an
   allowlist — stored project colours must stay valid), node-kind default colours (persisted into

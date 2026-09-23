@@ -977,15 +977,22 @@ function StatusAwareMiniMap({ onNodeDoubleClick }: { onNodeDoubleClick: (node: N
     },
     [onNodeDoubleClick]
   )
-  // Status strokes read the SAME role tokens as the node glows (styles.css --state-*), so the map
-  // and the canvas cannot disagree; the classes below add the minimap-scale glow/pulse. Unread
-  // also pulses a thicker stroke, which keeps it apart from an uncoloured node's accent stroke.
+  // Status language matches the canvas glows/badges: amber = working, red = needs you,
+  // clay = unread. The classes below add the minimap-scale glow/pulse (styles.css).
+  //
+  // Unread is CLAY (#d97757) — the agent-hook colour the RUNNING badge and the node's working glow
+  // already use — and not the accent blue it used to be: blue is also the fallback stroke for a
+  // node that carries no colour of its own, so "finished while you were away" was painted the
+  // exact shade as "nothing to report" and vanished into the map.
+  //
+  // The colours are the --mm-* tokens (styles.css): exactly the above in the default look, the
+  // state roles under Liquid Glass, whose neutral node fills leave nothing for them to clash with.
   const nodeStrokeColor = useCallback(
     (n: Node): string => {
       const st = statusById[n.id]
-      if (st?.state === 'working') return 'var(--state-working)'
-      if (st?.state === 'waiting' || st?.state === 'blocked') return 'var(--state-attention)'
-      if (st?.unread) return 'var(--state-unread)'
+      if (st?.state === 'working') return 'var(--mm-working)'
+      if (st?.state === 'waiting' || st?.state === 'blocked') return 'var(--mm-attention)'
+      if (st?.unread) return 'var(--mm-unread)'
       return (n.data as { color?: string })?.color ?? '#0a84ff'
     },
     [statusById]

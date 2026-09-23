@@ -146,21 +146,29 @@ describe('git status colours have one source', () => {
   })
 })
 
-describe('minimap status strokes match the node glows', () => {
+describe('minimap status strokes', () => {
   const canvas = read('canvas/Canvas.tsx')
   const pairs = [
-    ['working', "st?.state === 'working') return 'var(--state-working)'"],
-    ['attention', "st?.state === 'blocked') return 'var(--state-attention)'"],
-    ['unread', "st?.unread) return 'var(--state-unread)'"]
+    ['working', "st?.state === 'working') return 'var(--mm-working)'", '#ffd60a'],
+    ['attention', "st?.state === 'blocked') return 'var(--mm-attention)'", '#ff453a'],
+    ['unread', "st?.unread) return 'var(--mm-unread)'", '#d97757']
   ] as const
 
-  for (const [state, stroke] of pairs) {
-    it(`${state}: the canvas glow, the minimap stroke and its halo read --state-${state}`, () => {
+  for (const [state, stroke, legacy] of pairs) {
+    it(`${state}: stroke and halo read --mm-${state}`, () => {
       expect(canvas).toContain(stroke)
+      const mm = CSS.slice(CSS.indexOf(`\n.minimap .mm-${state} {\n  filter`))
+      expect(mm.slice(0, mm.indexOf('}'))).toContain(`var(--mm-${state})`)
+    })
+
+    it(`${state}: the default look keeps its pre-glass map colour, glass maps it to the node glow's role`, () => {
+      expect(literal(`--mm-${state}`, DARK)).toBe(legacy)
+      expect(literal(`--mm-${state}`, LIGHT)).toBe(legacy)
+      for (const tokens of [GLASS_THEMES.dark, GLASS_THEMES.light]) {
+        expect(literal(`--mm-${state}`, tokens)).toBe(literal(`--state-${state}`, tokens))
+      }
       const glow = CSS.slice(CSS.indexOf(`.react-flow__node:has(.term-node.${state})::after {`))
       expect(glow.slice(0, glow.indexOf('}'))).toContain(`var(--state-${state})`)
-      const mm = CSS.slice(CSS.indexOf(`\n.minimap .mm-${state} {\n  filter`))
-      expect(mm.slice(0, mm.indexOf('}'))).toContain(`var(--state-${state})`)
     })
   }
 })
