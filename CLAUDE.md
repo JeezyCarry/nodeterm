@@ -4005,7 +4005,7 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   secondary text (macOS: tertiary), so on dark glass the modal dialogs raise `--muted` to 0.82 (4.9:1
   worst case) and Remote access's hard-coded 0.55 lines take it (visual QA round 5, N5-M2); light
   cannot, and keeps the typed-text rule. The RAM panel's hard-coded 0.45–0.6 secondary lines take
-  `--muted` (N5-L2). Destructive menu items (`.ctx-item.danger`, `.tab-menu button.danger`) draw an
+  `--muted` (N5-L2). Destructive menu items (`.ctx-item.danger`) draw an
   ink label and keep red only on the icon; their hover is the ordinary lift (N5-M1: the red label was
   2.7–2.8:1 on dark glass). OK-range usage/context meters are
   neutral ink under glass (M1: green already means unread/success) — the fills are inline literals

@@ -37,7 +37,10 @@
  * Open the overlay under test first; the probe checks what is on screen. Exits 1 on any trap, 2
  * when it could not check anything (no page, no answer within 20 s, Liquid Glass off, nothing
  * scanned) or failed its own restoration check — never a silent 0. It only reads computed styles
- * and replays animations the page already declares; it never clicks, types or changes app state.
+ * and replays animations the page already declares; it never clicks or types. That replay is not
+ * fully inert, though: restarting an animation fires animationcancel/animationend on the page, and
+ * the app can react to those the same as it would to a real one (e.g. the drawer refits maximized
+ * nodes and marks the workspace dirty when one fires).
  */
 
 import { realpathSync } from 'node:fs'
@@ -130,24 +133,6 @@ export function glassTrapProbe(SCRIMS, midAnim) {
     void getComputedStyle(el).animationName
     el.style.animationName = prev
   }
-  if (midAnim) {
-    for (const el of document.body.querySelectorAll('*')) {
-      const cs = getComputedStyle(el)
-      if (none(cs.animationName) || /infinite/.test(cs.animationIterationCount) || /paused/.test(cs.animationPlayState) || cs.display === 'none') continue
-      const prev = el.style.animationName
-      restart(el, prev)
-      replayed.push({ el, prev, hadStyle: stylesBefore.has(el) })
-    }
-    void document.body.offsetWidth
-    for (const a of document.getAnimations()) {
-      const t = a.effect?.getTiming?.()
-      if (!t || t.iterations === Infinity || a.playState !== 'running') continue
-      const d = typeof t.duration === 'number' ? t.duration : a.effect.getComputedTiming().duration
-      frozen.push({ a, time: a.currentTime })
-      a.currentTime = (t.delay || 0) + (d || 0) / 2
-    }
-  }
-
   const vw = innerWidth
   const vh = innerHeight
   const traps = []
@@ -213,6 +198,23 @@ export function glassTrapProbe(SCRIMS, midAnim) {
       })
   }
   try {
+    if (midAnim) {
+      for (const el of document.body.querySelectorAll('*')) {
+        const cs = getComputedStyle(el)
+        if (none(cs.animationName) || /infinite/.test(cs.animationIterationCount) || /paused/.test(cs.animationPlayState) || cs.display === 'none') continue
+        const prev = el.style.animationName
+        restart(el, prev)
+        replayed.push({ el, prev, hadStyle: stylesBefore.has(el), before: stylesBefore.get(el) })
+      }
+      void document.body.offsetWidth
+      for (const a of document.getAnimations()) {
+        const t = a.effect?.getTiming?.()
+        if (!t || t.iterations === Infinity || a.playState !== 'running') continue
+        const d = typeof t.duration === 'number' ? t.duration : a.effect.getComputedTiming().duration
+        frozen.push({ a, time: a.currentTime })
+        a.currentTime = (t.delay || 0) + (d || 0) / 2
+      }
+    }
     for (const el of document.body.querySelectorAll('*')) {
       check(el, null)
       check(el, '::before')
@@ -222,9 +224,13 @@ export function glassTrapProbe(SCRIMS, midAnim) {
     // Restarted elements: a fresh animation replaces the seeked one (it plays its entrance once
     // more, as when the overlay opened). Everything else: seek back to where it was.
     for (const { a, time } of frozen) if (!wasRestarted(a)) a.currentTime = time
-    for (const { el, prev, hadStyle } of replayed) {
+    // An element that already had a style attribute is restored to that EXACT attribute (not by
+    // poking el.style.animationName again, which only ever touched that one property and can drift
+    // from what was actually there); one that had none simply loses the attribute the probe put on.
+    for (const { el, prev, hadStyle, before } of replayed) {
       restart(el, prev)
-      if (!hadStyle) el.removeAttribute('style')
+      if (hadStyle) el.setAttribute('style', before)
+      else el.removeAttribute('style')
     }
   }
   // Self-check: nothing left behind.

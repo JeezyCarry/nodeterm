@@ -205,7 +205,7 @@ function glassFillsWithoutBlur(css: string): string[] {
 }
 
 /** A `transition` shorthand item with no property name transitions `all`. */
-const TIMING = /^(?:[\d.]+m?s|ease(?:-in|-out|-in-out)?|linear|step-start|step-end|allow-discrete|normal|(?:steps|cubic-bezier|linear)\(.*\))$/
+const TIMING = /^(?:-?[\d.]+m?s|ease(?:-in|-out|-in-out)?|linear|step-start|step-end|allow-discrete|normal|(?:steps|cubic-bezier|linear)\(.*\))$/
 const transitionProps = (prop: string, v: string): string[] =>
   prop === 'transition-property'
     ? splitTop(v)
@@ -405,5 +405,13 @@ describe('Liquid Glass: glass never fades (visual QA round 4, N4-H1)', () => {
       .row { transition: opacity 0.1s; }
       ${g} .chip { background: var(--glass-chrome-bg); backdrop-filter: blur(20px); transition: background-color 0.1s ease-out, transform 0.1s; }`
     expect(glassOpacityMotion(css, [])).toEqual(['.sheet (animation)', '.pane (transition)', '.menu::before (transition)'])
+  })
+
+  it('a negative delay is still a timing value, not a property name (bare-timing transition)', () => {
+    const g = ":root[data-nt-glass='on']"
+    const css = `
+      ${g} .pane { background: var(--glass-chrome-bg); backdrop-filter: blur(20px); }
+      .pane { transition: 0.2s -0.05s; }`
+    expect(glassOpacityMotion(css, [])).toEqual(['.pane (transition)'])
   })
 })
