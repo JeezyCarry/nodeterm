@@ -201,6 +201,28 @@ const panelVerdicts = new WeakMap<Terminal, PanelVerdicts>()
 /** The colour part of a packed fg/bg word (mode + palette index or RGB), flags stripped. */
 const COLOR_BITS = CM_MASK | 0xffffff
 
+/** How long a slider drag must pause before the terminals rebuild (see `scheduleGlassCellAlpha`). */
+export const GLASS_CELL_REBUILD_MS = 150
+
+/**
+ * `setGlassCellAlpha` + the rebuild it owes, for a React effect (returns its cleanup). A rebuild is
+ * `term.clearTextureAtlas()`, which wipes the SHARED glyph atlas and redraws every glass terminal —
+ * and a Glass-slider drag streams an alpha per 0.01 step. So a change between two glass alphas
+ * waits until the drag has been still for `GLASS_CELL_REBUILD_MS`; switching glass on or off is
+ * immediate (the theme changes with it, and a stale alpha would paint panels over an opaque bg).
+ */
+export function scheduleGlassCellAlpha(term: Terminal, alpha: number | null, rebuild: () => void): () => void {
+  const apply = (): void => {
+    if (setGlassCellAlpha(term, alpha)) rebuild()
+  }
+  if (alpha === null || !cellAlpha.has(term)) {
+    apply()
+    return () => {}
+  }
+  const id = setTimeout(apply, GLASS_CELL_REBUILD_MS)
+  return () => clearTimeout(id)
+}
+
 type Vertices = { attributes: Float32Array }
 type UpdateRectangle = (
   v: Vertices,

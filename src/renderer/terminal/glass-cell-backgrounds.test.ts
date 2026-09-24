@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import type { Terminal } from '@xterm/xterm'
@@ -7,7 +7,9 @@ import {
   classifyRun,
   glassPanelFill,
   installGlassCellBackgrounds,
+  GLASS_CELL_REBUILD_MS,
   oklab,
+  scheduleGlassCellAlpha,
   setGlassCellAlpha
 } from './glass-cell-backgrounds'
 import {
@@ -171,6 +173,31 @@ it('setGlassCellAlpha reports only real changes', () => {
   expect(setGlassCellAlpha(t, 0.95)).toBe(true)
   expect(setGlassCellAlpha(t, null)).toBe(true)
   expect(setGlassCellAlpha(t, null)).toBe(false)
+})
+
+it('a slider drag rebuilds once it settles; glass on/off rebuilds at once', () => {
+  vi.useFakeTimers()
+  try {
+    const t = {} as Terminal
+    const rebuild = vi.fn()
+    scheduleGlassCellAlpha(t, 0.675, rebuild) // glass on: immediate
+    expect(rebuild).toHaveBeenCalledTimes(1)
+    // A drag: every step's effect cleanup cancels the previous step's pending rebuild.
+    let cancel = () => {}
+    for (const a of [0.68, 0.69, 0.7, 0.71]) {
+      cancel()
+      cancel = scheduleGlassCellAlpha(t, a, rebuild)
+      vi.advanceTimersByTime(GLASS_CELL_REBUILD_MS / 3)
+    }
+    expect(rebuild).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(GLASS_CELL_REBUILD_MS)
+    expect(rebuild).toHaveBeenCalledTimes(2)
+    expect(setGlassCellAlpha(t, 0.71)).toBe(false) // the last step landed
+    scheduleGlassCellAlpha(t, null, rebuild) // glass off: immediate
+    expect(rebuild).toHaveBeenCalledTimes(3)
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 type FakeCell = { bg: number; fg?: number; ch?: string }

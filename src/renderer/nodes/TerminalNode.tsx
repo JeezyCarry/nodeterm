@@ -3,7 +3,7 @@ import { FIND_DECORATIONS } from '../lib/palette'
 import { ptyRefusal } from '@shared/pty-refusal'
 
 import { patchImeModeSwitch } from '../terminal/ime-mode-switch'
-import { installGlassCellBackgrounds, setGlassCellAlpha } from '../terminal/glass-cell-backgrounds'
+import { installGlassCellBackgrounds, scheduleGlassCellAlpha, setGlassCellAlpha } from '../terminal/glass-cell-backgrounds'
 
 import { deliverRelayInitialLaunch } from '../terminal/relay-initial-launch'
 import { commitLaunch } from '../terminal/launch-attempt'
@@ -4854,6 +4854,19 @@ export function TerminalNode({
     // focus / visibilitychange listeners now provide.
   }, [positionAbsoluteX, positionAbsoluteY])
 
+  // Glass cell backgrounds follow the node's tint alpha (slider, Reduce Transparency). Backgrounds
+  // are only recomputed for CHANGED cells, so an alpha change rebuilds the WebGL model — debounced
+  // while the slider is dragged (scheduleGlassCellAlpha); the shared glyph grid stands glass down,
+  // and so does this. Declared ABOVE the applyLiveOptions effect: the glyphgrid effect below that
+  // one must stay immediately after it (see its comment).
+  const glassCellAlpha = tint && !glyphMounted ? tint.alpha : null
+  useEffect(() => {
+    glassCellAlphaRef.current = glassCellAlpha
+    const term = termRef.current
+    if (!term) return
+    return scheduleGlassCellAlpha(term, glassCellAlpha, () => term.clearTextureAtlas())
+  }, [glassCellAlpha])
+
   // Live-apply the appearance settings to the running terminal, so a Settings change reaches the
   // terminals already on the canvas instead of only the next fresh one.
   //
@@ -4874,16 +4887,6 @@ export function TerminalNode({
     if (metricsChanged) applyFitRef.current?.()
     if (themeChanged) fullRepaintRef.current?.()
   }, [visual, glass])
-
-  // Glass cell backgrounds follow the node's tint alpha (slider, Reduce Transparency). Backgrounds
-  // are only recomputed for CHANGED cells, so an alpha change rebuilds the WebGL model; the shared
-  // glyph grid stands glass down, and so does this.
-  const glassCellAlpha = tint && !glyphMounted ? tint.alpha : null
-  useEffect(() => {
-    glassCellAlphaRef.current = glassCellAlpha
-    const term = termRef.current
-    if (term && setGlassCellAlpha(term, glassCellAlpha)) term.clearTextureAtlas()
-  }, [glassCellAlpha])
 
   // glyphgrid participation — whether this node should hold a grid RIGHT NOW.
   //
