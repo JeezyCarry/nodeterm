@@ -20,6 +20,7 @@ import { useProjects } from '../../state/projects'
 import { useSession } from '../../session/session'
 import { useSettings } from '../../state/settings'
 import { useTerminalSearch } from '../../terminal/useTerminalSearch'
+import { useTerminalGlass } from '../../lib/useTerminalGlass'
 import { LocalTransport } from '../../terminal/local-transport'
 import { clipboardImages, droppedPaths, pasteHasText, pastedFiles } from '../../terminal/file-drop'
 import { guardMiddleClickPaste } from '../../terminal/middle-click'
@@ -123,6 +124,11 @@ export function ModalTerminal({ nodeId, spawn, searchOpen, onCloseSearch }: Moda
   // answers a project×host attachment id for a session on a foreign host, which names no project at
   // all — the per-project appearance would silently vanish for exactly those cards.
   const visual = useXtermVisualSettings(owningProjectId())
+  // Liquid Glass: the same glass as the canvas node (a second view of one session must look like
+  // it). The DOM renderer keeps app-painted cell backgrounds opaque (see CLAUDE.md).
+  const { glass, vars: glassVars } = useTerminalGlass(visual.terminalTheme)
+  const glassRef = useRef(glass)
+  glassRef.current = glass
   const [dropping, setDropping] = useState(false)
   const [uploading, setUploading] = useState(false)
   // Same copy feedback as the canvas node — a copy here is the same act as a copy there, including
@@ -177,7 +183,7 @@ export function ModalTerminal({ nodeId, spawn, searchOpen, onCloseSearch }: Moda
     // Appearance comes from the SAME source as the canvas node's terminal — this modal is a second
     // view of one session, and a card that renders it in different colours reads as a different
     // terminal. (It used to hardcode its own background, which is exactly what happened.)
-    const term = new Terminal(xtermOptionsFromSettings(s))
+    const term = new Terminal(xtermOptionsFromSettings(s, glassRef.current))
     // Without a handler xterm answers an OSC 8 click with a window.confirm — the one surface
     // where this session's links would prompt instead of opening like the canvas node's.
     term.options.linkHandler = createOsc8LinkHandler((uri) =>
@@ -423,12 +429,12 @@ export function ModalTerminal({ nodeId, spawn, searchOpen, onCloseSearch }: Moda
   useEffect(() => {
     const term = termRef.current
     if (!term) return
-    const { metricsChanged } = applyLiveOptions(term, visual)
+    const { metricsChanged } = applyLiveOptions(term, visual, glass)
     if (!metricsChanged) return
     fitRef.current?.fit()
     const sid = sessionIdRef.current
     if (sid) transportRef.current?.resize(sid, term.cols, term.rows)
-  }, [visual])
+  }, [visual, glass])
 
   // File drop → paste the path(s) into the co-attached session, just like the canvas node.
   const onDragOver = (e: React.DragEvent) => {
@@ -508,7 +514,10 @@ export function ModalTerminal({ nodeId, spawn, searchOpen, onCloseSearch }: Moda
 
   return (
     <div
-      className={`kanban-modal__termwrap${dropping ? ' kanban-modal__termwrap--drop' : ''}`}
+      className={`kanban-modal__termwrap${glassVars ? ' kanban-modal__termwrap--glass' : ''}${
+        dropping ? ' kanban-modal__termwrap--drop' : ''
+      }`}
+      style={glassVars ?? undefined}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}

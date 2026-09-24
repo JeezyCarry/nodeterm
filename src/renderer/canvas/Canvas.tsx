@@ -646,7 +646,7 @@ import {
 import type { CodexAccount } from '@shared/codex-account'
 import { useSystemCodexAccount } from '../state/systemCodexAccount'
 import { toKanbanSession } from './toKanbanSession'
-import { useWallpaperBackground } from '../state/wallpaper'
+import { useWallpaperBackground, wallpaperLayers } from '../state/wallpaper'
 import { showCanvasDots } from '../lib/canvasDots'
 
 const isMac = /Mac/i.test(navigator.platform || navigator.userAgent)
@@ -1048,17 +1048,7 @@ export function Canvas() {
   // re-diff (and a multi-MB data: URL re-compare) the root's style each time.
   const wallpaperStyle = useMemo<React.CSSProperties | undefined>(
     () =>
-      wallpaperBg
-        ? {
-            // A separate small longhand: folding the colour into the image's value is what hit
-            // Chromium's ~2 MB var() limit (see state/wallpaper.ts).
-            backgroundColor: 'var(--canvas-bg)',
-            backgroundImage: wallpaperBg,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat'
-          }
-        : undefined,
+      wallpaperBg ? wallpaperLayers(wallpaperBg) : undefined,
     [wallpaperBg]
   )
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>([])

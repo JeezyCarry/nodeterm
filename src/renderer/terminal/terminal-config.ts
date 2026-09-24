@@ -361,7 +361,7 @@ export function glassTheme(theme: ITheme): ITheme {
  */
 export function xtermOptionsFromSettings(
   s: XtermVisualSettings,
-  /** Glass terminal node (canvas only — the card modal and the settings preview never pass it). */
+  /** Glass terminal (canvas node and kanban card modal; the settings preview never passes it). */
   glass = false
 ): XtermVisualOptions & { allowProposedApi: true; macOptionClickForcesSelection: true } {
   const theme = resolveTerminalTheme(s.terminalTheme).theme

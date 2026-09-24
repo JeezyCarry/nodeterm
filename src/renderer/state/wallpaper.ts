@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type React from 'react'
+import { isLiquidGlass } from '../lib/appTheme'
 import { gradientCss, normalizeWallpaper, type DesktopWallpaper } from '@shared/wallpaper'
 import { useSettings } from './settings'
 
@@ -63,4 +65,31 @@ export function useWallpaperBackground(): string | null {
   }, [key, sync])
   if (sync !== undefined) return sync
   return async?.key === key ? async.bg : null
+}
+
+/** The wallpaper layers for a `background-image` value: a separate small longhand for the colour —
+ *  folding it into the image's value is what hit Chromium's ~2 MB var() limit (see above). */
+export function wallpaperLayers(bg: string): React.CSSProperties {
+  return {
+    backgroundColor: 'var(--canvas-bg)',
+    backgroundImage: bg,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat'
+  }
+}
+
+/**
+ * The kanban board's background under Liquid Glass: the SAME wallpaper as the canvas, fixed to the
+ * viewport so it lines up with `.canvas-root`'s pixel for pixel. The board stays opaque (the canvas
+ * under it is covered, and the covered-canvas animation gate stays valid). Other looks: undefined,
+ * the board's own background as before.
+ */
+export function useBoardWallpaperStyle(): React.CSSProperties | undefined {
+  const glass = isLiquidGlass(useSettings((s) => s.settings.appTheme))
+  const bg = useWallpaperBackground()
+  return useMemo(
+    () => (glass && bg ? { ...wallpaperLayers(bg), backgroundAttachment: 'fixed' } : undefined),
+    [glass, bg]
+  )
 }

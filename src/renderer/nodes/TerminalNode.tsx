@@ -180,10 +180,8 @@ import { useCopyFeedback } from '../terminal/useCopyFeedback'
 import { ContextMeter } from '../components/ContextMeter'
 import { isZoomModifierHeld } from '../lib/zoomModifier'
 import { isHidden } from '../lib/ui-visibility'
-import { glassTint, resolveGlassSlider } from '../lib/glassContrast'
-import { useGlassA11y } from '../lib/useGlassA11y'
+import { useTerminalGlass } from '../lib/useTerminalGlass'
 import { isLiquidGlass } from '../lib/appTheme'
-import { resolveTerminalTheme } from '../terminal/themes'
 import { readsClaudeTranscript } from '../lib/transcriptGates'
 import { liveProjectJumpTarget } from '../lib/projectJump'
 import { pushSessionRename } from '../lib/sessionRename'
@@ -1248,27 +1246,8 @@ export function TerminalNode({
   // global settings for this node, and for no other project's nodes.
   const visual = useXtermVisualSettings(owningProjectId())
   // Glass terminals (Settings → Appearance): xterm paints no background and the node supplies a
-  // translucent tint of THIS node's effective theme — project override included — at the alpha
-  // that keeps its foreground at 4.5:1 over any backdrop (lib/glassContrast.ts).
-  const glass = isLiquidGlass(useSettings((s) => s.settings.appTheme))
-  const glassSlider = resolveGlassSlider(useSettings((s) => s.settings.glassTint))
-  const glassA11y = useGlassA11y()
-  const tint = useMemo(
-    () => (glass ? glassTint(resolveTerminalTheme(visual.terminalTheme).theme, glassSlider, glassA11y) : null),
-    [glass, glassSlider, glassA11y, visual.terminalTheme]
-  )
-  const glassVars = useMemo(
-    () =>
-      tint
-        ? ({
-            '--term-glass-bg': tint.background,
-            '--term-glass-header-bg': tint.header,
-            '--term-glass-chip-wash': tint.chipWash,
-            '--term-glass-fg': tint.foreground
-          } as React.CSSProperties)
-        : null,
-    [tint]
-  )
+  // translucent tint of THIS node's effective theme (lib/useTerminalGlass.ts).
+  const { glass, tint, vars: glassVars } = useTerminalGlass(visual.terminalTheme)
   // The alpha app-painted cell backgrounds follow on this node (null = not glass, stock rendering).
   // A ref too, because `acquireWebgl` (inside the lifecycle closure) syncs every fresh addon to it.
   const glassCellAlphaRef = useRef<number | null>(null)
