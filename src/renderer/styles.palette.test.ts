@@ -307,10 +307,10 @@ describe('needs-you and priorities under glass', () => {
 })
 
 describe('no nested blur for the context popover', () => {
-  it('.ctx-popover (inside a blurred node) is solid, never blurred or translucent (visual QA N1)', () => {
-    const blurList = CSS.slice(CSS.indexOf('/* Outermost chrome: fill + blur. */'))
-    expect(blurList.slice(0, blurList.indexOf('{'))).not.toContain('.ctx-popover')
-    const solid = CSS.slice(CSS.indexOf(":root[data-nt-glass='on'] :is(.ctx-popover, .color-popover) {"))
-    expect(solid.slice(0, solid.indexOf('}'))).toMatch(/background:\s*rgb\(var\(--menu-rgb\)\)/)
+  it('.ctx-popover (inside a blurred node) is never blurred or given the glass fill (visual QA N1)', () => {
+    // Glass is opt-in (styles.glass-traps.test.ts): an unlisted popover keeps its opaque colour.
+    const glassRules = CSS.split('}').filter((r) => r.includes(":root[data-nt-glass='on']") && /(ctx|color)-popover/.test(r.slice(0, r.indexOf('{'))))
+    expect(glassRules.filter((r) => /backdrop-filter|--glass-(chrome|control)-bg/.test(r))).toEqual([])
+    expect(CSS).toMatch(/\.ctx-popover \{[^}]*background: rgba\(var\(--popover-rgb\), 0\.98\)/)
   })
 })

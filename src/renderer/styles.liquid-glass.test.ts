@@ -60,7 +60,7 @@ describe('Liquid Glass stylesheet', () => {
   it('slider scope: text surfaces take the readable-floored fill, small controls the slider fill', () => {
     const outer = (needle: string): Rule | undefined =>
       gated(needle).find((r) => /backdrop-filter:/.test(r.body) && r.selector.includes(':is('))
-    for (const text of ['.nt-settings', '.palette', '.ctx-menu', '.tab-menu', '.sessions-sidebar', '.confirm', '.usage-popover', '.kanban-col', '.kanban-add-col', '.kanban-modal']) {
+    for (const text of ['.nt-settings', '.palette', '.ctx-menu', '.tab-menu', '.sessions-sidebar', '.drawer', '.tooltip', '.confirm', '.usage-popover', '.kanban-col', '.kanban-add-col', '.kanban-modal']) {
       expect(outer(text)?.body, text).toMatch(/var\(--glass-chrome-bg\)[\s\S]*var\(--glass-text-blur\)/)
     }
     for (const control of ['.tabbar', '.react-flow__controls', '.react-flow__minimap', '.usage-pill', '.sysres-pill', '.usage-refresh', '.controls-cluster > button', '.sessions-icon-cluster button']) {
@@ -92,11 +92,14 @@ describe('Liquid Glass stylesheet', () => {
     expect(layer?.body).toMatch(/background:\s*var\(--glass-chrome-bg\)[\s\S]*backdrop-filter:\s*var\(--glass-text-blur\)/)
     const dock = rules.find((r) => r.selector === `${GATE} .dock::before`)
     expect(dock?.body).toMatch(/var\(--glass-control-bg\)[\s\S]*var\(--glass-control-blur\)/)
-    // Popovers inside a glass node (their backdrop root) cannot blur, so they are solid.
-    const solid = rules.find((r) => r.selector === `${GATE} :is(.ctx-popover, .color-popover)`)
-    expect(solid?.body).toMatch(/background:\s*rgb\(var\(--menu-rgb\)\)\s*!important/)
-    // …and nothing else hands any of them a translucent glass fill on the element itself.
-    for (const nested of ['.dock-menu', '.dock-menu__sub', '.ctx-popover', '.color-popover']) {
+    // Context menus host flyouts (Snap to zone) the same way, except menus that scroll (visual QA
+    // round 3, NC2).
+    const ctxHost = `${GATE} .ctx-menu:not(.ctx-menu--scroll, .ctx-submenu:not(.ctx-submenu--host))`
+    expect(rules.find((r) => r.selector === ctxHost)?.body).toMatch(/background:\s*transparent\s*!important[\s\S]*(^|[^-])backdrop-filter:\s*none/)
+    expect(rules.find((r) => r.selector === `${ctxHost}::before`)?.body).toMatch(/var\(--glass-chrome-bg\)[\s\S]*var\(--glass-text-blur\)/)
+    // Popovers inside a glass node or the card modal (their backdrop root) cannot blur: glass is
+    // opt-in, so nothing hands them a translucent glass fill and they keep their opaque colour.
+    for (const nested of ['.dock-menu', '.dock-menu__sub', '.ctx-popover', '.color-popover', '.label-picker', '.kanban-meta__picker']) {
       const fills = gated(nested).filter(
         (r) => !r.selector.includes('::before') && /background:[^;]*var\(--glass-(chrome|control)-bg\)/.test(r.body)
       )
