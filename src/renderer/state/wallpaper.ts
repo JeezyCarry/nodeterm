@@ -16,8 +16,12 @@ import { useSettings } from './settings'
  * URL from core (`wallpaper.load`), cached here by value so a re-render or a round trip through
  * Settings never re-reads a multi-MB file. A load that fails resolves to null — degrade to the
  * plain canvas, never to a stale picture.
+ *
+ * `resolved` holds the settled value synchronously, so a hook mounting after the load (every board
+ * open) paints the wallpaper on its FIRST frame instead of one black frame while the promise settles.
  */
 const loaded = new Map<string, Promise<string | null>>()
+const resolved = new Map<string, string>()
 
 function cacheKey(w: DesktopWallpaper): string {
   return JSON.stringify(w)
@@ -30,6 +34,7 @@ function load(w: DesktopWallpaper): Promise<string | null> {
     // ponytail: keep only the latest image; a picker session that flips through ten stills would
     // otherwise pin ten data: URLs in memory for the app run.
     loaded.clear()
+    resolved.clear()
     p = window.nodeTerminal.wallpaper
       .load(w)
       .then((url) => (url ? `url("${url}")` : null))
@@ -38,7 +43,9 @@ function load(w: DesktopWallpaper): Promise<string | null> {
     // A miss is not remembered, so the NEXT selection of this wallpaper asks core again instead of
     // getting the cached null for the rest of the app run. Nothing retries on its own.
     void p.then((bg) => {
-      if (bg === null && loaded.get(key) === p) loaded.delete(key)
+      if (loaded.get(key) !== p) return
+      if (bg === null) loaded.delete(key)
+      else resolved.set(key, bg)
     })
   }
   return p
@@ -64,7 +71,7 @@ export function useWallpaperBackground(): string | null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, sync])
   if (sync !== undefined) return sync
-  return async?.key === key ? async.bg : null
+  return async?.key === key ? async.bg : (resolved.get(key) ?? null)
 }
 
 /** The wallpaper layers for a `background-image` value: a separate small longhand for the colour —
