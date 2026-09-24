@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { IPC } from '../shared/ipc'
 import {
   normalizeWallpaper,
+  wallpapersToKeep,
   type DesktopWallpaper,
   type WallpaperStill
 } from '../shared/wallpaper'
@@ -303,16 +304,20 @@ let currentWallpaper: () => unknown = () => undefined
  * actually chose — a failed read is not evidence the choice went away. Only a SAVED change prunes.
  */
 export function registerWallpaperIpc(settings: {
-  get: () => { desktopWallpaper?: unknown }
-  onChange: (cb: (s: { desktopWallpaper?: unknown }) => void) => unknown
+  get: () => { desktopWallpaper?: unknown; recentWallpaperImage?: unknown }
+  onChange: (cb: (s: { desktopWallpaper?: unknown; recentWallpaperImage?: unknown }) => void) => unknown
 }): void {
   currentWallpaper = () => settings.get().desktopWallpaper
-  let last = JSON.stringify(currentWallpaper() ?? null)
+  // The user's most recent import is kept too (`wallpapersToKeep`): choosing a preset must not
+  // delete the image the "Your image" tile still offers.
+  const key = (s: { desktopWallpaper?: unknown; recentWallpaperImage?: unknown }): string =>
+    JSON.stringify(wallpapersToKeep(s))
+  let last = key(settings.get())
   settings.onChange((s) => {
-    const next = JSON.stringify(s.desktopWallpaper ?? null)
+    const next = key(s)
     if (next === last) return
     last = next
-    void pruneWallpaperCache([s.desktopWallpaper])
+    void pruneWallpaperCache(wallpapersToKeep(s))
   })
   platform().handle(IPC.wallpaperListStills, () => listStills())
   platform().handle(IPC.wallpaperLoad, (value: unknown) => loadWallpaper(value))

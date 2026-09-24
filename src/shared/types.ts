@@ -1425,6 +1425,9 @@ export interface Settings {
   /** Desktop wallpaper behind the canvas (Liquid Glass appearance). Opt-in; `none` draws the
    *  canvas exactly as before. Hand-editable: read through `normalizeWallpaper` (shared/wallpaper). */
   desktopWallpaper: import('./wallpaper').DesktopWallpaper
+  /** The most recent imported wallpaper image's cache path, kept after switching to a preset so the
+   *  "Your image" tile stays and the cache prune keeps its file (`recentWallpaperImage`). */
+  recentWallpaperImage: string | null
   /** Weight for normal text. xterm's own default is `normal` (400). */
   fontWeight: number
   /** Weight for BOLD text. xterm's own default is `bold` (700). Lowering it is how you keep bold
@@ -1869,6 +1872,7 @@ export const DEFAULT_SETTINGS: Settings = {
   windowTitleActiveSession: false,
   terminalTheme: 'nodeterm-dark',
   desktopWallpaper: { kind: 'none' },
+  recentWallpaperImage: null,
   fontWeight: 400,
   fontWeightBold: 700,
   drawBoldTextInBrightColors: true,

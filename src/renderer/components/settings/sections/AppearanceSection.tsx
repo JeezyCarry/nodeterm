@@ -13,6 +13,8 @@ import {
   GRADIENT_WALLPAPERS,
   NO_WALLPAPER,
   normalizeWallpaper,
+  recentWallpaperImage,
+  wallpaperChoice,
   sameWallpaper,
   type DesktopWallpaper,
   type WallpaperStill
@@ -268,6 +270,9 @@ function WallpaperTile({
  */
 function WallpaperPicker(): React.JSX.Element {
   const value = normalizeWallpaper(useSettings((s) => s.settings.desktopWallpaper))
+  const recent = recentWallpaperImage(useSettings((s) => s.settings.recentWallpaperImage))
+  // The tile offers the current image, else the last one imported (kept when a preset is chosen).
+  const yourImage = value.kind === 'image' ? value : recent
   const update = useSettings((s) => s.update)
   const [stills, setStills] = useState<WallpaperStill[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -283,7 +288,7 @@ function WallpaperPicker(): React.JSX.Element {
   }, [])
   const pick = (w: DesktopWallpaper): void => {
     setError(null)
-    update({ desktopWallpaper: w })
+    update(wallpaperChoice(value, w))
   }
   const chooseImage = async (): Promise<void> => {
     setError(null)
@@ -329,8 +334,8 @@ function WallpaperPicker(): React.JSX.Element {
             onClick={() => pick({ kind: 'preset', id: g.id })}
           />
         ))}
-        {value.kind === 'image' && (
-          <WallpaperTile label="Your image" selected onClick={() => {}}>
+        {yourImage && (
+          <WallpaperTile label="Your image" selected={is(yourImage)} onClick={() => pick(yourImage)}>
             Your image
           </WallpaperTile>
         )}

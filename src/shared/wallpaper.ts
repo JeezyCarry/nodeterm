@@ -116,3 +116,28 @@ export function sameWallpaper(a: DesktopWallpaper, b: DesktopWallpaper): boolean
   if (a.kind === 'image') return a.path === (b as { path: string }).path
   return true
 }
+
+/**
+ * The user's most recent imported image (`settings.recentWallpaperImage`), kept across a switch to
+ * a preset so browsing presets never destroys it: the "Your image" tile stays and the cache prune
+ * keeps its file. Hand-editable, so it is re-validated like the wallpaper itself.
+ */
+export function recentWallpaperImage(v: unknown): DesktopWallpaper | null {
+  const w = normalizeWallpaper({ kind: 'image', path: v })
+  return w.kind === 'image' ? w : null
+}
+
+/** The settings patch for choosing `next` while `current` is on screen: an image being chosen, or
+ *  one being left, becomes the recent image. */
+export function wallpaperChoice(
+  current: DesktopWallpaper,
+  next: DesktopWallpaper
+): { desktopWallpaper: DesktopWallpaper; recentWallpaperImage?: string } {
+  const image = next.kind === 'image' ? next : current.kind === 'image' ? current : null
+  return image ? { desktopWallpaper: next, recentWallpaperImage: image.path } : { desktopWallpaper: next }
+}
+
+/** What a saved settings change must keep in the wallpaper cache: the choice and the recent image. */
+export function wallpapersToKeep(s: { desktopWallpaper?: unknown; recentWallpaperImage?: unknown }): unknown[] {
+  return [s.desktopWallpaper, recentWallpaperImage(s.recentWallpaperImage)]
+}

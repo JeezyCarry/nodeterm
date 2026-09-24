@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { existsSync, readdirSync } from 'node:fs'
+import { wallpapersToKeep } from '../shared/wallpaper'
 import { cachedImagePath, importWallpaper, pruneWallpaperCache, scanStills } from './wallpaper'
 
 const HASH = 'a'.repeat(40)
@@ -73,6 +74,16 @@ describe('pruneWallpaperCache', () => {
     for (const f of [keep, stale, thumb, temp, 'notes.txt']) put(f, 10)
     await pruneWallpaperCache([{ kind: 'image', path: path.join(root, keep) }, { kind: 'none' }], root)
     expect(readdirSync(root).sort()).toEqual([keep, thumb, temp, 'notes.txt'].sort())
+  })
+
+  it('choosing a preset keeps the most recent imported image (visual QA H6)', async () => {
+    root = mkdtempSync(path.join(tmpdir(), 'wp-cache-'))
+    const recent = `${'e'.repeat(40)}.png`
+    const older = `${'f'.repeat(40)}.png`
+    for (const f of [recent, older]) put(f, 10)
+    const next = { kind: 'preset', id: 'gradient:sunrise' }
+    await pruneWallpaperCache(wallpapersToKeep({ desktopWallpaper: next, recentWallpaperImage: path.join(root, recent) }), root)
+    expect(readdirSync(root)).toEqual([recent])
   })
 
   it('a missing cache dir is not an error', async () => {
