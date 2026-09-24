@@ -268,6 +268,7 @@ import type { CodexCliCaps } from '../shared/types'
 import { registerGrokCliIpc } from '../core/grok-cli'
 import { refreshCodexIdentityCaps, registerCodexIdentityIpc } from '../core/codex-identity-caps'
 import { codexCliCaps, registerCodexCliIpc } from '../core/codex-cli'
+import { registerWallpaperIpc } from '../core/wallpaper'
 import {
   bindCodexThreadIdentity,
   setCodexThreadIdentityAuthSecret,
@@ -1400,6 +1401,7 @@ app.whenReady().then(async () => {
   // What THIS machine's codex accepts for `--ask-for-approval`. Lazy + memoized inside the probe,
   // so registering it costs nothing until the first Codex launch line asks.
   registerCodexCliIpc()
+  registerWallpaperIpc(settingsStore)
   // Warm the `claude --version` probe now (it spawns a login shell + node, ~sub-second) so the
   // renderer's first `claude.cliCaps()` — awaited on the launch path of a cold-restored agent
   // node — resolves from cache instead of racing the probe into a conservative "no auto".

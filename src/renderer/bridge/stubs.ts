@@ -283,6 +283,15 @@ export function buildStubApi(): Omit<
       read: () => Promise.resolve({ ok: false, rows: [], mem: null }),
       host: () => Promise.resolve(null)
     },
+    wallpaper: {
+      // Superseded by the real WS-backed namespace in ws-bridge (registerWallpaperIpc runs in the
+      // server shell). A RELAY tab keeps this: the wallpaper is this window's own appearance, and
+      // the peer's disk has nothing to say about it. No stills, nothing to load (gradient presets
+      // are pure CSS and need no bridge), and import refuses.
+      listStills: () => Promise.resolve([]),
+      load: () => Promise.resolve(null),
+      importImage: U('wallpaper.importImage')
+    },
     triggers: {
       // Superseded by the real WS-backed namespace in ws-bridge (startTriggerService registers the
       // handlers in the server shell). On the RELAY tab this stub stays in force and REFUSES: the

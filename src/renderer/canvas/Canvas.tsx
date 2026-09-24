@@ -1,6 +1,7 @@
 import { reportTextDelivery } from '../lib/textDelivery'
 import { TEXT_NOT_SUBMITTED } from '@shared/text-delivery'
 import { VisibleMiniMap } from './VisibleMiniMap'
+import { keepGlassBlurWhileMoving } from '../lib/glassContrast'
 import { LINK_ENDPOINT_NOT_FOUND } from '@shared/canvas-link'
 import { createControlOpenBatch } from '../lib/controlOpenBatch'
 import { commitOwnedLaunchAttempt, registerLaunchCommit } from '../terminal/launch-attempt'
@@ -646,6 +647,8 @@ import {
 import type { CodexAccount } from '@shared/codex-account'
 import { useSystemCodexAccount } from '../state/systemCodexAccount'
 import { toKanbanSession } from './toKanbanSession'
+import { useWallpaperBackground, wallpaperLayers } from '../state/wallpaper'
+import { showCanvasDots } from '../lib/canvasDots'
 
 const isMac = /Mac/i.test(navigator.platform || navigator.userAgent)
 
@@ -982,12 +985,15 @@ function StatusAwareMiniMap({ onNodeDoubleClick }: { onNodeDoubleClick: (node: N
   // already use — and not the accent blue it used to be: blue is also the fallback stroke for a
   // node that carries no colour of its own, so "finished while you were away" was painted the
   // exact shade as "nothing to report" and vanished into the map.
+  //
+  // The colours are the --mm-* tokens (styles.css): exactly the above in the default look, the
+  // state roles under Liquid Glass, whose neutral node fills leave nothing for them to clash with.
   const nodeStrokeColor = useCallback(
     (n: Node): string => {
       const st = statusById[n.id]
-      if (st?.state === 'working') return '#ffd60a'
-      if (st?.state === 'waiting' || st?.state === 'blocked') return '#ff453a'
-      if (st?.unread) return '#d97757'
+      if (st?.state === 'working') return 'var(--mm-working)'
+      if (st?.state === 'waiting' || st?.state === 'blocked') return 'var(--mm-attention)'
+      if (st?.unread) return 'var(--mm-unread)'
       return (n.data as { color?: string })?.color ?? '#0a84ff'
     },
     [statusById]
@@ -1034,6 +1040,18 @@ export function Canvas() {
   // For the local session it IS window.nodeTerminal, so every call resolves identically.
   const session = useSession()
   const { api } = session
+  // Desktop wallpaper (Settings → Appearance): painted on `.canvas-root`, which spans the whole
+  // window (tab bar row included, so Liquid Glass's tab bar is glass over the picture) and is never
+  // transformed, so it stays fixed while the canvas pans and zooms. React Flow's own root goes
+  // transparent over it (`.react-flow.has-wallpaper`).
+  const wallpaperBg = useWallpaperBackground()
+  // Memoised: Canvas re-renders on every drag frame, and a fresh style object would make React
+  // re-diff (and a multi-MB data: URL re-compare) the root's style each time.
+  const wallpaperStyle = useMemo<React.CSSProperties | undefined>(
+    () =>
+      wallpaperBg ? wallpaperLayers(wallpaperBg) : undefined,
+    [wallpaperBg]
+  )
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>([])
   // Persistent context links between Claude nodes (separate from ephemeral subagent/loop edges).
   const [linkEdges, setLinkEdges, onLinkEdgesChange] = useEdgesState<Edge>([])
@@ -1503,6 +1521,39 @@ export function Canvas() {
   const browserPopupSpawnsRef = useRef<{ url: string; source: string; t: number }[]>([])
   const loadingRef = useRef(false)
   const flowWrapRef = useRef<HTMLDivElement>(null)
+  // Glass terminals: while the camera moves, every glass node's backdrop changes each frame and
+  // the 28px blur is re-rasterised for all of them. The class drops the blur (the tint stays, and
+  // the tint alone is what the contrast guarantee rests on) until the move settles. A classList
+  // toggle rather than state, so a pan does not re-render this component twice. The REMOVAL is
+  // debounced: a wheel zoom driven through setViewport ends a "move" on every packet, and toggling
+  // the blur back on between packets would re-rasterise it anyway.
+  // Settings → Appearance → "Keep blur while moving" (default on) skips the pause entirely: the
+  // blur and refraction stay live through the move, Apple's behaviour, at a GPU cost. Read
+  // through a ref so the handlers stay stable.
+  const movingClearRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const keepBlurWhileMovingRef = useRef(true)
+  keepBlurWhileMovingRef.current = keepGlassBlurWhileMoving(
+    useSettings((s) => s.settings.glassBlurWhileMoving)
+  )
+  const onCanvasMoveStart = useCallback(() => {
+    if (movingClearRef.current) clearTimeout(movingClearRef.current)
+    movingClearRef.current = null
+    if (keepBlurWhileMovingRef.current) return
+    flowWrapRef.current?.classList.add('canvas-moving')
+  }, [])
+  const onCanvasMoveEnd = useCallback(() => {
+    if (movingClearRef.current) clearTimeout(movingClearRef.current)
+    movingClearRef.current = setTimeout(() => {
+      movingClearRef.current = null
+      flowWrapRef.current?.classList.remove('canvas-moving')
+    }, 150)
+  }, [])
+  useEffect(
+    () => () => {
+      if (movingClearRef.current) clearTimeout(movingClearRef.current)
+    },
+    []
+  )
   // Undo/redo history (snapshots of the nodes array; arrays are immutable per change).
   const pastRef = useRef<CanvasNode[][]>([])
   const futureRef = useRef<CanvasNode[][]>([])
@@ -14475,7 +14526,7 @@ export function Canvas() {
   const paletteChip = chipFor('app.commandPalette')
 
   return (
-    <div className="canvas-root">
+    <div className="canvas-root" style={wallpaperStyle}>
       <TabBar
         onSwitch={switchProject}
         onReconnect={reconnectRelay}
@@ -14646,7 +14697,9 @@ export function Canvas() {
                   padding: '6px 12px',
                   fontSize: 12,
                   color: 'var(--text)',
-                  background: isError ? 'rgba(120,40,40,0.92)' : 'rgba(90,72,30,0.92)',
+                  background: isError
+                    ? 'color-mix(in srgb, var(--state-error) 36%, var(--surface-overlay))'
+                    : 'color-mix(in srgb, var(--state-warning) 22%, var(--surface-overlay))',
                   border: '1px solid var(--border)',
                   borderRadius: 8
                 }}
@@ -14657,7 +14710,7 @@ export function Canvas() {
                       width: 8,
                       height: 8,
                       borderRadius: '50%',
-                      background: '#ff6b6b'
+                      background: 'var(--state-error)'
                     }}
                   />
                 ) : (
@@ -14807,6 +14860,7 @@ export function Canvas() {
             the key is always 'local', so this never remounts — zero behavior change. */}
         <SessionProvider session={sessionForProject(activeProjectId || '')} key={sessionForProject(activeProjectId || '').id}>
         <ReactFlow
+          className={wallpaperBg ? 'has-wallpaper' : undefined}
           nodes={allNodes}
           edges={displayEdges}
           nodeTypes={nodeTypes}
@@ -14816,6 +14870,8 @@ export function Canvas() {
           onConnect={onConnect}
           onEdgeDoubleClick={onEdgeDoubleClick}
           onMove={onMove}
+          onMoveStart={onCanvasMoveStart}
+          onMoveEnd={onCanvasMoveEnd}
           onNodeDragStart={() => (draggingRef.current = true)}
           onNodeDragStop={() => {
             draggingRef.current = false
@@ -14875,6 +14931,7 @@ export function Canvas() {
           snapToGrid={settings.snapToGrid}
           snapGrid={[settings.gridSize, settings.gridSize]}
         >
+          {showCanvasDots(settings.canvasDots) && (
           <Background
             variant={BackgroundVariant.Dots}
             gap={settings.gridSize || GRID}
@@ -14889,6 +14946,7 @@ export function Canvas() {
                token instead. On white the dark-mode grey reads as noise rather than as a grid. */
             color="var(--canvas-dot)"
           />
+          )}
           {/* The shared glyph canvas: a <ReactFlow> child (so it is a sibling of the background
               and of the node renderer) at z-index 0 — above the dot grid, below every node. Only
               mounted in the experimental 'shared' renderer mode; nothing about it exists for the

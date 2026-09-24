@@ -930,6 +930,23 @@ describe('applyLiveOptions', () => {
     expect(term.writes).toEqual([])
   })
 
+  it('glass toggles live: transparent background + allowTransparency on, and back off', () => {
+    const s = visual()
+    const term = fakeTerm(s)
+    const on = applyLiveOptions(term, s, true)
+    expect(on).toEqual({ metricsChanged: false, themeChanged: true })
+    expect(term.options.allowTransparency).toBe(true)
+    expect(term.options.theme?.background).toBe('#1e1e1e00')
+    // Theme identity is stable while glass stays on, so a re-option is a no-op.
+    term.writes.length = 0
+    expect(applyLiveOptions(term, s, true).themeChanged).toBe(false)
+    expect(term.writes).toEqual([])
+    const off = applyLiveOptions(term, s, false)
+    expect(off.themeChanged).toBe(true)
+    expect(term.options.allowTransparency).toBe(false)
+    expect(term.options.theme?.background).toBe('#1e1e1e')
+  })
+
   it('applies a font size change and reports metricsChanged', () => {
     const term = fakeTerm(visual())
     const r = applyLiveOptions(term, visual({ fontSize: 16 }))

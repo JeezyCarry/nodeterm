@@ -287,6 +287,10 @@ export const IPC = {
   /** The scoped machine's RAM (available/total) — the cheap read behind the system-resource
    *  pill. Safe to poll locally; NOT polled for an SSH scope. */
   sessionMemoryHost: 'session-memory:host',
+  // Canvas wallpaper (core/wallpaper.ts): macOS stills, cached image reads, image import.
+  wallpaperListStills: 'wallpaper:list-stills',
+  wallpaperLoad: 'wallpaper:load',
+  wallpaperImport: 'wallpaper:import',
   // Trigger nodes (issue #493): machine-local arm/disarm + the card's status/run-now.
   triggersArm: 'triggers:arm',
   triggersDisarm: 'triggers:disarm',

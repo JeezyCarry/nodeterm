@@ -1397,8 +1397,12 @@ export interface Settings {
   cursorBlink: boolean
   /** Appearance of the APP chrome (tab bar, panels, node headers, menus). `auto` (the default)
    *  takes it from the terminal colour theme, so picking a light terminal theme doesn't leave a
-   *  black window framing it; `dark`/`light` pin it. See renderer/lib/appTheme.ts. */
-  appTheme: 'auto' | 'dark' | 'light'
+   *  black window framing it; `dark`/`light` pin it. `liquid-glass` follows the terminal theme like
+   *  `auto` AND turns the Liquid Glass appearance on: every canvas node and the app chrome go
+   *  translucent + blurred over the wallpaper, and terminal windows drop their per-node accent
+   *  colour; tint opacities keep the primary text at WCAG 4.5:1 over any backdrop
+   *  (renderer/lib/glassContrast.ts). See renderer/lib/appTheme.ts. */
+  appTheme: 'auto' | 'dark' | 'light' | 'liquid-glass'
   /** Scale factor for the whole application UI (1 = 100%; issue #299, 4K readability). Applied as
    *  PAGE ZOOM (`webFrame.setZoomFactor`) on desktop, so menus, node headers, dialogs — and
    *  terminal glyphs — all scale together: the terminal font-size setting stays in CSS px, so its
@@ -1418,6 +1422,12 @@ export interface Settings {
    *  (settings.json is hand-editable): an unknown id falls back to the default theme, whose
    *  colours reproduce the pre-feature hardcoded `#1e1e1e`/`#e6e6e6` exactly. */
   terminalTheme: string
+  /** Desktop wallpaper behind the canvas (Liquid Glass appearance). Opt-in; `none` draws the
+   *  canvas exactly as before. Hand-editable: read through `normalizeWallpaper` (shared/wallpaper). */
+  desktopWallpaper: import('./wallpaper').DesktopWallpaper
+  /** The most recent imported wallpaper image's cache path, kept after switching to a preset so the
+   *  "Your image" tile stays and the cache prune keeps its file (`recentWallpaperImage`). */
+  recentWallpaperImage: string | null
   /** Weight for normal text. xterm's own default is `normal` (400). */
   fontWeight: number
   /** Weight for BOLD text. xterm's own default is `bold` (700). Lowering it is how you keep bold
@@ -1683,6 +1693,16 @@ export interface Settings {
    *  once-per-app-run popup). OFF by default — it interrupts every project switch, so it is
    *  opt-in. Cmd+[ / Cmd+] and the Dock buttons walk the trail regardless of this. */
   showResumeCard: boolean
+  /** Draw the canvas dot grid (Settings → Appearance). Display only — snapping and align-to-grid
+   *  are unchanged. Default ON in every appearance; read through `showCanvasDots`. */
+  canvasDots: boolean
+  /** The Liquid Glass slider (Settings → Appearance), 0 = Clear … 1 = Tinted. null = the Readable
+   *  tick, where text keeps 4.5:1 (renderer/lib/glassContrast.ts `resolveGlassSlider`). */
+  glassTint: number | null
+  /** Liquid Glass: keep the node blur and refraction live while the canvas pans or zooms (Apple's
+   *  behaviour, more GPU). Off = the blur pauses during a camera move and the tint alone stays.
+   *  Default ON; only a literal false turns it off (`keepGlassBlurWhileMoving`). */
+  glassBlurWhileMoving: boolean
   /** Whether usage percentages render as consumed ("32% used"), remaining ("68% left"), or raw
    *  token counts ("48k/200k tokens" — context-window surfaces only; provider quota surfaces
    *  have no token counts and fall back to 'used' display). 'remaining' is the historical
@@ -1851,6 +1871,8 @@ export const DEFAULT_SETTINGS: Settings = {
   uiScale: 1,
   windowTitleActiveSession: false,
   terminalTheme: 'nodeterm-dark',
+  desktopWallpaper: { kind: 'none' },
+  recentWallpaperImage: null,
   fontWeight: 400,
   fontWeightBold: 700,
   drawBoldTextInBrightColors: true,
@@ -1926,6 +1948,9 @@ export const DEFAULT_SETTINGS: Settings = {
   // Opt-in: the resume card pops over the canvas on every qualifying project activation, which
   // reads as noise to users who navigate by the trail chords/Dock buttons instead.
   showResumeCard: false,
+  canvasDots: true,
+  glassTint: null,
+  glassBlurWhileMoving: true,
   usagePercentMode: 'remaining',
   defaultAgent: 'claude',
   // Sessions start in auto mode out of the box. Existing users pick this up on hydrate
@@ -3539,6 +3564,7 @@ export interface NodeTerminalApi {
   githubControl: import('./github-issues').GitHubControlApi
   usage: UsageApi
   sessionMemory: SessionMemoryApi
+  wallpaper: import('./wallpaper').WallpaperApi
   triggers: TriggersApi
   context: ContextApi
   canvas: CanvasApi

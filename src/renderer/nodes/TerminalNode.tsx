@@ -1,7 +1,9 @@
 import { useContextEnsure } from '../terminal/useContextEnsure'
+import { FIND_DECORATIONS } from '../lib/palette'
 import { ptyRefusal } from '@shared/pty-refusal'
 
 import { patchImeModeSwitch } from '../terminal/ime-mode-switch'
+import { installGlassCellBackgrounds, scheduleGlassCellAlpha, setGlassCellAlpha } from '../terminal/glass-cell-backgrounds'
 
 import { deliverRelayInitialLaunch } from '../terminal/relay-initial-launch'
 import { commitLaunch } from '../terminal/launch-attempt'
@@ -179,6 +181,8 @@ import { useCopyFeedback } from '../terminal/useCopyFeedback'
 import { ContextMeter } from '../components/ContextMeter'
 import { isZoomModifierHeld } from '../lib/zoomModifier'
 import { isHidden } from '../lib/ui-visibility'
+import { useTerminalGlass } from '../lib/useTerminalGlass'
+import { isLiquidGlass } from '../lib/appTheme'
 import { readsClaudeTranscript } from '../lib/transcriptGates'
 import { liveProjectJumpTarget } from '../lib/projectJump'
 import { pushSessionRename } from '../lib/sessionRename'
@@ -1242,6 +1246,16 @@ export function TerminalNode({
   // Scoped to the OWNING project so its `terminal.theme` / `terminal.fontFamily` layer over the
   // global settings for this node, and for no other project's nodes.
   const visual = useXtermVisualSettings(owningProjectId())
+  // Glass terminals (Settings → Appearance): xterm paints no background and the node supplies a
+  // translucent tint of THIS node's effective theme (lib/useTerminalGlass.ts).
+  const { glass, tint, vars: glassVars } = useTerminalGlass(visual.terminalTheme)
+  // The alpha app-painted cell backgrounds follow on this node (null = not glass, stock rendering).
+  // A ref too, because `acquireWebgl` (inside the lifecycle closure) syncs every fresh addon to it.
+  const glassCellAlphaRef = useRef<number | null>(null)
+  // The live WebGL addon, for the one job of installing the glass cell-background wrap when glass
+  // turns on after the context was granted. May point at a disposed addon; installing on one is a
+  // no-op (the wrap finds no renderer), and the next grant installs on the fresh one.
+  const webglAddonRef = useRef<WebglAddon | null>(null)
   // The account list, for the chip and for the READERS below: a config dir the user links while
   // this pane sits quiet must resolve to its new account immediately, not at the next hook event.
   const claudeAccounts = useSettings((s) => s.settings.claudeAccounts)
@@ -2008,12 +2022,7 @@ export function TerminalNode({
   // Single source of truth for the on-screen highlight colors (used by both the
   // initial-highlight effect and the prev/next nav handlers below).
   const findOpts = {
-    decorations: {
-      matchBackground: '#ffd54f55',
-      activeMatchBackground: '#ffb300',
-      matchOverviewRuler: '#ffd54f',
-      activeMatchColorOverviewRuler: '#ffb300'
-    }
+    decorations: FIND_DECORATIONS
   }
 
   // Navigation steps the hook's authoritative cursor AND xterm's on-screen highlight.
@@ -2100,7 +2109,7 @@ export function TerminalNode({
     const s = useSettings.getState().settings
     // Appearance comes from ONE place, shared with the kanban card modal's viewer of this same
     // session (`ModalTerminal`) — see `xtermOptionsFromSettings`.
-    const term = parked?.term ?? new Terminal(xtermOptionsFromSettings(s))
+    const term = parked?.term ?? new Terminal(xtermOptionsFromSettings(s, isLiquidGlass(s.appTheme)))
     // Only on a FRESH instance: a parked terminal already carries the table, and the buffer it kept
     // alive was measured with it — re-registering under a live buffer buys nothing.
     if (!parked) activateUnicode11(term)
@@ -2267,6 +2276,13 @@ export function TerminalNode({
         })
         term.loadAddon(a)
         webgl = a
+        // Glass: app-painted cell backgrounds become tinted glass (glass-cell-backgrounds.ts). A
+        // fresh addon starts from an empty model, so the repaint below already applies the alpha.
+        // The wrap patches the addon's SHARED renderer prototype, so it is installed only once a
+        // glass terminal needs it: a user who never turns glass on never runs a patched renderer.
+        webglAddonRef.current = a
+        if (glassCellAlphaRef.current !== null) installGlassCellBackgrounds(a)
+        setGlassCellAlpha(term, glassCellAlphaRef.current)
         // THE RESTORE PATH — rebuild, never trust the addon's in-place recovery.
         //
         // When the GPU process resets (returning from a GPU-heavy app; sleep/wake; memory
@@ -4828,6 +4844,21 @@ export function TerminalNode({
     // focus / visibilitychange listeners now provide.
   }, [positionAbsoluteX, positionAbsoluteY])
 
+  // Glass cell backgrounds follow the node's tint alpha (slider, Reduce Transparency). Backgrounds
+  // are only recomputed for CHANGED cells, so an alpha change rebuilds the WebGL model — debounced
+  // while the slider is dragged (scheduleGlassCellAlpha); the shared glyph grid stands glass down,
+  // and so does this. Declared ABOVE the applyLiveOptions effect: the glyphgrid effect below that
+  // one must stay immediately after it (see its comment).
+  const glassCellAlpha = tint && !glyphMounted ? tint.alpha : null
+  useEffect(() => {
+    glassCellAlphaRef.current = glassCellAlpha
+    const term = termRef.current
+    if (!term) return
+    // Glass turned on after this terminal's WebGL grant: install the wrap now (idempotent).
+    if (glassCellAlpha !== null && webglAddonRef.current) installGlassCellBackgrounds(webglAddonRef.current)
+    return scheduleGlassCellAlpha(term, glassCellAlpha, () => term.clearTextureAtlas())
+  }, [glassCellAlpha])
+
   // Live-apply the appearance settings to the running terminal, so a Settings change reaches the
   // terminals already on the canvas instead of only the next fresh one.
   //
@@ -4844,10 +4875,10 @@ export function TerminalNode({
   useEffect(() => {
     const term = termRef.current
     if (!term) return
-    const { metricsChanged, themeChanged } = applyLiveOptions(term, visual)
+    const { metricsChanged, themeChanged } = applyLiveOptions(term, visual, glass)
     if (metricsChanged) applyFitRef.current?.()
     if (themeChanged) fullRepaintRef.current?.()
-  }, [visual])
+  }, [visual, glass])
 
   // glyphgrid participation — whether this node should hold a grid RIGHT NOW.
   //
@@ -5290,6 +5321,9 @@ export function TerminalNode({
   // markdown view's hint names the action instead of promising a chord that never fires.
   const mdChip = chipFor('node.toggleMarkdown')
 
+  // The experimental shared glyph renderer paints text on a canvas BELOW the nodes, so a glass
+  // tint would sit on top of every glyph: glass stands down while a grid is mounted.
+  const glassOn = glassVars !== null && !glyphMounted
   return (
     <>
     {/* Sibling of the root: .term-node is overflow:hidden and would clip the half-pill. */}
@@ -5299,9 +5333,11 @@ export function TerminalNode({
         isUnread ? ' unread' : ''
       }${status?.state === 'working' ? ' working' : ''}${
         status?.state === 'waiting' || status?.state === 'blocked' ? ' attention' : ''
-      }${glyphMounted ? ' term-node--glyphgrid' : ''}${focused ? ' term-node--focused' : ''}`}
+      }${glyphMounted ? ' term-node--glyphgrid' : ''}${focused ? ' term-node--focused' : ''}${
+        glassOn ? ' term-node--glass' : ''
+      }`}
       ref={rootRef}
-      style={{ borderTopColor: data.color }}
+      style={glassOn ? { ...glassVars, borderTopColor: data.color } : { borderTopColor: data.color }}
       onMouseEnter={() => (hoveredRef.current = true)}
       onMouseLeave={() => (hoveredRef.current = false)}
     >
