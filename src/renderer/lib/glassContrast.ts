@@ -229,19 +229,67 @@ export function chromeContrast(
   return contrastRatio(composite(text.rgb, surface, text.alpha), surface)
 }
 
+/** The highlight washes on glass rows (styles.css `--glass-lift` = theme ink at this alpha,
+ *  `--glass-select` = the accent mixed at this share). Pinned to the stylesheet by
+ *  glassContrast.test.ts, so the two cannot drift apart. */
+export const GLASS_LIFT_ALPHA = 0.14
+export const GLASS_SELECT_MIX = 0.3
+
+/** A highlighted state on a chrome surface: `wash` composited over the fill, `ink` on top. */
+export interface ChromeHighlight {
+  ink: string
+  wash: string
+}
+
+/** Contrast of `text` on a highlight `wash` over `panel`@`alpha` over one backdrop pixel. */
+export function chromeHighlightContrast(
+  text: { rgb: Rgb; alpha: number },
+  wash: { rgb: Rgb; alpha: number },
+  panel: Rgb,
+  alpha: number,
+  backdrop: Rgb
+): number {
+  return chromeContrast(text, wash.rgb, wash.alpha, composite(panel, backdrop, alpha))
+}
+
+/** The highlighted states every glass chrome surface carries, from the resolved tokens: the ink
+ *  lift (hover, active tab) and the accent selection, both with `--text-strong` labels (styles.css
+ *  sets that ink on them under glass). An unparseable accent drops only the selection check. */
+export function glassChromeHighlights(textStrong: string, tintRgb: string, accent: string): ChromeHighlight[] {
+  const out: ChromeHighlight[] = [{ ink: textStrong, wash: `rgba(${tintRgb}, ${GLASS_LIFT_ALPHA})` }]
+  const a = parseCssColor(accent)
+  if (a) out.push({ ink: textStrong, wash: `rgba(${a.rgb.join(', ')}, ${GLASS_SELECT_MIX})` })
+  return out
+}
+
 /**
  * The smallest alpha (floored at 0.55) for a chrome surface of colour `panel` that keeps `text`
  * at `minRatio` over every sampled backdrop; 1 when even opaque does not reach it; null when a
  * colour cannot be parsed (the caller then leaves the chrome opaque).
+ *
+ * `highlights` are the washes a row or tab lays over the same fill (hover lift, active tab,
+ * selected row) with the ink they carry: the fill must hold `minRatio` for EVERY one of them too.
+ * A lift of the theme's own ink moves the surface toward the text, so without this the plain fill
+ * passed and the active tab measured 3.9:1 (visual QA round 2, N2).
  */
-export function glassChromeAlpha(text: string, panel: string, minRatio = 4.5): number | null {
+export function glassChromeAlpha(
+  text: string,
+  panel: string,
+  minRatio = 4.5,
+  highlights: readonly ChromeHighlight[] = []
+): number | null {
   const t = parseCssColor(text)
   const p = parseCssColor(panel)
   if (!t || !p) return null
+  const hs = highlights.map((h) => ({ ink: parseCssColor(h.ink), wash: parseCssColor(h.wash) }))
+  if (hs.some((h) => !h.ink || !h.wash)) return null
+  const holds = (a: number, b: Rgb): boolean =>
+    chromeContrast(t, p.rgb, a, b) >= minRatio &&
+    hs.every((h) => chromeHighlightContrast(h.ink!, h.wash!, p.rgb, a, b) >= minRatio)
   let lowest = Infinity
   for (let i = Math.round(1 / STEP); i >= 0; i--) {
     const a = i * STEP
-    if (!CHROME_BACKDROPS.every((b) => chromeContrast(t, p.rgb, a, b) >= minRatio)) break
+    if (!CHROME_BACKDROPS.every((b) => holds(a, b))) break
     lowest = a
   }
   if (lowest === Infinity) return 1
@@ -328,12 +376,32 @@ export function glassSurfaceAlpha(
 export function glassChromeAlphas(
   t: number,
   readable: number,
-  a11y: GlassA11y = NO_GLASS_A11Y
+  a11y: GlassA11y = NO_GLASS_A11Y,
+  controlClear = GLASS_CONTROL_CLEAR_ALPHA
 ): { text: number; control: number } {
   return {
     text: glassSurfaceAlpha(Math.max(t, GLASS_READABLE_TICK), readable, a11y),
-    control: glassSurfaceAlpha(t, readable, a11y, GLASS_CONTROL_CLEAR_ALPHA)
+    control: glassSurfaceAlpha(t, readable, a11y, Math.min(controlClear, readable))
   }
+}
+
+/**
+ * The CONTROLS' alpha at Clear: at least `GLASS_CONTROL_CLEAR_ALPHA`, and enough that `text` (their
+ * icons) keeps 3:1 — WCAG's non-text minimum — over every sampled backdrop once the control blur's
+ * `brightness(dim)` has scaled it (styles.css `--glass-control-dim`: 0.7 dark, 1.3 light). The
+ * dark theme's dimming carries it at 0.35; brightening cannot lift near-black water, so light glass
+ * needs a denser floor (visual QA round 2, H4: zoom − measured 2.1:1 in light at Clear).
+ */
+export function glassControlClearAlpha(text: string, panel: string, dim: number): number {
+  const t = parseCssColor(text)
+  const p = parseCssColor(panel)
+  if (!t || !p || !Number.isFinite(dim)) return GLASS_CONTROL_CLEAR_ALPHA
+  const dimmed = CHROME_BACKDROPS.map((b) => b.map((c) => Math.min(255, c * dim)) as unknown as Rgb)
+  for (let i = Math.round(GLASS_CONTROL_CLEAR_ALPHA / STEP); i <= Math.round(1 / STEP); i++) {
+    const a = i * STEP
+    if (dimmed.every((b) => chromeContrast(t, p.rgb, a, b) >= 3)) return a
+  }
+  return 1
 }
 
 /** Magnetic detent, like a macOS slider's tick marks: a drag within this of the tick lands on it. */

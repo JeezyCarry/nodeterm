@@ -10,6 +10,11 @@ import {
   glassTintAlpha,
   chromeContrast,
   glassChromeAlpha,
+  glassChromeHighlights,
+  glassControlClearAlpha,
+  chromeHighlightContrast,
+  GLASS_LIFT_ALPHA,
+  GLASS_SELECT_MIX,
   parseCssColor,
   parseHex,
   worstContrast,
@@ -147,6 +152,70 @@ describe('glassChromeAlpha (Liquid Glass chrome, both app themes)', () => {
     expect(parseCssColor('#282828')).toEqual({ rgb: [40, 40, 40], alpha: 1 })
     expect(parseCssColor('rgb(1,2,3)')).toEqual({ rgb: [1, 2, 3], alpha: 1 })
     expect(glassChromeAlpha('nope', '#000')).toBeNull()
+  })
+})
+
+describe('highlights, placeholders and small controls on the chrome fill (visual QA round 2)', () => {
+  const CSS = readFileSync(join(__dirname, '../styles.css'), 'utf8').replace(/\r\n/g, '\n')
+  const block = (selector: string): string => {
+    const start = CSS.indexOf(`\n${selector} {\n`)
+    return CSS.slice(start, CSS.indexOf('\n}', start + 1))
+  }
+  const token = (body: string, name: string): string | undefined =>
+    new RegExp(`\\n\\s*${name}:\\s*([^;]+);`).exec(body)?.[1].trim()
+  const dark = block(':root')
+  const light = block(":root[data-theme='light']")
+  const glass = block(":root[data-nt-glass='on']")
+  const glassLight = block(":root[data-nt-glass='on'][data-theme='light']")
+  const tint = (t: string): string => token(t, '--tint-rgb') ?? token(dark, '--tint-rgb')!
+  const resolve = (t: string, name: string): string =>
+    (token(t, name) ?? token(dark, name)!).replace('var(--tint-rgb)', tint(t))
+  const ACCENT = '#0a84ff' // settings default (shared/types.ts)
+  const themes = [
+    ['dark', dark, glass],
+    ['light', light, glassLight]
+  ] as const
+
+  it('the wash constants are the stylesheet\'s', () => {
+    expect(token(glass, '--glass-lift')).toBe(`rgba(var(--tint-rgb), ${GLASS_LIFT_ALPHA})`)
+    expect(token(glass, '--glass-select')).toBe(`color-mix(in srgb, var(--accent) ${GLASS_SELECT_MIX * 100}%, transparent)`)
+  })
+
+  it.each(themes)('%s: the active tab / hovered / selected rows keep 4.5:1 at the readable alpha', (_n, t) => {
+    const hs = glassChromeHighlights(resolve(t, '--text-strong'), tint(t), ACCENT)
+    expect(hs).toHaveLength(2)
+    const a = glassChromeAlpha(resolve(t, '--text'), resolve(t, '--panel'), 4.5, hs)!
+    const plain = glassChromeAlpha(resolve(t, '--text'), resolve(t, '--panel'))!
+    expect(a).toBeGreaterThanOrEqual(plain)
+    expect(a).toBeLessThan(0.8) // still glass, not a slab
+    const panel = parseCssColor(resolve(t, '--panel'))!.rgb
+    for (const h of hs) {
+      const ink = parseCssColor(h.ink)!
+      const wash = parseCssColor(h.wash)!
+      for (let v = 0; v <= 255; v += 3) {
+        expect(chromeHighlightContrast(ink, wash, panel, a, [v, v, v])).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it.each(themes)('%s: placeholders keep 4.5:1 on the plain fill', (_n, t, g) => {
+    const a = glassChromeAlpha(resolve(t, '--text'), resolve(t, '--panel'), 4.5, glassChromeHighlights(resolve(t, '--text-strong'), tint(t), ACCENT))!
+    const ph = parseCssColor((token(g, '--glass-placeholder') ?? token(glass, '--glass-placeholder')!).replace('var(--tint-rgb)', tint(t)))!
+    const panel = parseCssColor(resolve(t, '--panel'))!.rgb
+    for (let v = 0; v <= 255; v += 3) expect(chromeContrast(ph, panel, a, [v, v, v])).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(themes)('%s: small controls keep 3:1 icons at Clear, never below the 0.35 floor', (_n, t, g) => {
+    const dim = Number(token(g, '--glass-control-dim') ?? token(glass, '--glass-control-dim'))
+    const a = glassControlClearAlpha(resolve(t, '--text'), resolve(t, '--panel'), dim)
+    expect(a).toBeGreaterThanOrEqual(GLASS_CONTROL_CLEAR_ALPHA)
+    const text = parseCssColor(resolve(t, '--text'))!
+    const panel = parseCssColor(resolve(t, '--panel'))!.rgb
+    for (let v = 0; v <= 255; v += 3) {
+      const b = Math.min(255, v * dim)
+      expect(chromeContrast(text, panel, a, [b, b, b])).toBeGreaterThanOrEqual(3)
+    }
+    expect(glassChromeAlphas(0, 0.74, undefined, a).control).toBeCloseTo(Math.min(a, 0.74), 10)
   })
 })
 

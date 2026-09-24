@@ -13570,6 +13570,7 @@ body.focus-mode .dock:hover {
   --glass-lift-hover: rgba(var(--tint-rgb), 0.1);
   --glass-lift: rgba(var(--tint-rgb), 0.14);
   --glass-select: color-mix(in srgb, var(--accent) 30%, transparent);
+  --glass-placeholder: rgba(var(--tint-rgb), 0.78);
   /* The Glass slider (App.tsx sets the live values inline; these are the Readable-tick defaults):
      `--glass-t` 0 = Clear … 1 = Tinted.
      Clearer glass blurs a little less and saturates a little more, and refracts at its rim
@@ -13656,6 +13657,7 @@ body.focus-mode .dock:hover {
 :root[data-nt-glass='on'][data-theme='light'] {
   --glass-control-dim: 1.3;
   --muted: rgba(var(--tint-rgb), 0.8);
+  --glass-placeholder: rgba(var(--tint-rgb), 0.86);
 }
 /* The pills' own hovers are opaque literals (`rgba(44,44,46,.95)` is a dark-theme colour): on
    glass a hover is a neutral lift over the same fill. */
@@ -13770,9 +13772,17 @@ body.focus-mode .dock:hover {
 }
 
 /* Row highlights: every hover/selected row that painted `--panel-header` (= the fill again). */
+/* Every highlighted state carries `--text-strong` ink: App.tsx solves the fill's readable alpha for
+   these washes WITH that ink (`glassChromeHighlights`), so a highlighted row keeps 4.5:1 exactly
+   like a plain one (visual QA round 2, N2: the active tab measured 3.9:1). */
 :root[data-nt-glass='on'] :is(.ctx-item, .tab-menu button, .dock-menu button, .dock-menu__sub button):hover:not(:disabled),
 :root[data-nt-glass='on'] :is(.dock-menu__row:hover, .dock-menu__row:focus-within, .settings-nav-row:hover) {
   background: var(--glass-lift);
+  color: var(--text-strong);
+}
+/* Its two icons read at 3:1 on the lift (visual QA round 2, N2: 2.0:1 at the default 0.45). */
+:root[data-nt-glass='on'] .tab.active :is(.tab__board-toggle, .tab__caret) {
+  opacity: 0.8;
 }
 :root[data-nt-glass='on'] .settings-nav-row {
   background: transparent;
@@ -13867,6 +13877,37 @@ body.focus-mode .dock:hover {
 }
 :root[data-nt-glass='on'] .kanban-card:hover {
   background: var(--glass-lift);
+  color: var(--text-strong);
+}
+/* Hovers that painted `--panel-header` (= the fill again, a dark slab on glass — N5). */
+:root[data-nt-glass='on'] :is(.dock-btn:not(.dock-add):hover:not(:disabled), .dock-zoom:hover, .ss-row:hover) {
+  background: var(--glass-lift-hover);
+}
+:root[data-nt-glass='on'] .dock-zoom.active {
+  background: var(--glass-lift);
+  color: var(--text-strong);
+}
+/* The default Button is `bg-panel-header`, the fill stacked on its own panel ("Set default" read as
+   a dark slab, N5): a neutral lift instead; its own hover (`bg-fill-weak`) still applies. */
+:root[data-nt-glass='on'] button.bg-panel-header:not(:hover) {
+  background-color: var(--glass-lift-hover);
+}
+/* Segmented controls: the selected segment is a neutral lifted thumb, as in Apple's segmented
+   control, so the one filled accent per view stays the primary action (N12: Settings → Agents
+   showed seven accent fills). */
+:root[data-nt-glass='on'] .seg-pill-opt {
+  color: var(--muted);
+}
+:root[data-nt-glass='on'] .seg-pill-opt.active {
+  background: var(--glass-lift);
+  color: var(--text-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+/* Placeholders were a hard-coded #757575 in both themes (2.5–3.5:1, N6). On glass they keep 4.5:1
+   on the text-surface fill: `--glass-placeholder` is pinned by glassContrast.test.ts. */
+/* Sticky notes keep theirs: the note's own colour is the surface there, not glass. */
+:root[data-nt-glass='on'] :not(.sticky-node__body)::placeholder {
+  color: var(--glass-placeholder);
 }
 :root[data-nt-glass='on'] .kanban-col--drop {
   border-color: var(--text);
@@ -13879,6 +13920,7 @@ body.focus-mode .dock:hover {
 :root[data-nt-glass='on'] .kanban-card--drop-after::after {
   background: var(--text);
   box-shadow: none;
+  color: var(--text-strong);
 }
 :root[data-nt-glass='on'] .kanban-badge--running {
   color: var(--state-working);
