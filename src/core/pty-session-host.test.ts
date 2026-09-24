@@ -176,6 +176,20 @@ describe('PtyManager session-host contracts', () => {
       bounded.emitSize(45, 30)
       expect(phoneSizes).toEqual([{ cols: 45, rows: 30 }])
 
+      // Every report from the phone is answered, even when the answer has not changed: the phone
+      // clears its "sized to another screen" hint on each resize it sends and needs the host to
+      // restate the truth — here an unchanged vote, re-answered from the last backend size.
+      m.resize(null, sid, 45, 40)
+      expect(phoneSizes).toEqual([
+        { cols: 45, rows: 30 },
+        { cols: 45, rows: 30 }
+      ])
+      // A changed vote is answered by the backend, and forwarded even when it equals the report.
+      m.resize(null, sid, 45, 38)
+      bounded.emitSize(45, 38)
+      expect(phoneSizes.at(-1)).toEqual({ cols: 45, rows: 38 })
+      expect(phoneSizes).toHaveLength(3)
+
       const other = m.createDetached(
         { cols: 80, rows: 24, persistKey: 'node-phone-2' },
         { onData: () => {}, onExit: () => {}, adaptsToSize: true }
