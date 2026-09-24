@@ -135,7 +135,7 @@ long-lived connection (no positional-FIFO fragility, unlike this app's tmux cont
 | `attach`                         | `new-session -A` / `attach-session`     | full, plus a screen the tmux path never needed (see below) |
 | `hasSession`                     | `has-session -t <name>`                 | full (implemented; not on the hot create path — see below) |
 | `write`                          | raw bytes on an attached client's stdin | full |
-| `resize`                         | ConPTY/pty resize + `refresh-client -C` | full; each view claims a size and the effective grid is the componentwise minimum |
+| `resize`                         | ConPTY/pty resize + `refresh-client -C` | full; each view claims a size, the app's grid follows its most recently active view (issue #914) |
 | `pause` / `resume`               | node-pty `pause()`/`resume()`           | full; per-viewer in core and per-connection in the host (first pause / last resume) |
 | `sendKeys`                       | `send-keys -l -- <text>` (+ `Enter`)    | full — works with no attached client, exactly like tmux |
 | `paneCommand`                    | `display-message -p '#{pane_current_command}'` | approximated — see `process-tree.ts` |
@@ -257,8 +257,37 @@ pause and geometry owner even though all of them share one `SessionHostClient` s
 sends a pause only on the local 0→1 edge and a resume only on 1→0; the host then combines that one
 connection-level ticket with other process sockets. Geometry follows the same shape: the client
 reduces its live view claims, the host reduces all socket claims componentwise, and it resizes the
-PTY and headless terminal before serializing a warm screen. Detaching a smaller viewer recomputes
-the grid so remaining viewers can grow.
+PTY and headless terminal before serializing a warm screen. Detaching a viewer recomputes the grid.
+
+**The client's reduction is "most recently active", not "smallest" (issue #914).** Under tmux a
+phone mirroring a node is its own tmux client, and tmux's default `window-size latest` gives the
+window to whichever client was active last — so a phone that dismissed its keyboard got its rows
+back. Here the phone (a relay-served `SessionHostPty`) and the desktop node share ONE client
+socket, and the old componentwise minimum held the phone to the desktop node's rows with nothing on
+screen saying why. `latestClaimSize` (`core/pty-size.ts`) now picks the claim with the highest
+recency: an attach, a claim that CHANGES (a re-fit to the same size does not count, or every fit
+would steal the session), and a write that is not a terminal report (`core/terminal-reports.ts` —
+every attached xterm answers a DA/CPR/OSC query, and counting those would hand the session to
+whoever answered last). Three rules come with it:
+
+- **A viewer that cannot adapt is a ceiling.** Every renderer view renders the size it is told
+  (`pty:size`: letterbox a smaller grid, clip a larger one, as a tmux client does). The phone today
+  does not — it ignores `OP.Resized` — and a pty wider than its screen would wrap into garbage, so a
+  relay sink is `bounding` unless `pty.attach` carried `resizedFrames: true`, and the chosen size is
+  clamped componentwise to every bounding claim.
+- **The pty's real size flows back to every viewer.** `SessionHostPty.onSize` → `PtyManager`
+  `applyBackendSize` → `pty:size` to each view whose xterm is not already at it, and `OP.Resized`
+  (payload = `OP.Resize`'s, 2× uint16 LE) to the relay sink. A session-host `Session` only VOTES in
+  `applySize`; its views are corrected from the backend's answer, which the client sends after every
+  vote, changed or not.
+- **The host's `geometry` push is negotiated at hello, never assumed.** `hello` carries
+  `features: ['geometry']`; the host answers with the subset it speaks and pushes `geometry` frames
+  (and adds `geometry` to attach replies) ONLY on connections that asked. This is not caution: an
+  older client treats every push frame that is not `data` as an EXIT, so a geometry frame sent to it
+  retires a live session on the first resize (`session-host/geometry-host.test.ts` pins it against
+  the real bundled host). Against a host without the feature the client reports its own applied size,
+  which is exact while it is the host's only connection. Across connections (two apps on one host)
+  the HOST still takes the componentwise minimum.
 
 The same name is also a generation boundary. Data and exit events contain a session name but no
 generation id, so an exiting `HostSession` remains registered until its queued output, final exit

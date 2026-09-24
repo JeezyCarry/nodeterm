@@ -657,6 +657,17 @@ interface Session {
   /** Detached sinks: when set, output/exit ALSO go to these callbacks (relay host). */
   onData?: (data: string) => void
   onExit?: (exitCode: number) => void
+  onSinkSize?: (size: PtySize) => void
+  sinkAdapts?: boolean
+  /** The size the relay sink is believed to render (its own last report, or the last size we told
+   *  it). The sink analogue of `shown`. */
+  sinkShown?: PtySize
+  /** session-host only: the size the HOST says the shared pty runs at, which follows the most
+   *  recently active viewer across every `Session` of the node (issue #914). Undefined until the
+   *  backend has answered. */
+  backendSize?: PtySize
+  /** session-host only: whether `appliedSize` was pushed as a ceiling (see `DetachedSinks`). */
+  appliedBounding?: boolean
   /** Pending output chunks, coalesced into one IPC message per flush. */
   buf: string[]
   bufBytes: number
@@ -718,6 +729,14 @@ interface Session {
 export interface DetachedSinks {
   onData(data: string): void
   onExit(exitCode: number): void
+  /** The size the pty actually runs at, when that is not what this sink reported. Only a
+   *  session-host session can disagree with its own viewer: it follows the most recently active
+   *  viewer of the session, which may be a desktop node in another `Session` (issue #914). */
+  onSize?(size: PtySize): void
+  /** The sink's viewer renders whatever size `onSize` reports (letterbox or clip). False — every
+   *  phone build today, which ignores the relay's `Resized` frame — makes the sink's own size a
+   *  CEILING for the shared session: a viewer that cannot adapt would wrap a wider pty's output. */
+  adaptsToSize?: boolean
 }
 
 /**
@@ -3393,10 +3412,14 @@ export class PtyManager {
       // A detached (relay-served) pty is left unseeded: its first `resize` must reach the pty,
       // exactly as before, because its sink never reports a size at create time.
       appliedSize: clientId === null ? undefined : spawnSize,
+      // The spawn's claim went to the backend unbounded (a renderer view adapts to any size).
+      appliedBounding: false,
       nodeId: options.persistKey,
       indexKey: options.persistKey && !sinks ? options.persistKey : undefined,
       onData: sinks?.onData,
       onExit: sinks?.onExit,
+      onSinkSize: sinks?.onSize,
+      sinkAdapts: sinks?.adaptsToSize === true,
       buf: [],
       bufBytes: 0,
       flushTimer: null,
@@ -3439,6 +3462,14 @@ export class PtyManager {
     // fires this notice after that barrier; publishing here would wake co-viewers onto a dead id.
     if (session.indexKey && !session.sessionHost && this.pendingRecycle.has(session.indexKey))
       this.fireRecycled(session.indexKey, true)
+
+    const hostPty = useSessionHost ? (proc as unknown as Partial<SessionHostPty>) : null
+    if (typeof hostPty?.onSize === 'function') {
+      hostPty.onSize((size) => {
+        if (this.sessions.get(sessionId) !== session) return
+        this.applyBackendSize(sessionId, session, size)
+      })
+    }
 
     proc.onData((data) => {
       // A session-host attach can fail after the shim has already delivered startup bytes. Once
@@ -3632,6 +3663,10 @@ export class PtyManager {
     // pty at whatever size it has. Resizing it to a default here would garble the parked xterms'
     // buffers and the tmux pane behind them for no viewer's benefit.
     if (!size) return
+    if (session.sessionHost) {
+      this.applySessionHostSize(sessionId, session, size)
+      return
+    }
     if (session.appliedSize?.cols !== size.cols || session.appliedSize?.rows !== size.rows) {
       session.appliedSize = size
       try {
@@ -3650,6 +3685,62 @@ export class PtyManager {
       // share it, so both xterms receive one send and each renders the authoritative size (and
       // letterboxes) — exactly the co-attach contract. (A solo user, min(one), is never sent at all.)
       this.send(subClient(sub), channel, size)
+    }
+  }
+
+  /**
+   * `applySize` for a session-host session, where the size this `Session` asks for is only one vote
+   * (issue #914): the host follows the most recently active viewer across every `Session` of the
+   * node — this app's canvas node, its relay-served phone, another app — and reports back what the
+   * pty really runs at through `applyBackendSize`. So here we only VOTE; telling our views what
+   * they are showing is left to that answer, which the backend sends after every vote, changed or
+   * not. Min-over-views still decides this Session's vote, because the canvas node and the card
+   * modal share one claim exactly as they share one tmux client.
+   */
+  private applySessionHostSize(sessionId: string, session: Session, size: PtySize): void {
+    const bounding = session.sizes.has(null) && !session.sinkAdapts
+    if (
+      session.appliedSize?.cols !== size.cols ||
+      session.appliedSize?.rows !== size.rows ||
+      session.appliedBounding !== bounding
+    ) {
+      session.appliedSize = size
+      session.appliedBounding = bounding
+      try {
+        ;(session.proc as unknown as SessionHostPty).resize(size.cols, size.rows, bounding)
+      } catch {
+        // resize can throw if the proc already exited; ignore.
+      }
+      return
+    }
+    // Our vote did not move, so no answer is coming — but the view that reported may have just
+    // fitted itself to a size the pty is not running at. Correct it from the last answer we have.
+    if (session.backendSize) this.applyBackendSize(sessionId, session, session.backendSize)
+  }
+
+  /**
+   * The backend's answer: render exactly this. Every view whose xterm is not already at it is told
+   * over `pty:size` (it letterboxes a smaller grid and clips a larger one, as a tmux client does),
+   * and so is the relay sink, which forwards it to the phone as `OP.Resized`.
+   */
+  private applyBackendSize(sessionId: string, session: Session, size: PtySize): void {
+    session.backendSize = { cols: size.cols, rows: size.rows }
+    const channel = IPC.ptySize(sessionId)
+    for (const sub of session.subscribers) {
+      const shown = session.shown.get(sub)
+      if (shown && shown.cols === size.cols && shown.rows === size.rows) continue
+      session.shown.set(sub, session.backendSize)
+      this.send(subClient(sub), channel, session.backendSize)
+    }
+    if (session.onSinkSize && session.sizes.has(null)) {
+      const shown = session.sinkShown
+      if (shown && shown.cols === size.cols && shown.rows === size.rows) return
+      session.sinkShown = session.backendSize
+      try {
+        session.onSinkSize(session.backendSize)
+      } catch {
+        // A relay stream that has gone away must not break the desktop views' answer.
+      }
     }
   }
 
@@ -3887,6 +3978,8 @@ export class PtyManager {
     } else {
       const size = normalizeSize(cols, rows)
       session.sizes.set(sub, size)
+      // The sink's viewer fits itself too; that fit is what it is rendering until told otherwise.
+      if (sub === null) session.sinkShown = size
       // The view's own xterm fits itself locally (as it always has), so its fit — not the last
       // authoritative size we sent it — is what it is rendering right now. If that fit isn't the
       // effective size, applySize() below corrects it straight back.

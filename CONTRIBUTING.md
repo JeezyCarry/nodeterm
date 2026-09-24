@@ -282,6 +282,13 @@ lane unaffected.
   sees the pane app's own bytes — see CLAUDE.md's "We have our own VT emulator" for the one place
   that reasoning is inverted.
 
+- **A new session-host push frame must be negotiated at `hello`, never just sent.** An older
+  `SessionHostClient` treats EVERY push frame whose `type` is not `data` as an exit, and a
+  long-lived host routinely outlives the app that started it — so a frame the connection did not
+  opt into retires a live session. Add the capability to `SESSION_HOST_FEATURES`, send it only to
+  sockets that listed it (the `geometry` push of issue #914 is the worked example), and pin that
+  against the real bundled host as `session-host/geometry-host.test.ts` does.
+
 - **Finding a Windows executable is not the same as being able to spawn it.** A PATH lookup may
   correctly resolve an npm CLI to `<name>.cmd`, but Node's `execFile`/`spawn` cannot execute that
   shim directly. For short-lived app-owned subprocesses, pass the resolved path and argv through

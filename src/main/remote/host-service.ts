@@ -286,8 +286,23 @@ export function createHostHandlers(
 
   // Build the output/exit sinks for a new stream: pipe PTY output into OP.Output frames (with
   // relay backpressure -> setFlow pause/resume) and PTY exit into an OP.Error frame.
-  function makeSinks(streamId: number, stream: Stream): DetachedSinks {
+  //
+  // `resizedFrames` is the client saying it renders `OP.Resized` — the size the shared pty really
+  // runs at, same payload layout as `OP.Resize` (2x uint16 LE cols, rows). Only a session-host
+  // session ever sends one (issue #914: it follows its most recently active viewer, which may be a
+  // desktop node). The frame is sent either way — a client that does not know it drops it — but
+  // a client that did NOT opt in is treated as unable to adapt, so the session never grows past
+  // its screen: output wider than the phone would wrap into garbage there rather than clip.
+  function makeSinks(streamId: number, stream: Stream, resizedFrames: boolean): DetachedSinks {
     return {
+      adaptsToSize: resizedFrames,
+      onSize: (size) => {
+        const payload = new Uint8Array(4)
+        const view = new DataView(payload.buffer)
+        view.setUint16(0, Math.min(0xffff, Math.max(1, size.cols)), true)
+        view.setUint16(2, Math.min(0xffff, Math.max(1, size.rows)), true)
+        socket.sendFrame(OP.Resized, streamId, stream.seq++, payload)
+      },
       onData: (data) => {
         const bytes = textEncoder.encode(data)
         const ok = socket.sendFrame(OP.Output, streamId, stream.seq++, bytes)
@@ -352,7 +367,7 @@ export function createHostHandlers(
 
     const streamId = ++streamCounter
     const stream: Stream = { sessionId: '', persistKey: nodeId, seq: 0, paused: false }
-    const sinks = makeSinks(streamId, stream)
+    const sinks = makeSinks(streamId, stream, p.resizedFrames === true)
 
     // Reserve the stream, then respond so the client can route Input/Resize frames; the snapshot
     // + live attach then proceed. Capturing the screen is async (a tmux side-call).
