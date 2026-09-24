@@ -11,13 +11,16 @@ Terminal, and it does not change the Server Edition or mobile companion.
 Selected automatically, per session, in this order:
 
 ```
-real tmux found on this machine  →  tmux (unchanged, every platform)
-no tmux found, tmuxEnabled       →  session host (this document)
-neither                          →  plain shell (no persistence, as before)
+Windows + tmuxEnabled            →  session host (this document)
+POSIX + real tmux found          →  tmux (unchanged)
+POSIX + no tmux, tmuxEnabled     →  session host (this document)
+tmuxEnabled off                 →  plain shell (no persistence)
 ```
 
-Stock Windows provides no native tmux, so the session host is the normal persistence backend
-there. On macOS/Linux nothing changes: if tmux is installed, it is still preferred every time.
+Stock Windows provides no native tmux, and Windows tmux-compatible binaries do not implement the
+Unix tmux control and console semantics this application relies on. The session host is therefore
+the authoritative Windows persistence backend even when a `tmux.exe` appears on `PATH`. On
+macOS/Linux nothing changes: a real tmux installation remains preferred there.
 
 ## Why not just port tmux's approach
 
