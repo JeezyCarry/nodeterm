@@ -3819,8 +3819,10 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   (`settings.canvasDots`, default ON in every appearance, read through `showCanvasDots` — only a
   literal `false` hides them) omits the React Flow `<Background>` entirely; it is display only, and
   snap-to-grid / align-to-grid keep using `gridSize`. Pure renderer + settings.json, so the Server
-  Edition gets it unchanged. The kanban overlay paints its own background and is
-  unaffected.
+  Edition gets it unchanged. Under Liquid Glass the kanban overlay paints the SAME wallpaper
+  (`useBoardWallpaperStyle`, `background-attachment: fixed` so it lines up with `.canvas-root`) and
+  stays opaque to the canvas below — the covered-canvas animation gate stays valid; other looks keep
+  the board's own background.
 - **`background-image` + longhands, never a `background` shorthand next to `var(--canvas-bg)`.**
   MEASURED live: Chromium drops a var()-containing value once it passes ~2 MB, and a still's data:
   URL is ~3 MB, so the shorthand resolved to nothing and the canvas stayed black. The class rule
@@ -3838,7 +3840,11 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
 - **The cache is pruned on a SAVED change and on import, never at boot.** `SettingsStore.init`
   answers an unreadable settings.json with the defaults, and pruning against that would delete the
   image the user chose. Only hash-named full-size files are candidates; thumbnails, temps and
-  foreign files are never touched, nor is a conversion in flight. A failed renderer load is not
+  foreign files are never touched, nor is a conversion in flight. **The most recent imported image
+  is kept too** (`settings.recentWallpaperImage`, written by `wallpaperChoice` when an image is chosen
+  or left; `wallpapersToKeep` feeds the prune): choosing a preset once deleted it and the "Your image"
+  tile vanished (visual QA H6). Core does not hot-reload in `electron-vite dev` — a prune change
+  needs an app restart to take effect live. A failed renderer load is not
   cached (the file may appear).
 - **Terminal nodes use their OWN theme's tint** (the chrome fill is for everything else). The node fill is the terminal theme's background at an alpha
   from `glassTintAlpha` (`renderer/lib/glassContrast.ts`): the smallest alpha at which the theme
@@ -3857,7 +3863,9 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   (`glassTheme`, memoised per theme so `applyLiveOptions`' identity compare stays a no-op) plus
   `allowTransparency`, so the WebGL atlas is rasterised without a baked-in background. Both toggle
   LIVE through `applyLiveOptions` (the addon rebuilds its atlas on any option change); the card
-  modal and the settings preview never pass glass. Glass stands down while a shared glyph grid is
+  modal passes glass too (`useTerminalGlass`, shared with TerminalNode, sets the same
+  `--term-glass-*` tint on `.kanban-modal__termwrap--glass`; its DOM renderer keeps app-painted cell
+  backgrounds opaque); the settings preview never does. Glass stands down while a shared glyph grid is
   mounted (it paints text BELOW the nodes, so a tint would cover it), and, only when **Keep blur while
   moving** is off, the blur is dropped while the camera moves (`.canvas-moving`, toggled by
   `onMoveStart`/`onMoveEnd` via classList so a pan does not re-render Canvas) — the tint alone
@@ -3917,8 +3925,18 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   inside a blurred element re-blurs its parent's pixels at double cost); nested pieces (dock menus,
   sidebar icon buttons) take the fill alone. Node blur pauses during camera moves; chrome is static
   and keeps it. **Left opaque, deliberately:** Monaco, `<webview>` and `<video>` bodies (another
-  renderer's surface), sticky notes (the colour is the note), the kanban board (opaque overlay), and
-  the `surface-sunken`/`--bg` wells. The minimap draws node rectangles in translucent theme ink
+  renderer's surface), sticky notes (the colour is the note), and the `surface-sunken` wells
+  (`bg-bg` inputs are a sink/lift of the page on glass). **Kanban**: header strip + columns are
+  text-surface glass, cards a `--glass-lift-hover` lift WITHOUT their own blur, column/header dots
+  neutral rings, status chips ink on a hue wash, drop target + reorder line neutral ink.
+  **Two chrome fills (slider scope)**: `--glass-chrome-bg` for TEXT surfaces never drops below the
+  readable alpha (and `--glass-text-blur` below the tick's blur); `--glass-control-bg` for the small
+  floating CONTROLS (tab bar, dock, zoom, toolbar buttons, minimap, pills, sessions toggle) follows
+  the slider to `GLASS_CONTROL_CLEAR_ALPHA` 0.35, and `--glass-control-blur` dims (dark, ×0.7) or
+  brightens (light, ×1.3) their backdrop left of the tick — both from `glassChromeAlphas`. A new
+  floating container goes in ONE of the two lists. **Highlights** are `--glass-lift(-hover)` (theme
+  ink 14%/10%) or `--glass-select` (accent 30%) for THE selection — never `--panel*`, which is the
+  fill again (visual QA H1/H2). Under glass `--muted` is 0.7 dark / 0.8 light and `--muted-2` = `--muted`. The minimap draws node rectangles in translucent theme ink
   (inline node colours overridden with `!important`), keeping the working/attention/unread strokes.
 - **No window accents under Liquid Glass.** A terminal window's per-node colour arrives as INLINE
   styles (`borderTopColor`, the colour dot's background), so the overrides carry `!important`: a
@@ -3938,7 +3956,7 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
 - **Glass slider + refraction** (Settings → Appearance, shown only under Liquid Glass; iOS 26's
   Clear ↔ Tinted). `settings.glassTint` is a slider POSITION, not an alpha (`null` = the Readable
   tick, read through `resolveGlassSlider`): every surface has its own readable alpha, so each maps
-  the position through three points — `GLASS_CLEAR_ALPHA` 0.2 at Clear, its OWN computed readable
+  the position through three points — `GLASS_CLEAR_ALPHA` 0.2 at Clear (terminal nodes; chrome controls 0.35, text surfaces never below readable — see Liquid Glass chrome), its OWN computed readable
   alpha at `GLASS_READABLE_TICK` (0.7), `max(readable, 0.95)` at Tinted (`glassSliderAlpha`). At the
   tick every surface is exactly at the alpha `glassTintAlpha`/`glassChromeAlpha` computed, and every
   alpha right of it is higher — so Readable→Tinted keeps 4.5:1; left of the tick the row says the
@@ -3991,7 +4009,7 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   restart agents after a theme switch.
 - **Surfaces.** Desktop: full. Server Edition: gradients + glass; the stills list is empty (not
   macOS) and "Choose image…" is hidden (a picker there browses the SERVER's disk). Relay tabs keep
-  a stub (no stills, import refused). Mobile: N/A (no canvas). Kanban: N/A (the board is opaque).
+  a stub (no stills, import refused). Mobile: N/A (no canvas). Kanban: the board paints the wallpaper under Liquid Glass (see Liquid Glass chrome).
 
 ## Keybindings (registry, overrides, dispatch)
 
