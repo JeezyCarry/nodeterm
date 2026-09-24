@@ -303,8 +303,12 @@ export function installGlassCellBackgrounds(addon: WebglAddon): boolean {
         const buf = rr._terminal.buffer.active
         scratch ??= buf.getNullCell() as unknown as CellLike
         line = buf.getLine(buf.viewportY + y)
-        line?.getCell(startX, scratch as never)
-        if (typeof scratch.bg === 'number') cellBg = scratch.bg
+        // No line = unknown. `scratch` is shared across calls, so reading it without a fresh
+        // getCell would judge this run against the PREVIOUS run's cell.
+        if (line) {
+          line.getCell(startX, scratch as never)
+          if (typeof scratch.bg === 'number') cellBg = scratch.bg
+        }
       }
       const kind = classifyRun(fg, bg, cellBg, (back & 255) / 255)
       if (kind === 'stock') return

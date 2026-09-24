@@ -1251,6 +1251,10 @@ export function TerminalNode({
   // The alpha app-painted cell backgrounds follow on this node (null = not glass, stock rendering).
   // A ref too, because `acquireWebgl` (inside the lifecycle closure) syncs every fresh addon to it.
   const glassCellAlphaRef = useRef<number | null>(null)
+  // The live WebGL addon, for the one job of installing the glass cell-background wrap when glass
+  // turns on after the context was granted. May point at a disposed addon; installing on one is a
+  // no-op (the wrap finds no renderer), and the next grant installs on the fresh one.
+  const webglAddonRef = useRef<WebglAddon | null>(null)
   // The account list, for the chip and for the READERS below: a config dir the user links while
   // this pane sits quiet must resolve to its new account immediately, not at the next hook event.
   const claudeAccounts = useSettings((s) => s.settings.claudeAccounts)
@@ -2273,7 +2277,10 @@ export function TerminalNode({
         webgl = a
         // Glass: app-painted cell backgrounds become tinted glass (glass-cell-backgrounds.ts). A
         // fresh addon starts from an empty model, so the repaint below already applies the alpha.
-        installGlassCellBackgrounds(a)
+        // The wrap patches the addon's SHARED renderer prototype, so it is installed only once a
+        // glass terminal needs it: a user who never turns glass on never runs a patched renderer.
+        webglAddonRef.current = a
+        if (glassCellAlphaRef.current !== null) installGlassCellBackgrounds(a)
         setGlassCellAlpha(term, glassCellAlphaRef.current)
         // THE RESTORE PATH — rebuild, never trust the addon's in-place recovery.
         //
@@ -4843,6 +4850,8 @@ export function TerminalNode({
     glassCellAlphaRef.current = glassCellAlpha
     const term = termRef.current
     if (!term) return
+    // Glass turned on after this terminal's WebGL grant: install the wrap now (idempotent).
+    if (glassCellAlpha !== null && webglAddonRef.current) installGlassCellBackgrounds(webglAddonRef.current)
     return scheduleGlassCellAlpha(term, glassCellAlpha, () => term.clearTextureAtlas())
   }, [glassCellAlpha])
 
