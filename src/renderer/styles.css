@@ -13639,7 +13639,6 @@ body.focus-mode .dock:hover {
 :root[data-nt-glass='on']
   :is(
     .tabbar,
-    .dock,
     .controls-cluster > button,
     .react-flow__controls,
     .react-flow__minimap.minimap,
@@ -13699,10 +13698,43 @@ body.focus-mode .dock:hover {
   mask-composite: exclude;
 }
 
-/* Nested inside a blurred container (or unknown nesting): the fill only. */
-/* .ctx-popover opens INSIDE a terminal node (the context meter), which is already blurred. */
-:root[data-nt-glass='on'] :is(.dock-menu, .dock-menu__sub, .ctx-popover) {
-  background: var(--glass-chrome-bg) !important;
+/* NEVER translucent without a working blur (visual QA round 2, N1). An element with its own
+   backdrop-filter is a BACKDROP ROOT: a blur on anything inside it samples only the root's own
+   pixels, so a menu that opens outside its parent (or over sharp content inside it) blurs nothing
+   and the text behind it reads straight through. Two fixes, one per case:
+   - The dock and its menus HOST menus that pop out of them, so their glass lives on a ::before
+     layer (fill, hairline and blur). The container itself has no backdrop-filter, is no backdrop
+     root, and each menu — the submenu included — blurs the canvas like any top-level surface. The
+     dock keeps the control fill (it follows the slider); its menus are text surfaces.
+   - A popover INSIDE a glass node (the context meter's, the colour swatches) cannot blur: the node
+     is its backdrop root and the terminal text under it is sharp. It is solid — the menu colour at
+     full alpha — instead. The node's own surface is unchanged. */
+:root[data-nt-glass='on'] :is(.dock, .dock-menu, .dock-menu__sub) {
+  background: transparent !important;
+  border-color: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  isolation: isolate;
+}
+:root[data-nt-glass='on'] :is(.dock, .dock-menu, .dock-menu__sub)::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border: 1px solid var(--glass-edge);
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--glass-chrome-bg);
+  -webkit-backdrop-filter: var(--glass-text-blur);
+  backdrop-filter: var(--glass-text-blur);
+}
+:root[data-nt-glass='on'] .dock::before {
+  background: var(--glass-control-bg);
+  -webkit-backdrop-filter: var(--glass-control-blur);
+  backdrop-filter: var(--glass-control-blur);
+}
+:root[data-nt-glass='on'] :is(.ctx-popover, .color-popover) {
+  background: rgb(var(--menu-rgb)) !important;
 }
 /* The sessions sidebar opens over its own toggle (same corner); through translucent glass the
    toggle's glyph ghosted above "Sessions" (visual QA M5). The sidebar's × closes it. */

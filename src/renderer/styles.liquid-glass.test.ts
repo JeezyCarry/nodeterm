@@ -62,7 +62,7 @@ describe('Liquid Glass stylesheet', () => {
     for (const text of ['.nt-settings', '.palette', '.ctx-menu', '.tab-menu', '.sessions-sidebar', '.confirm', '.usage-popover', '.kanban-col', '.kanban-modal']) {
       expect(outer(text)?.body, text).toMatch(/var\(--glass-chrome-bg\)[\s\S]*var\(--glass-text-blur\)/)
     }
-    for (const control of ['.dock', '.tabbar', '.react-flow__controls', '.react-flow__minimap', '.usage-pill', '.sysres-pill', '.usage-refresh', '.controls-cluster > button', '.sessions-icon-cluster button']) {
+    for (const control of ['.tabbar','.react-flow__controls', '.react-flow__minimap', '.usage-pill', '.sysres-pill', '.usage-refresh', '.controls-cluster > button', '.sessions-icon-cluster button']) {
       expect(outer(control)?.body, control).toMatch(/var\(--glass-control-bg\)[\s\S]*var\(--glass-control-blur\)/)
     }
   })

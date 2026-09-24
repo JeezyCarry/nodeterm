@@ -91,6 +91,9 @@ describe('palette tokens', () => {
     const rules = CSS.slice(CSS.indexOf('\n}\n', CSS.search(/^:root\[data-theme='light'\]/m)))
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*--sys-[a-z]+:.*$/gm, '') // palette declarations (the Increase Contrast block)
+      // Declarations only: a SELECTOR may name a hue to match an inline literal it repaints (the
+      // Liquid Glass OK-meter remap, `[style*='rgb(48, 209, 88)']`) — that paints nothing.
+      .replace(/[^{}]+\{/g, '{')
     const hits = rules.match(
       /rgba?\(\s*(255,\s*69,\s*58|10,\s*132,\s*255|48,\s*209,\s*88|255,\s*159,\s*10|191,\s*122,\s*240|217,\s*119,\s*87)|#(ff453a|30d158|32d74b|ff9f0a|bf7af0|ffb340|f85149|8e8e93)\b/gi
     )
@@ -304,10 +307,10 @@ describe('needs-you and priorities under glass', () => {
 })
 
 describe('no nested blur for the context popover', () => {
-  it('.ctx-popover (inside a blurred node) takes the fill only', () => {
+  it('.ctx-popover (inside a blurred node) is solid, never blurred or translucent (visual QA N1)', () => {
     const blurList = CSS.slice(CSS.indexOf('/* Outermost chrome: fill + blur. */'))
     expect(blurList.slice(0, blurList.indexOf('{'))).not.toContain('.ctx-popover')
-    const fillOnly = CSS.slice(CSS.indexOf('/* .ctx-popover opens INSIDE a terminal node'))
-    expect(fillOnly.slice(0, fillOnly.indexOf('{'))).toContain('.ctx-popover')
+    const solid = CSS.slice(CSS.indexOf(":root[data-nt-glass='on'] :is(.ctx-popover, .color-popover) {"))
+    expect(solid.slice(0, solid.indexOf('}'))).toMatch(/background:\s*rgb\(var\(--menu-rgb\)\)/)
   })
 })
