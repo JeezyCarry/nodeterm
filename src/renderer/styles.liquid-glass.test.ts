@@ -69,7 +69,7 @@ describe('Liquid Glass stylesheet', () => {
   })
 
   it('row highlights on glass never re-stack a panel token (visual QA H1/H2)', () => {
-    for (const row of ['.palette__item.active', '.settings-nav-row', '.ctx-item', '.tab-menu button', '.tab.active', '.dock-btn', '.dock-zoom', '.ss-row:hover', 'button.bg-panel-header', '.seg-pill-opt.active']) {
+    for (const row of ['.palette__item.active', '.settings-nav-row', '.ctx-item', '.tab-menu button', '.tab.active', '.dock-btn', '.dock-zoom', '.ss-row:hover', 'button.bg-panel-header', '.seg-pill-opt.active', '.speech-lang__row.is-active']) {
       const hits = gated(row).filter((r) => /background(-color)?:/.test(r.body))
       expect(hits.length, row).toBeGreaterThan(0)
       for (const r of hits) expect(r.body, row).not.toMatch(/--panel|--glass-chrome-bg/)
@@ -77,10 +77,15 @@ describe('Liquid Glass stylesheet', () => {
   })
 
   it('highlighted rows carry --text-strong, the ink their readable alpha is solved for (N2)', () => {
-    for (const row of ['.palette__item.active', '.ctx-item', '.tab.active', '.dock-zoom.active', '.seg-pill-opt.active']) {
+    // …the hover lift too: it is not in the solver's list, and --text on it is 4.11:1 (code review 5 #1).
+    for (const row of ['.palette__item.active', '.ctx-item', '.tab.active', '.dock-zoom.active', '.seg-pill-opt.active', '.dock-btn', '.ss-row:hover', 'button.bg-panel-header', '.dock-menu__row:hover']) {
       const hits = gated(row).filter((r) => /background(-color)?:/.test(r.body))
-      expect(hits.some((r) => /color:\s*var\(--text-strong\)/.test(r.body)), row).toBe(true)
+      expect(hits.length, row).toBeGreaterThan(0)
+      for (const r of hits) expect(r.body, row).toMatch(/color:\s*var\(--text-strong\)/)
     }
+    // A Layouts row is one highlight: its main button never stacks a second lift on the row's.
+    expect(gated('.dock-menu button').some((r) => /dock-menu button(?!:not\(\.dock-menu__row-main\))/.test(r.selector) && /:hover/.test(r.selector))).toBe(false)
+    expect(gated('button.dock-menu__row-main').some((r) => /color:\s*var\(--text-strong\)/.test(r.body))).toBe(true)
   })
 
   it('never translucent without a working blur (N1)', () => {

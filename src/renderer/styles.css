@@ -7195,6 +7195,25 @@ button.group-node__setup:disabled {
 :root[data-nt-glass='on'] .usage-pill__summary > * {
   flex: 0 0 auto;
 }
+/* …except the FIRST text segment: it always keeps line 1 (capped to what is left beside the 42px
+   minibar and its 6px gap, and the error mark) and elides there, so a too-narrow window never
+   leaves the bar alone. The error mark leads, so it is never the segment that wraps away (code
+   review 5 #7). */
+:root[data-nt-glass='on'] .usage-pill__summary > :is(.usage-pill__minibar + span, :first-child:not(.usage-pill__minibar)) {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(100% - 48px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:root[data-nt-glass='on'] .usage-pill__summary:has(> .usage-pill__dim) > .usage-pill__minibar + span {
+  max-width: calc(100% - 68px);
+}
+:root[data-nt-glass='on'] .usage-pill__summary > .usage-pill__dim {
+  order: -1;
+  margin: 0 6px 0 0;
+}
 /* While the popover is open, rise above the sessions sidebar (z-index 12) — a tall sidebar
    reaches the bottom-left corner and would cover the panel. Closed pill keeps its low layer so
    it never draws over the sidebar itself.
@@ -13675,7 +13694,7 @@ body.focus-mode .dock:hover {
 :root[data-nt-glass='on'][data-theme='light'] {
   --glass-control-dim: 1.3;
   --muted: rgba(var(--tint-rgb), 0.8);
-  --glass-placeholder: rgba(var(--tint-rgb), 0.86);
+  --glass-placeholder: rgba(var(--tint-rgb), 0.85);
 }
 /* The pills' own hovers are opaque literals (`rgba(44,44,46,.95)` is a dark-theme colour): on
    glass a hover is a neutral lift over the same fill. */
@@ -13793,6 +13812,46 @@ body.focus-mode .dock:hover {
 :root[data-nt-glass='on'] .tooltip--top {
   margin-top: -10px;
 }
+/* The three dock menus sat 9, 2 and −5px from the dock, the Zoom menu's rim ON the dock's (visual
+   QA round 3, NL1): each clears the dock's top edge by 8px. Add hangs from the dock itself; Layouts
+   and Zoom from their wraps, which start 8px and 15px below the dock's top (7px padding + 1px
+   border; the 24px zoom pill is centred in the 38px row). */
+:root[data-nt-glass='on'] .dock > .dock-menu {
+  bottom: calc(100% + 8px);
+}
+:root[data-nt-glass='on'] .dock-layouts-wrap > .dock-menu {
+  bottom: calc(100% + 16px);
+}
+:root[data-nt-glass='on'] .dock-zoom-wrap > .dock-menu {
+  bottom: calc(100% + 23px);
+}
+/* The RAM panel reached over the dock's + corner (NL2): it rises above the dock (54px tall, same
+   baseline as the pill row) by 8px, and a long session name elides instead of pushing the row's
+   actions onto a second line. */
+:root[data-nt-glass='on'] .sessmem-panel {
+  bottom: calc(54px + 8px);
+}
+:root[data-nt-glass='on'] .sessmem-row__main {
+  flex-basis: 0;
+}
+/* The terminal theme list hangs its checkmark gutter to the LEFT of the trigger, so the swatch and
+   name columns line up with the trigger's, as a macOS pop-up button does (NL3: 36px apart). The
+   ⌄ glyph sits low in its box; it is centred on the name. */
+:root[data-nt-glass='on'] .theme-select__menu {
+  margin-left: -36px;
+}
+:root[data-nt-glass='on'] .theme-select__trigger .bind-select__chev {
+  transform: translateY(-3px);
+}
+/* The Speech language list's current row stacked `--panel` on the menu (NL5): it is THE choice. */
+:root[data-nt-glass='on'] .speech-lang__row.is-active {
+  background: var(--glass-select);
+  color: var(--text-strong);
+}
+/* A menu none of whose rows has an icon keeps no empty icon column (the Help menu, NL8). */
+:root[data-nt-glass='on'] .ctx-menu:not(:has(.ctx-icon:not(:empty))) .ctx-icon {
+  display: none;
+}
 /* The sessions sidebar opens over its own toggle (same corner); through translucent glass the
    toggle's glyph ghosted above "Sessions" (visual QA M5). The sidebar's × closes it. */
 :root[data-nt-glass='on'] .canvas-root:has(.sessions-sidebar) .sessions-icon-cluster {
@@ -13806,9 +13865,10 @@ body.focus-mode .dock:hover {
   background: var(--glass-lift);
   color: var(--text-strong);
 }
-/* Its two icons read at 3:1 on the lift (visual QA round 2, N2: 2.0:1 at the default 0.45). */
+/* Its two icons read at 3:1 on the lift (visual QA round 2, N2: 2.0:1 at the default 0.45; 0.8 still
+   measured 2.90:1 over Sunrise at Clear, round 3 NL7). */
 :root[data-nt-glass='on'] .tab.active :is(.tab__board-toggle, .tab__caret) {
-  opacity: 0.8;
+  opacity: 0.9;
 }
 
 /* Input wells: the default `bg-bg` well is the opaque page colour, which read as a hole punched in
@@ -13866,14 +13926,23 @@ body.focus-mode .dock:hover {
 /* Every highlighted state carries `--text-strong` ink: App.tsx solves the fill's readable alpha for
    these washes WITH that ink (`glassChromeHighlights`), so a highlighted row keeps 4.5:1 exactly
    like a plain one (visual QA round 2, N2: the active tab measured 3.9:1). */
-:root[data-nt-glass='on'] :is(.ctx-item, .tab-menu button, .dock-menu button, .dock-menu__sub button):hover:not(:disabled),
+:root[data-nt-glass='on'] :is(.ctx-item, .tab-menu button, .dock-menu button:not(.dock-menu__row-main), .dock-menu__sub button):hover:not(:disabled),
 :root[data-nt-glass='on'] :is(.dock-menu__row:hover, .dock-menu__row:focus-within, .settings-nav-row:hover) {
   background: var(--glass-lift);
   color: var(--text-strong);
 }
-/* Hovers that painted `--panel-header` (= the fill again, a dark slab on glass — N5). */
+/* A Layouts row is ONE highlight: its main button sits on the row's lift and must not stack a
+   second one (3.48:1, code review 5 #2), and it takes the row's ink while any part of the row is
+   hovered or focused (3.78:1 on --text). */
+:root[data-nt-glass='on'] .dock-menu__row:is(:hover, :focus-within) button.dock-menu__row-main {
+  color: var(--text-strong);
+}
+/* Hovers that painted `--panel-header` (= the fill again, a dark slab on glass — N5). The hover
+   lift is not in the solver's highlight list, so its ink is --text-strong like every other
+   highlight (--text on it measured 4.11 dark / 4.04 light, code review 5 #1). */
 :root[data-nt-glass='on'] :is(.dock-btn:not(.dock-add):hover:not(:disabled), .dock-zoom:hover, .ss-row:hover) {
   background: var(--glass-lift-hover);
+  color: var(--text-strong);
 }
 :root[data-nt-glass='on'] .dock-zoom.active {
   background: var(--glass-lift);
@@ -13883,12 +13952,18 @@ body.focus-mode .dock:hover {
    a dark slab, N5): a neutral lift instead; its own hover (`bg-fill-weak`) still applies. */
 :root[data-nt-glass='on'] button.bg-panel-header:not(:hover) {
   background-color: var(--glass-lift-hover);
+  color: var(--text-strong);
 }
 /* Segmented controls: the selected segment is a neutral lifted thumb, as in Apple's segmented
    control, so the one filled accent per view stays the primary action (N12: Settings → Agents
    showed seven accent fills). */
 :root[data-nt-glass='on'] .seg-pill-opt {
   color: var(--muted);
+}
+/* The rule above outranks the base `.seg-pill-opt:hover`, which left unselected segments without
+   hover feedback (code review 5 #5). */
+:root[data-nt-glass='on'] .seg-pill-opt:hover:not(.active) {
+  color: var(--text);
 }
 :root[data-nt-glass='on'] .seg-pill-opt.active {
   background: var(--glass-lift);
@@ -13901,6 +13976,12 @@ body.focus-mode .dock:hover {
 :root[data-nt-glass='on'] :not(.sticky-node__body)::placeholder {
   color: var(--glass-placeholder);
 }
+/* An empty field must look empty (visual QA round 3, NM1): the placeholder's 4.5:1 floor sits at
+   --text's own alpha in light (0.85), so TYPED text in chrome fields takes --text-strong instead.
+   Terminal nodes and the card-modal terminal keep their theme ink; notes keep their own. */
+:root[data-nt-glass='on'] :is(input:not([type]), input[type='text'], input[type='search'], textarea):not(.term-node *, .sticky-node *, .kanban-modal__termwrap *, .monaco-editor *) {
+  color: var(--text-strong);
+}
 :root[data-nt-glass='on'] .settings-nav-row {
   background: transparent;
 }
@@ -13911,10 +13992,6 @@ body.focus-mode .dock:hover {
 }
 :root[data-nt-glass='on'] .tab.active::after {
   display: none;
-}
-/* The project menu hangs from its caret, 3px INSIDE the glass bar (N11); on glass it clears the bar. */
-:root[data-nt-glass='on'] .tab-menu--tabbar {
-  top: calc(var(--tabbar-h) + 4px) !important;
 }
 
 /* The node's label row has its own `--panel` fill (for the glyph grid, which stands glass down);
@@ -14043,6 +14120,28 @@ body.focus-mode .dock:hover {
    (3.1–3.6:1 on glass, visual QA M3): secondary label on glass, like the rest of the look. */
 :root[data-nt-glass='on'] :is(.board-log__title, .board-log__hint, .board-log__time, .board-log__event-body) {
   color: var(--muted);
+}
+/* Secondary controls and labels were hard-coded 35–65% ink, 1.95–3.7:1 on glass (visual QA round 3,
+   NM2/NM3): they take the glass secondary label; hovers are the neutral lift. The activity author
+   was painted in the author's colour (systemGray for "you", 1.97:1 in light) — on glass it is ink,
+   and the dot beside it keeps the colour. */
+:root[data-nt-glass='on'] :is(.kanban-col__count, .kanban-col__close, .kanban-col__new, .kanban-meta__label, .kanban-modal__column, .kanban-prio) {
+  color: var(--muted);
+}
+:root[data-nt-glass='on'] :is(.kanban-col__new, .kanban-prio) {
+  border-color: var(--glass-edge);
+}
+:root[data-nt-glass='on'] :is(.kanban-col__new, .kanban-prio):hover {
+  background: var(--glass-lift);
+  border-color: var(--glass-edge);
+  color: var(--text-strong);
+}
+:root[data-nt-glass='on'] .kanban-col__close:hover {
+  color: var(--danger);
+}
+:root[data-nt-glass='on'] .board-log__author {
+  color: var(--text) !important;
+  font-weight: 600;
 }
 :root[data-nt-glass='on'] .kanban-modal__termwrap--glass {
   background: var(--term-glass-bg);

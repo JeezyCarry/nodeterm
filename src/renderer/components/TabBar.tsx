@@ -163,8 +163,13 @@ export function TabBar({
 
   const openMenu = (id: string, anchor: HTMLElement) => {
     const r = anchor.getBoundingClientRect()
+    // Under Liquid Glass the bar is a visible glass slab and the caret sits inside it, so the menu
+    // hangs from the BAR's bottom edge rather than 3px inside it (visual QA N11). Still a plain
+    // position, so useMenuFlip keeps flipping/clamping a tall menu.
+    const glass = document.documentElement.dataset.ntGlass === 'on'
+    const bottom = glass ? Math.max(r.bottom, anchor.closest('.tabbar')?.getBoundingClientRect().bottom ?? 0) : r.bottom
     setMenuId(id)
-    setMenuPos({ top: r.bottom + 4, left: r.left, flipBase: r.top - 4 })
+    setMenuPos({ top: bottom + 4, left: r.left, flipBase: r.top - 4 })
   }
 
   // Viewport-edge flip for the caret menu, same behavior as the right-click ContextMenu. The
@@ -472,7 +477,7 @@ export function TabBar({
         createPortal(
           <div
             ref={menuFlip.ref}
-            className="tab-menu tab-menu--tabbar"
+            className="tab-menu"
             style={{ top: menuFlip.top, left: menuFlip.left }}
             onClick={(e) => e.stopPropagation()}
           >

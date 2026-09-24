@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { TERMINAL_THEMES } from '../terminal/themes'
+import { SYSTEM_NODE_COLOR_SWATCHES } from '@shared/node-colors'
 import {
   GLASS_ALPHA_MAX,
   GLASS_ALPHA_MIN,
@@ -181,19 +182,24 @@ describe('highlights, placeholders and small controls on the chrome fill (visual
     expect(token(glass, '--glass-select')).toBe(`color-mix(in srgb, var(--accent) ${GLASS_SELECT_MIX * 100}%, transparent)`)
   })
 
-  it.each(themes)('%s: the active tab / hovered / selected rows keep 4.5:1 at the readable alpha', (_n, t) => {
-    const hs = glassChromeHighlights(resolve(t, '--text-strong'), tint(t), ACCENT)
-    expect(hs).toHaveLength(2)
-    const a = glassChromeAlpha(resolve(t, '--text'), resolve(t, '--panel'), 4.5, hs)!
-    const plain = glassChromeAlpha(resolve(t, '--text'), resolve(t, '--panel'))!
-    expect(a).toBeGreaterThanOrEqual(plain)
-    expect(a).toBeLessThan(0.8) // still glass, not a slab
+  // Every accent the user can pick, not only the default blue: a bright accent's selection wash
+  // needs a denser fill (dark: Yellow 0.825, Teal 0.76). Accepted up to 0.85 — still glass, not a
+  // slab (code review 5 #8).
+  it.each(themes)('%s: the active tab / hovered / selected rows keep 4.5:1 at the readable alpha, every accent', (_n, t) => {
     const panel = parseCssColor(resolve(t, '--panel'))!.rgb
-    for (const h of hs) {
-      const ink = parseCssColor(h.ink)!
-      const wash = parseCssColor(h.wash)!
-      for (let v = 0; v <= 255; v += 3) {
-        expect(chromeHighlightContrast(ink, wash, panel, a, [v, v, v])).toBeGreaterThanOrEqual(4.5)
+    const plain = glassChromeAlpha(resolve(t, '--text'), resolve(t, '--panel'))!
+    for (const { value: accent, label } of SYSTEM_NODE_COLOR_SWATCHES) {
+      const hs = glassChromeHighlights(resolve(t, '--text-strong'), tint(t), accent)
+      expect(hs).toHaveLength(2)
+      const a = glassChromeAlpha(resolve(t, '--text'), resolve(t, '--panel'), 4.5, hs)!
+      expect(a, label).toBeGreaterThanOrEqual(plain)
+      expect(a, label).toBeLessThanOrEqual(0.85)
+      for (const h of hs) {
+        const ink = parseCssColor(h.ink)!
+        const wash = parseCssColor(h.wash)!
+        for (let v = 0; v <= 255; v += 3) {
+          expect(chromeHighlightContrast(ink, wash, panel, a, [v, v, v]), label).toBeGreaterThanOrEqual(4.5)
+        }
       }
     }
   })
@@ -203,6 +209,9 @@ describe('highlights, placeholders and small controls on the chrome fill (visual
     const ph = parseCssColor((token(g, '--glass-placeholder') ?? token(glass, '--glass-placeholder')!).replace('var(--tint-rgb)', tint(t)))!
     const panel = parseCssColor(resolve(t, '--panel'))!.rgb
     for (let v = 0; v <= 255; v += 3) expect(chromeContrast(ph, panel, a, [v, v, v])).toBeGreaterThanOrEqual(4.5)
+    // …and never reads stronger than body text (visual QA round 3, NM1): at most --text's alpha.
+    // Light has no room below it at 4.5:1, so typed text takes --text-strong there (styles.css).
+    expect(ph.alpha).toBeLessThanOrEqual(parseCssColor(resolve(t, '--text'))!.alpha)
   })
 
   it.each(themes)('%s: small controls keep 3:1 icons at Clear, never below the 0.35 floor', (_n, t, g) => {

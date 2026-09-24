@@ -31,10 +31,15 @@ function load(w: DesktopWallpaper): Promise<string | null> {
   const key = cacheKey(w)
   let p = loaded.get(key)
   if (!p) {
-    // ponytail: keep only the latest image; a picker session that flips through ten stills would
-    // otherwise pin ten data: URLs in memory for the app run.
-    loaded.clear()
-    resolved.clear()
+    // ponytail: keep the two most recent images (Map order = insertion order): the canvas's own
+    // wallpaper and the Settings "Your image" tile are both live consumers, and a cache of one let
+    // opening Settings evict the canvas still (the board's next first frame went black and re-read
+    // 3 MB, code review 5 #3). A picker session that flips through ten stills still pins at most two.
+    if (loaded.size >= 2) {
+      const oldest = loaded.keys().next().value as string
+      loaded.delete(oldest)
+      resolved.delete(oldest)
+    }
     p = window.nodeTerminal.wallpaper
       .load(w)
       .then((url) => (url ? `url("${url}")` : null))
