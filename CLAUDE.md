@@ -3915,25 +3915,41 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   app's `--text` is itself TRANSLUCENT (`rgba(var(--tint-rgb), 0.85)`), so the ink moves with the
   backdrop and the white/black endpoint argument does not hold; the backdrop is SAMPLED (6×6×6 grid +
   grey ramp) and the test re-checks a fine sweep against the real tokens of both themes. App.tsx
-  reads the tokens with the glass attribute removed first — under it `--panel` IS the fill, and a
-  theme switch would compute from the old fill. `--muted` has no guarantee (0.9 dark / 0.965 light
-  would be needed). Coverage: surface TOKENS (`--panel`, `--panel-header`, `--panel-2`,
-  `--surface-deep|raised|overlay`, `--tabbar-bg`) are redefined to the fill, which reaches every
-  panel that paints them; nesting only stacks the same tint, and every alpha above the computed one
-  also passes, so a nested surface cannot break the guarantee. The floating containers that
-  hard-code `rgba(var(--menu-rgb), .98)` & co. are LISTED in the block at the end of styles.css — a
-  new floating container owes an entry there. **Never translucent without a working blur** (visual
-  QA round 2 N1): an element with its own `backdrop-filter` (or filter, opacity < 1, mask, clip-path,
-  blend mode) is a BACKDROP ROOT — a blur on anything inside it samples only the root's pixels, so a
-  menu that pops out of it, or covers sharp content inside it, shows that content crisp through its
-  tint. So: (a) a container that HOSTS pop-out menus keeps its glass on a `::before` layer (fill,
-  hairline, blur) and is no backdrop root — `.dock`, `.dock-menu`, `.dock-menu__sub`; (b) a popover
-  INSIDE a glass node (`.ctx-popover`, `.color-popover`; the node is its root) is solid
-  `rgb(var(--menu-rgb))`; (c) in-flow pieces that only stack on their own blurred parent (node header,
-  find bar, sidebar filter well, card-modal terminal) are fine. Audited live with a DOM probe over
-  every overlay (dock Add/Layouts/Zoom, context and colour popovers, tab menu, node context menu,
-  palette, sessions sidebar, RAM panel, usage popover, Settings + theme popover, kanban + card modal):
-  those five were the only traps. Node blur pauses during camera moves; chrome is static and keeps it. **Left opaque, deliberately:** Monaco, `<webview>` and `<video>` bodies (another
+  reads the tokens with the glass attribute removed first (harmless now that the tokens stay
+  solid under glass; it keeps the solver independent of the gate). `--muted` has no guarantee
+  (0.9 dark / 0.965 light would be needed). **Glass is OPT-IN per surface** (Slice D, visual QA
+  round 3): the surface TOKENS (`--panel`, `--panel-header`, `--panel-2`, `--surface-*`,
+  `--tabbar-bg`) keep their SOLID theme colours under glass, so any panel, menu, popover or tooltip
+  that is not listed is opaque. They used to be redefined to the fill, and every unlisted floating
+  surface became see-through with no blur — round 2 fixed five named ones and this file claimed
+  "those five were the only traps"; round 3 found six more (Explorer and Source Control drawers,
+  the context-menu flyout, the node and card-modal label pickers, the Members picker, tooltips).
+  The translucent fill is handed out only by the two lists at the end of styles.css (plus the node
+  kinds), each WITH a blur; a new glass surface goes in one of them. A piece INSIDE a glass surface
+  that painted a token paints a lift, the input-well sink or nothing (find bar, markdown bar,
+  session chips/fields, Settings sidebar, hover rows); small buttons keep their solid colour.
+  **Never translucent without a working blur** (visual QA round 2 N1): an element with its own
+  `backdrop-filter` (or filter, opacity < 1, mask, clip-path, blend mode) is a BACKDROP ROOT — a
+  blur on anything inside it samples only the root's pixels, so a menu that pops out of it, or
+  covers sharp content inside it, shows that content crisp through its tint. So: (a) a container
+  that HOSTS pop-out menus keeps its glass on a `::before` layer (fill, hairline, blur) and is no
+  backdrop root — `.dock`, `.dock-menu`, `.dock-menu__sub`, and every `.ctx-menu` that does not
+  scroll (a scrolling menu cannot host a flyout, and a `::before` would scroll away with its rows);
+  (b) a popover INSIDE a glass node or the card modal (`.ctx-popover`, `.color-popover`,
+  `.label-picker`, `.kanban-meta__picker`; the host is its root) is simply not listed, so it is
+  opaque; (c) in-flow pieces that only stack on their own blurred parent (node header, card-modal
+  terminal) are fine. **Two guards.** `styles.glass-traps.test.ts` fails when a rule paints a glass
+  fill (`--glass-chrome-bg`, `--glass-control-bg`, `--term-glass-bg`, `--term-glass-header-bg`) on
+  a selector with no `backdrop-filter` in that rule or in a blur rule for the same element or its
+  `::before` (in-flow exceptions are named with a reason), and when a surface token is redefined
+  under the gate. It cannot see DOM nesting, so `scripts/glass-trap-probe.mjs` is the live half:
+  run it against a dev build with remote debugging (`node scripts/glass-trap-probe.mjs --port
+  9333`) with each overlay open; it lists every visible surface with background alpha < 0.9 whose
+  blur is ineffective (none behind it, floating over a blurred/solid ancestor's content, or a blur
+  escaping its backdrop root) and exits 1 on any. Slice D ran it over 27 states (dock menus,
+  context menu + flyout, popovers, tab menu, palette, drawers, phone, help, Settings + theme menu,
+  sessions, RAM, usage, label pickers, tooltips, kanban, card modal + pickers): 0 traps. Node blur
+  pauses during camera moves; chrome is static and keeps it. **Left opaque, deliberately:** Monaco, `<webview>` and `<video>` bodies (another
   renderer's surface), sticky notes (the colour is the note), and the `surface-sunken` wells
   (`bg-bg` inputs are a sink/lift of the page on glass). **Kanban**: header strip + columns are
   text-surface glass, cards a `--glass-lift-hover` lift WITHOUT their own blur, column/header dots
@@ -3947,10 +3963,14 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   brightens (light, ×1.3) their backdrop left of the tick — both from `glassChromeAlphas`. A new
   floating container goes in ONE of the two lists. **Highlights** are `--glass-lift(-hover)` (theme
   ink 14%/10%) or `--glass-select` (accent 30%) for THE selection, with `--text-strong` ink — never
-  `--panel*`, which is the fill again (visual QA H1/H2; round 2 N5: dock/zoom/sessions-row hovers and
-  the default Button). Segmented controls select with a neutral lifted thumb, so the one filled accent
-  per view is the primary action (N12). `::placeholder` is `--glass-placeholder` (0.78 dark / 0.86
-  light, 4.5:1 on the fill, pinned by glassContrast.test.ts). OK-range usage/context meters are
+  `--panel*`, a solid band on glass (visual QA H1/H2; round 2 N5: dock/zoom/sessions-row hovers and
+  the default Button) — the hover lift carries `--text-strong` too (`--text` on it is 4.1:1). The
+  readable alpha is solved for every accent swatch (Yellow needs 0.825 dark; bound 0.85). Segmented
+  controls select with a neutral lifted thumb, so the one filled accent
+  per view is the primary action (N12). `::placeholder` is `--glass-placeholder` (0.78 dark / 0.85
+  light, 4.5:1 on the fill and never above `--text`, pinned by glassContrast.test.ts); light has no
+  room below `--text` at 4.5:1, so TYPED text in chrome fields is `--text-strong` and an empty
+  field still reads empty (round 3 NM1). OK-range usage/context meters are
   neutral ink under glass (M1: green already means unread/success) — the fills are inline literals
   shared with the notch HUD, so the rule matches the serialised `rgb(48, 209, 88)`. Under glass `--muted` is 0.7 dark / 0.8 light and `--muted-2` = `--muted`. The minimap draws node rectangles in translucent theme ink
   (inline node colours overridden with `!important`), keeping the working/attention/unread strokes.
