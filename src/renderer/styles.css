@@ -1567,8 +1567,9 @@ body,
   background: transparent;
 }
 /* The blur is re-rasterised for every glass node on every frame of a pan/zoom (their backdrop
-   moves under them). Canvas marks the flow wrapper while the camera moves; the tint stays, and the
-   tint alone is what keeps text at 4.5:1, so only the frosting pauses. */
+   moves under them). With Keep blur while moving OFF (settings.glassBlurWhileMoving), Canvas marks
+   the flow wrapper while the camera moves; the tint stays, and the tint alone is what keeps text at
+   4.5:1, so only the frosting pauses. With it on (the default) the class is never set. */
 .canvas-moving .term-node.term-node--glass {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
@@ -13537,8 +13538,9 @@ body.focus-mode .dock:hover {
      explicitly; `!important` because the minimap's own rule already carries it.
    - backdrop-filter goes on OUTERMOST containers only. A blur inside another blurred element
      re-blurs its parent's already-blurred pixels (and costs a second pass), so nested pieces take
-     the fill alone. Node blur pauses while the camera moves (`.canvas-moving`); chrome is static
-     and keeps its blur. */
+     the fill alone. Node blur pauses while the camera moves (`.canvas-moving`) only when Keep blur
+     while moving is off (Canvas never sets the class otherwise); chrome is static and keeps its
+     blur. */
 :root[data-nt-glass='on'] {
   --panel: var(--glass-chrome-bg);
   --panel-header: var(--glass-chrome-bg);
@@ -13551,15 +13553,21 @@ body.focus-mode .dock:hover {
   /* The Glass slider (App.tsx sets the live values inline; these are the Readable-tick defaults):
      `--glass-t` 0 = Clear … 1 = Tinted.
      Clearer glass blurs a little less and saturates a little more, and refracts at its rim
-     (`#nt-refract`, components/GlassRefraction.tsx — its strength also follows the slider). */
+     (`#nt-refract`, components/GlassRefraction.tsx — its strength also follows the slider).
+     The refraction runs LAST, on already-blurred pixels. First in the chain it left a 20–40px band
+     of sharp, unblurred backdrop inside every rim (text readable through a menu's edge, at every
+     slider position): a reference filter ahead of blur() makes Chromium blend the unfiltered
+     backdrop back in near the edges. Measured on an empty menu over terminal text (high-frequency
+     energy of a 20px rim band): Clear 2.55 → 0.20, Readable 1.90 → 0.07 — now equal to the
+     menu's own interior, i.e. no sharper at the rim than in the middle. */
   --glass-t: 0.7;
   --glass-refract: url(#nt-refract);
-  --glass-blur: var(--glass-refract) blur(calc(16px + 12px * var(--glass-t)))
-    saturate(calc(200% - 55% * var(--glass-t)));
+  --glass-blur: blur(calc(16px + 12px * var(--glass-t))) saturate(calc(200% - 55% * var(--glass-t)))
+    var(--glass-refract);
   /* Terminal nodes frost 15% less than the chrome (the user asked for less blur under the terminal
      windows): same curve, radius × 0.85, same saturation and refraction. */
-  --glass-term-blur: var(--glass-refract) blur(calc((16px + 12px * var(--glass-t)) * 0.85))
-    saturate(calc(200% - 55% * var(--glass-t)));
+  --glass-term-blur: blur(calc((16px + 12px * var(--glass-t)) * 0.85))
+    saturate(calc(200% - 55% * var(--glass-t))) var(--glass-refract);
 }
 
 /* Outermost chrome: fill + blur. */

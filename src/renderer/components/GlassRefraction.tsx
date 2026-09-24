@@ -6,6 +6,14 @@ import { glassRefraction } from '../lib/glassContrast'
  * neutral in the middle and pushes the backdrop outward near the edges, so the picture bends at a
  * surface's rim the way it does under Apple's glass. `primitiveUnits="objectBoundingBox"` scales it
  * to whatever element uses it, so one filter serves nodes, menus and the tab bar alike.
+ *
+ * It runs LAST in the backdrop chain (styles.css `--glass-blur`), so it bends pixels that are
+ * already blurred, and its output is opaque everywhere: where the lens samples outside the element
+ * (transparent), the undisplaced pixel fills in (`feComposite … over SourceGraphic`). Any
+ * transparency here, or a reference filter ahead of blur(), lets Chromium show the SHARP backdrop
+ * through a band at the rim — the old in-filter soft blur (default edgeMode) plus first-in-chain
+ * order leaked terminal text through every menu edge. The soft blur is gone: the CSS blur before
+ * it already does that job.
  */
 let mapUrl: string | null = null
 
@@ -50,8 +58,15 @@ export function GlassRefraction({ slider }: { slider: number }) {
         primitiveUnits="objectBoundingBox"
       >
         <feImage href={map} x="0" y="0" width="1" height="1" preserveAspectRatio="none" result="map" />
-        <feGaussianBlur in="SourceGraphic" stdDeviation="0.004" result="soft" />
-        <feDisplacementMap in="soft" in2="map" scale={glassRefraction(slider)} xChannelSelector="R" yChannelSelector="G" />
+        <feDisplacementMap
+          in="SourceGraphic"
+          in2="map"
+          scale={glassRefraction(slider)}
+          xChannelSelector="R"
+          yChannelSelector="G"
+          result="bent"
+        />
+        <feComposite in="bent" in2="SourceGraphic" operator="over" />
       </filter>
     </svg>
   )

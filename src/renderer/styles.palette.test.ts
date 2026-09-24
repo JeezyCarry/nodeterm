@@ -251,6 +251,15 @@ describe('terminal glass blur', () => {
     const reduce = CSS.slice(CSS.indexOf('@media (prefers-reduced-transparency: reduce) {'))
     expect(reduce.slice(0, reduce.indexOf('}'))).toMatch(/--glass-term-blur:\s*none/)
   })
+
+  // Refraction first in the chain leaked a band of SHARP backdrop inside every rim (visual QA C1:
+  // terminal text readable through a menu's edge at every slider position). It must bend pixels
+  // that are already blurred.
+  it.each(['--glass-blur', '--glass-term-blur'])('%s refracts last, after the blur', (name) => {
+    const chain = blocks(":root[data-nt-glass='on']").get(name)!.replace(/\s+/g, ' ')
+    expect(chain.indexOf('blur(')).toBe(0)
+    expect(chain.trim().endsWith('var(--glass-refract)')).toBe(true)
+  })
 })
 
 describe('glass rim light', () => {
