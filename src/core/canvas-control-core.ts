@@ -402,9 +402,10 @@ export function buildCanvasControlInstructions(shimPath: string): string {
     'When you run inside a node on the nodeterm canvas, you can create and control other',
     'nodes (the CLI refuses outside a nodeterm session — do not retry there). Every node',
     'you open is connected to your node by an edge. Use this when the user asks you to open',
-    'sessions/nodes/terminals, split or parallelize work across subagents/agents/worktrees,',
-    'delegate parts of a task, organize the canvas into groups, or show them an',
-    'image/video/web page you produced.',
+    'sessions/nodes/terminals, wants work run in separate, visible canvas sessions or',
+    'worktrees, asks you to organize the canvas into groups, or wants to see an',
+    'image/video/web page you produced. Background subagents you run in-process are a',
+    'different thing — this CLI is only for work that should live on the canvas.',
     '',
     '```sh',
     `sh "${shimPath}" <verb> [args]`,
@@ -848,7 +849,7 @@ export function buildCanvasSkillBody(shimPath: string): string {
   const agentLabels = BUILTIN_AGENT_IDS.map((id) => AGENT_CONFIG[id].label).join(' / ')
   return `---
 name: manage-nodeterm-canvas
-description: Create, organize and control nodes on the nodeterm canvas — open ${agentLabels} / terminal nodes, spawn a team of agents that divide up a task, create git worktrees as bound groups, wrap nodes in labeled groups, arrange/align/rename them, move nodes between frames, link nodes so you can read back what they produced, move session cards between kanban columns to track progress, show an image/video/web page, write to or close a terminal. Use whenever the user says "Build with Nodeterm orchestration", asks to create or open nodes/sessions/terminals, split or parallelize work across subagents/agents/sessions/worktrees, delegate parts of a task to other agents, work on several things at once, build something using multiple Claude (or other agent) sessions, collect or synthesize the results of agents you opened, organize the canvas into groups by topic, move tasks across a kanban board, or visualize code/output you produced. Only works inside a nodeterm agent session.
+description: Create, organize and control nodes on the nodeterm canvas — open ${agentLabels} / terminal nodes, spawn agent teams, create git worktrees as bound groups, group/arrange/align/rename/move nodes, link nodes to read back their work, move kanban cards, show an image/video/web page, write to or close a terminal. Use when the user says "Build with Nodeterm orchestration", asks to open nodes/sessions/terminals on the canvas, or wants work run in separate, visible canvas sessions or worktrees; wants the canvas or kanban board organized; wants results read back from nodes it opened; or wants output shown as a node. Not for in-process background subagents. Only works inside a nodeterm agent session.
 ---
 
 # Manage the nodeterm canvas
@@ -1145,7 +1146,7 @@ across Nodeterm sessions), be the orchestration chef — plan the kitchen, then 
    the dependency is real: open the downstream station with \`--after <upstream-id>\` and it
    will start itself when the upstream goes idle. Do not fake this by polling in your own
    session; that is what \`--after\` exists to replace.
-1. Break the task into 2–5 independent workstreams (by subsystem, not by file).
+1. Split the task into the independent workstreams step 0 identified.
 2. Per workstream, give it its own branch + kitchen station:
    \`open-worktree --branch <slug>\` → note the returned \`groupId\`, then
    \`open-agent --agent claude --group <groupId> --prompt "<concrete, self-contained task>"\`.
@@ -1156,8 +1157,8 @@ across Nodeterm sessions), be the orchestration chef — plan the kitchen, then 
    \`arrange --nodes <groupId,groupId,…> --layout row\` (pass sibling GROUP ids from one
    container, not their children). \`rename\` each group by subject.
 4. Track progress (their status badges show working/waiting) and coordinate.
-5. Collect the results yourself — this is the half most orchestrators skip. Every station you
-   opened is context-linked to you, so when one goes idle, read what it actually did with the
+5. Collect the results yourself. Every station you opened is context-linked to you, so when
+   one goes idle, read what it actually did with the
    **get-linked-context** skill (summary or transcript for that node id) instead of asking the
    user to relay it. Then do the work only you can do: reconcile the streams against each
    other, name the conflicts and the leftovers, and report ONE synthesis. A station you never
