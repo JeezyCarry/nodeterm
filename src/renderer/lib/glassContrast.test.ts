@@ -254,7 +254,7 @@ describe('Keep blur while moving', () => {
   })
 
   it('the camera-move handler skips the pause class when it is on', () => {
-    const src = readFileSync(join(__dirname, '..', 'canvas', 'Canvas.tsx'), 'utf8')
+    const src = readFileSync(join(__dirname, '..', 'canvas', 'Canvas.tsx'), 'utf8').replace(/\r\n/g, '\n')
     const start = src.slice(src.indexOf('const onCanvasMoveStart'))
     const body = start.slice(0, start.indexOf("classList.add('canvas-moving')"))
     expect(body).toContain('if (keepBlurWhileMovingRef.current) return')
@@ -262,7 +262,7 @@ describe('Keep blur while moving', () => {
 })
 
 it('App applies data-theme and the glass attribute + fill before paint (no transparent first frame)', () => {
-  const src = readFileSync(join(__dirname, '..', 'App.tsx'), 'utf8')
+  const src = readFileSync(join(__dirname, '..', 'App.tsx'), 'utf8').replace(/\r\n/g, '\n')
   for (const marker of ['document.documentElement.dataset.theme = appTheme', "root.dataset.ntGlass = 'on'", "root.style.setProperty('--glass-chrome-bg'", "root.style.setProperty('--glass-control-bg'"]) {
     const at = src.indexOf(marker)
     expect(at, marker).toBeGreaterThan(0)
