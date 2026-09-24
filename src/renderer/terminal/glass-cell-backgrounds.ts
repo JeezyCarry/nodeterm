@@ -102,12 +102,8 @@ const TEXT_MIN_CONTRAST = 3
  * 4.5:1. Left of the tick (no guarantee there, as on the plain glass) it slides toward pure white in
  * proportion to how far the glass already is from 4.5:1, so it is continuous at the tick.
  *
- * Every text colour on the run is then checked (glyphs under `TEXT_MIN_CONTRAST` on the opaque
- * panel are decoration, e.g. a dim prompt chevron):
- *  - text of INVERTED polarity (dark text on a dark theme — the panel is what makes it readable,
- *    e.g. a light bar) must keep min(4.5, its contrast on the opaque panel) over ANY backdrop;
- *  - other text, while the guarantee is on, must fare no worse than on the plain glass around it.
- * A panel that fails returns null: opaque, exactly the app's own panel.
+ * Every text colour on the run is then checked (`panelTextOk`); a panel that fails returns null:
+ * opaque, exactly the app's own panel.
  *
  * Returns the fill (0..255 colour, alpha) or null for opaque. `alpha` 0 = draw nothing.
  */
@@ -117,6 +113,14 @@ export function glassPanelFill(
   t: number,
   texts: readonly Rgb[]
 ): { rgb: Rgb; alpha: number } | null {
+  const fill = panelFill(c, theme, t)
+  return fill && texts.every((f) => panelTextOk(f, c, fill, theme, t)) ? fill : null
+}
+
+type PanelFill = { rgb: Rgb; alpha: number }
+
+/** The panel's lift/sink before any text is considered; null only under Reduce Transparency. */
+function panelFill(c: Rgb, theme: { bg: Rgb; fg: Rgb }, t: number): PanelFill | null {
   if (t >= 1) return null // Reduce Transparency: the app's panels, opaque
   const [lc, ac, bc] = oklab(c)
   const [lb, ab, bb] = oklab(theme.bg)
@@ -124,39 +128,44 @@ export function glassPanelFill(
   if (dist < PANEL_DEAD_ZONE) return { rgb: c, alpha: 0 }
   const alpha = Math.min(PANEL_ALPHA_MAX, Math.max(PANEL_ALPHA_MIN, PANEL_K * dist))
   const glassWorst = worstContrast(theme.fg, theme.bg, t)
-  const guaranteed = glassWorst >= 4.5
   const fgLight = relativeLuminance(theme.fg) > relativeLuminance(theme.bg)
-  let rgb: Rgb
-  if (Math.hypot(ac, bc) > PANEL_CHROMA_MIN) {
-    rgb = c
-  } else {
-    const lift = lc > lb
-    const extreme: Rgb = lift ? [255, 255, 255] : [0, 0, 0]
-    if (lift !== fgLight) {
-      rgb = extreme
-    } else {
-      const ceiling = composite(theme.bg, extreme, t)
-      const toward = guaranteed ? 0 : Math.min(1, (4.5 - glassWorst) / 3.5)
-      rgb = composite(extreme, ceiling, toward)
-    }
-  }
+  if (Math.hypot(ac, bc) > PANEL_CHROMA_MIN) return { rgb: c, alpha }
+  const lift = lc > lb
+  const extreme: Rgb = lift ? [255, 255, 255] : [0, 0, 0]
+  if (lift !== fgLight) return { rgb: extreme, alpha }
+  const ceiling = composite(theme.bg, extreme, t)
+  const toward = glassWorst >= 4.5 ? 0 : Math.min(1, (4.5 - glassWorst) / 3.5)
+  return { rgb: composite(extreme, ceiling, toward), alpha }
+}
+
+/**
+ * Does text colour `f` stay readable on panel `c` drawn as `fill`? Glyphs under
+ * `TEXT_MIN_CONTRAST` on the opaque panel are decoration (e.g. a dim prompt chevron) and pass.
+ *  - text of INVERTED polarity — on the other side of the PANEL from the theme foreground (dark
+ *    text on a light bar in a dark theme): the panel is what makes it readable, so it must keep
+ *    min(4.5, its contrast on the opaque panel) over ANY backdrop;
+ *  - other text, while the guarantee is on, must fare no worse than on the plain glass around it.
+ * Polarity is judged against the panel, not the theme background: #303030 text is "lighter than
+ * #1e1e1e" yet dark on a #e4e4e4 bar, and judging it by the theme let that bar go translucent
+ * (worst contrast 1.00).
+ */
+function panelTextOk(f: Rgb, c: Rgb, fill: PanelFill, theme: { bg: Rgb; fg: Rgb }, t: number): boolean {
+  if (fill.alpha === 0) return true // drawn as nothing: the plain glass
+  const own = contrastRatio(f, c)
+  if (own < TEXT_MIN_CONTRAST) return true
+  const guaranteed = worstContrast(theme.fg, theme.bg, t) >= 4.5
+  const fgLight = relativeLuminance(theme.fg) > relativeLuminance(theme.bg)
+  const lf = relativeLuminance(f)
+  const inverted = lf > relativeLuminance(c) !== fgLight
+  if (!inverted && !guaranteed) return true
   // Over backdrop X the node shows G(X) = B·t + X·(1−t); the panel paints rgb·alpha over it. Both
   // are affine in X, so the composite's luminance range is spanned by X = black and X = white.
-  const lo = composite(rgb, composite(theme.bg, [0, 0, 0], t), alpha)
-  const hi = composite(rgb, composite(theme.bg, [255, 255, 255], t), alpha)
+  const lo = composite(fill.rgb, composite(theme.bg, [0, 0, 0], t), fill.alpha)
+  const hi = composite(fill.rgb, composite(theme.bg, [255, 255, 255], t), fill.alpha)
   const [llo, lhi] = [relativeLuminance(lo), relativeLuminance(hi)].sort((x, y) => x - y)
-  const lbg = relativeLuminance(theme.bg)
-  for (const f of texts) {
-    const own = contrastRatio(f, c)
-    if (own < TEXT_MIN_CONTRAST) continue
-    const lf = relativeLuminance(f)
-    const inverted = lf > lbg !== fgLight
-    if (!inverted && !guaranteed) continue
-    const worst = lf > llo && lf < lhi ? 1 : Math.min(contrastRatio(f, lo), contrastRatio(f, hi))
-    const need = inverted ? Math.min(4.5, own) : Math.min(own, worstContrast(f, theme.bg, t))
-    if (worst < need - 1e-9) return null
-  }
-  return { rgb, alpha }
+  const worst = lf > llo && lf < lhi ? 1 : Math.min(contrastRatio(f, lo), contrastRatio(f, hi))
+  const need = inverted ? Math.min(4.5, own) : Math.min(own, worstContrast(f, theme.bg, t))
+  return worst >= need - 1e-9
 }
 
 /** The node's glass alpha per terminal; absent = not glass = stock rendering. */
@@ -166,11 +175,31 @@ const cellAlpha = new WeakMap<Terminal, number>()
  *  model rebuild (`term.clearTextureAtlas()`), since backgrounds are only recomputed for changed
  *  cells. */
 export function setGlassCellAlpha(term: Terminal, alpha: number | null): boolean {
+  panelVerdicts.delete(term)
   if (alpha === null) return cellAlpha.delete(term)
   if (cellAlpha.get(term) === alpha) return false
   cellAlpha.set(term, alpha)
   return true
 }
+
+/**
+ * One verdict per PANEL COLOUR per terminal, not per run: addon-webgl rebuilds every row's
+ * rectangles on any cell change (each cursor blink included), and deciding each row alone striped a
+ * multi-row light box (rows with dark text opaque, the blank rows of the same box lifted). The fill
+ * is computed once; each text colour is checked once; a failure makes the colour opaque for good —
+ * the rows drawn before it catch up on the next rebuild. Dropped whenever the slider alpha or the
+ * theme's bg/fg changes.
+ * ponytail: an OSC 4 palette-only change keeps the old verdicts until the next alpha/theme change;
+ * key on the ANSI table too if an app is ever seen recolouring its panels that way.
+ */
+interface PanelVerdicts {
+  key: string
+  panels: Map<number, { fill: PanelFill | null; ok: Set<number> }>
+}
+const panelVerdicts = new WeakMap<Terminal, PanelVerdicts>()
+
+/** The colour part of a packed fg/bg word (mode + palette index or RGB), flags stripped. */
+const COLOR_BITS = CM_MASK | 0xffffff
 
 type Vertices = { attributes: Float32Array }
 type UpdateRectangle = (
@@ -191,7 +220,7 @@ interface RectangleRendererLike {
 interface CellLike {
   bg?: number
   fg?: number
-  getChars?(): string
+  getCode?(): number
 }
 
 /** Kept on the prototype, not in module state, so a hot-reloaded copy of this module re-wraps the
@@ -223,6 +252,64 @@ export function installGlassCellBackgrounds(addon: WebglAddon): boolean {
     if (typeof orig !== 'function') return false
     proto[ORIGINAL] = orig
     let scratch: CellLike | undefined
+    // The part after the original, for glass terminals only. `a` is read by the caller AFTER the
+    // original, which may have grown the array.
+    const glassRectangle = (
+      rr: RectangleRendererLike,
+      a: Float32Array,
+      offset: number,
+      fg: number,
+      bg: number,
+      startX: number,
+      endX: number,
+      y: number,
+      t: number
+    ): void => {
+      const colors = rr._themeService?.colors
+      const back = colors?.background?.rgba
+      const fore = colors?.foreground?.rgba
+      if (back === undefined || fore === undefined) return
+      let line: { getCell(x: number, cell: never): unknown } | undefined
+      let cellBg = NaN // unknown = treated as a renderer override (stock opaque)
+      if ((bg & CM_MASK) !== 0 && !(fg & FG_INVERSE)) {
+        const buf = rr._terminal.buffer.active
+        scratch ??= buf.getNullCell() as unknown as CellLike
+        line = buf.getLine(buf.viewportY + y)
+        line?.getCell(startX, scratch as never)
+        if (typeof scratch.bg === 'number') cellBg = scratch.bg
+      }
+      const kind = classifyRun(fg, bg, cellBg, (back & 255) / 255)
+      if (kind === 'stock') return
+      if (typeof kind === 'number') {
+        if (kind < 1) writeFill(a, offset, rgbOf(back), kind)
+        return
+      }
+      const key = `${t}|${back}|${fore}`
+      let verdicts = panelVerdicts.get(rr._terminal)
+      if (verdicts?.key !== key) panelVerdicts.set(rr._terminal, (verdicts = { key, panels: new Map() }))
+      const run: Rgb = [a[offset + 4] * 255, a[offset + 5] * 255, a[offset + 6] * 255]
+      const theme = { bg: rgbOf(back), fg: rgbOf(fore) }
+      let panel = verdicts.panels.get(bg & COLOR_BITS)
+      if (!panel) verdicts.panels.set(bg & COLOR_BITS, (panel = { fill: panelFill(run, theme, t), ok: new Set() }))
+      // The run's text colours: a run spans cells of one bg but any fg, and the fg the renderer
+      // passes is only the first cell's. Each colour is checked once per panel colour.
+      for (let x = startX; x < endX && panel.fill && line && scratch; x++) {
+        line.getCell(x, scratch as never)
+        const f = scratch.fg
+        const code = scratch.getCode?.() ?? 0
+        if (typeof f !== 'number' || code === 0 || code === 32 || panel.ok.has(f & COLOR_BITS)) continue
+        const mode = f & CM_MASK
+        const text =
+          mode === CM_RGB
+            ? rgbOf((f & 0xffffff) << 8)
+            : (mode === CM_P16 || mode === CM_P256) && colors?.ansi?.[f & 0xff]
+              ? rgbOf(colors.ansi[f & 0xff].rgba)
+              : rgbOf(fore)
+        if (panelTextOk(text, run, panel.fill, theme, t)) panel.ok.add(f & COLOR_BITS)
+        else panel.fill = null // opaque sticks for this colour
+      }
+      if (panel.fill) writeFill(a, offset, panel.fill.rgb, panel.fill.alpha)
+    }
     proto._updateRectangle = function (
       this: RectangleRendererLike,
       v: Vertices,
@@ -236,48 +323,13 @@ export function installGlassCellBackgrounds(addon: WebglAddon): boolean {
       orig.call(this, v, offset, fg, bg, startX, endX, y)
       const t = cellAlpha.get(this._terminal)
       if (t === undefined) return
-      const colors = this._themeService?.colors
-      const back = colors?.background?.rgba
-      const fore = colors?.foreground?.rgba
-      if (back === undefined || fore === undefined) return
-      const a = v.attributes // re-read: the original may have grown the array
-      let line: { getCell(x: number, cell: never): unknown } | undefined
-      let cellBg = NaN // unknown = treated as a renderer override (stock opaque)
-      if ((bg & CM_MASK) !== 0 && !(fg & FG_INVERSE)) {
-        const buf = this._terminal.buffer.active
-        scratch ??= buf.getNullCell() as unknown as CellLike
-        line = buf.getLine(buf.viewportY + y)
-        line?.getCell(startX, scratch as never)
-        if (typeof scratch.bg === 'number') cellBg = scratch.bg
+      // Fail open per call too: an exception here would otherwise break every frame. The original
+      // already wrote the stock rectangle, so returning leaves exactly that.
+      try {
+        glassRectangle(this, v.attributes, offset, fg, bg, startX, endX, y, t)
+      } catch {
+        /* stock rectangle */
       }
-      const kind = classifyRun(fg, bg, cellBg, (back & 255) / 255)
-      if (kind === 'stock') return
-      if (typeof kind === 'number') {
-        if (kind < 1) writeFill(a, offset, rgbOf(back), kind)
-        return
-      }
-      // The run's text colours: a run spans cells of one bg but any fg, and the fg the renderer
-      // passes is only the first cell's.
-      const texts: Rgb[] = []
-      let lastFg = -1
-      for (let x = startX; x < endX && line && scratch; x++) {
-        line.getCell(x, scratch as never)
-        const f = scratch.fg
-        const ch = scratch.getChars?.() ?? ''
-        if (typeof f !== 'number' || f === lastFg || ch === '' || ch === ' ') continue
-        lastFg = f
-        const mode = f & CM_MASK
-        texts.push(
-          mode === CM_RGB
-            ? rgbOf((f & 0xffffff) << 8)
-            : (mode === CM_P16 || mode === CM_P256) && colors?.ansi?.[f & 0xff]
-              ? rgbOf(colors.ansi[f & 0xff].rgba)
-              : rgbOf(fore)
-        )
-      }
-      const run: Rgb = [a[offset + 4] * 255, a[offset + 5] * 255, a[offset + 6] * 255]
-      const fill = glassPanelFill(run, { bg: rgbOf(back), fg: rgbOf(fore) }, t, texts)
-      if (fill) writeFill(a, offset, fill.rgb, fill.alpha)
     }
     return true
   } catch {

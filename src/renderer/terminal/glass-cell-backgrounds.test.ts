@@ -91,6 +91,23 @@ describe('glassPanelFill: a lift or sink of the glass, never a second slab of ti
     for (const t of [0.2, 0.675, 0.95]) expect(glassPanelFill(grey(224), DARK, t, [BLACK])).toBeNull()
   })
 
+  // Polarity is judged against the PANEL: #303030 is lighter than nodeterm-dark's #1e1e1e, yet it is
+  // dark text on this bar. Judged by the theme, the bar went translucent at worst contrast 1.00.
+  it('dark-grey text on a light bar (dark theme) keeps the bar opaque', () => {
+    for (const t of [0.2, 0.675, 0.725, 0.95]) {
+      for (const bar of [grey(0xd0), grey(0xe4)]) {
+        for (const text of [grey(0x30), grey(0x3a)]) expect(glassPanelFill(bar, DARK, t, [text]), `t=${t}`).toBeNull()
+      }
+    }
+  })
+
+  it.each(['nodeterm-light', 'catppuccin-latte'])('light-grey text on a dark bar (%s) keeps the bar opaque', (id) => {
+    const theme = resolveTerminalTheme(id).theme
+    const light = { bg: parseHex(theme.background!)!, fg: parseHex(theme.foreground!)! }
+    const readable = glassTintAlpha(theme.foreground!, theme.background!)
+    for (const t of [0.2, readable, 0.95]) expect(glassPanelFill(grey(0x30), light, t, [grey(0xe4)]), `t=${t}`).toBeNull()
+  })
+
   it('decoration under 3:1 on the opaque panel (a dim prompt chevron) does not force it opaque', () => {
     expect(glassPanelFill(grey(58), DARK, 0.675, [grey(78)])).not.toBeNull()
   })
@@ -161,20 +178,20 @@ type FakeCell = { bg: number; fg?: number; ch?: string }
 /** A structural fake of the addon's RectangleRenderer, doing what the real `_updateRectangle`
  *  does with the attribute array (colour, then `$a = 1`). One class per test: the wrap patches the
  *  prototype, like it does the real shared one. */
-function fakeAddon(cells: Record<number, FakeCell>) {
+function fakeAddon(cells: Record<number, FakeCell>, rows: Record<number, Record<number, FakeCell>> = {}) {
   class RectangleRenderer {
     _themeService = { colors: { background: { rgba: 0x1e1e1e00 }, foreground: { rgba: 0xe6e6e6ff }, ansi: [] } }
     _terminal = {
       buffer: {
         active: {
           viewportY: 0,
-          getNullCell: () => ({ bg: 0, fg: 0, getChars: () => '' }),
-          getLine: () => ({
-            getCell: (x: number, cell: { bg: number; fg: number; getChars: () => string }) => {
-              const c = cells[x] ?? { bg: 0 }
+          getNullCell: () => ({ bg: 0, fg: 0, getCode: () => 0 }),
+          getLine: (row: number) => ({
+            getCell: (x: number, cell: { bg: number; fg: number; getCode: () => number }) => {
+              const c = (rows[row] ?? cells)[x] ?? { bg: 0 }
               cell.bg = c.bg
               cell.fg = c.fg ?? 0
-              cell.getChars = () => c.ch ?? ''
+              cell.getCode = () => c.ch?.codePointAt(0) ?? 0
               return cell
             }
           })
@@ -189,9 +206,9 @@ function fakeAddon(cells: Record<number, FakeCell>) {
   }
   const rr = new RectangleRenderer()
   const addon = { _renderer: { _rectangleRenderer: { value: rr } } } as unknown as WebglAddon
-  const draw = (fg: number, bg: number, x = 0, endX = x + 1): number[] => {
+  const draw = (fg: number, bg: number, x = 0, endX = x + 1, y = 0): number[] => {
     const v = { attributes: new Float32Array(8) }
-    rr._updateRectangle(v, 0, fg, bg, x, endX, 0)
+    rr._updateRectangle(v, 0, fg, bg, x, endX, y)
     return Array.from(v.attributes)
   }
   return { addon, rr, draw }
@@ -220,6 +237,32 @@ describe('installGlassCellBackgrounds', () => {
     installGlassCellBackgrounds(addon)
     setGlassCellAlpha(rr._terminal, 0.675)
     expect(draw(0, bar, 0, 2)[7]).toBe(1)
+  })
+
+  it('decides once per panel colour: a multi-row light box does not stripe, and opaque sticks', () => {
+    const bar = CM_RGB | 0xe0e0e0
+    const blank = { 0: { bg: bar }, 1: { bg: bar } }
+    const texted = { 0: { bg: bar }, 1: { bg: bar, fg: CM_RGB | 0x000000, ch: 'x' } }
+    const { addon, rr, draw } = fakeAddon({}, { 0: blank, 1: texted, 2: blank })
+    installGlassCellBackgrounds(addon)
+    setGlassCellAlpha(rr._terminal, 0.675)
+    expect(draw(0, bar, 0, 2, 0)[7]).toBeLessThan(1) // blank row, before the box's text was seen
+    expect(draw(0, bar, 0, 2, 1)[7]).toBe(1) // dark text: the colour turns opaque…
+    expect(draw(0, bar, 0, 2, 2)[7]).toBe(1) // …for every other row of the box
+    expect(draw(0, bar, 0, 2, 0)[7]).toBe(1) // and the first row on the next rebuild
+    setGlassCellAlpha(rr._terminal, 0.7) // a slider move starts over
+    expect(draw(0, bar, 0, 2, 0)[7]).toBeLessThan(1)
+  })
+
+  it('an exception after the original leaves the stock rectangle instead of breaking the frame', () => {
+    const { addon, rr, draw } = fakeAddon({ 0: { bg: panel } })
+    installGlassCellBackgrounds(addon)
+    setGlassCellAlpha(rr._terminal, 0.675)
+    rr._terminal.buffer.active.getLine = () => {
+      throw new Error('renamed internals')
+    }
+    expect(() => draw(0, panel)).not.toThrow()
+    expect(draw(0, panel)[7]).toBe(1)
   })
 
   it('non-glass terminals are byte-identical to the stock renderer', () => {
