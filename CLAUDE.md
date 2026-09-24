@@ -3129,12 +3129,7 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     - **The copy says the edits flow both ways**, because a link is not a copy: editing a shared
       skill from inside the account edits the machine's own file. A user who reads "share" as "copy"
       finds that out by losing work. Result sentences are the pure `renderer/lib/skillSharing.ts`.
-    - **Agent TUIs after a live switch to a light terminal theme** keep the dark palette they latched at
-  launch. A/B, nodeterm Light, Readable glass vs opaque Light, same frames: Codex composer 1.25:1 vs
-  dark-on-black (unreadable both), Codex model line 1.6 vs 1.41, Claude dim status 1.96 vs 2.86, Grok
-  identical — the apps' colours, not the glass (app colours are outside the guarantee). Left as is;
-  restart agents after a theme switch.
-- **Surfaces.** Desktop: full. **Server Edition: full** — the whole implementation is core, so
+    - **Surfaces.** Desktop: full. **Server Edition: full** — the whole implementation is core, so
       the ws-bridge leg is a real passthrough and the machine the browser is served from is exactly
       the machine whose `~/.claude/skills` is shared (the canvas skill is not installed there, but
       its name stays reserved: a reserved name that is never created is inert). **SSH accounts:
@@ -3789,16 +3784,12 @@ or browser nodes means adding the draw and the set together, in one change.
   mount independently and a thirty-card board would otherwise re-read the same bytes thirty times per
   open. Caching by path is safe: `saveCanvasImage` creates exclusively, so re-picking yields
   `logo (2).png` rather than overwriting.
-- **Agent TUIs after a live switch to a light terminal theme** keep the dark palette they latched at
-  launch. A/B, nodeterm Light, Readable glass vs opaque Light, same frames: Codex composer 1.25:1 vs
-  dark-on-black (unreadable both), Codex model line 1.6 vs 1.41, Claude dim status 1.96 vs 2.86, Grok
-  identical — the apps' colours, not the glass (app colours are outside the guarantee). Left as is;
-  restart agents after a theme switch.
 - **Surfaces.** Desktop: full. **Server Edition**: full — every leg is already core (`fs.readBinary`,
   `files.saveCanvasImage`) or has a real browser implementation (`dialog.selectFile` → the web
   picker), so no new IPC was added and nothing is stubbed. **Mobile**: N/A for v1 — *nodeterm mobile*
   attaches to tmux sessions over the transport protocol and carries no per-node icon concept;
   surfacing one means extending that protocol (follow-up in the iOS repo).
+
 ## Desktop wallpaper + Liquid Glass (Settings → Appearance)
 
 Two opt-in choices, both off by default so an update changes nothing on screen:
