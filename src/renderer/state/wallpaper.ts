@@ -30,8 +30,13 @@ function cacheKey(w: DesktopWallpaper): string {
 function load(w: DesktopWallpaper): Promise<string | null> {
   const key = cacheKey(w)
   let p = loaded.get(key)
-  if (!p) {
-    // ponytail: keep the two most recent images (Map order = insertion order): the canvas's own
+  if (p) {
+    // A hit is a USE: move it to the back so eviction takes the least recently used, not the
+    // first inserted (code review 6 #8 — re-reading the canvas still did not protect it).
+    loaded.delete(key)
+    loaded.set(key, p)
+  } else {
+    // ponytail: keep the two most recently used images (Map order = recency): the canvas's own
     // wallpaper and the Settings "Your image" tile are both live consumers, and a cache of one let
     // opening Settings evict the canvas still (the board's next first frame went black and re-read
     // 3 MB, code review 5 #3). A picker session that flips through ten stills still pins at most two.

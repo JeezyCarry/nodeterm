@@ -78,11 +78,14 @@ describe('Liquid Glass stylesheet', () => {
 
   it('highlighted rows carry --text-strong, the ink their readable alpha is solved for (N2)', () => {
     // …the hover lift too: it is not in the solver's list, and --text on it is 4.11:1 (code review 5 #1).
-    for (const row of ['.palette__item.active', '.ctx-item', '.tab.active', '.dock-zoom.active', '.seg-pill-opt.active', '.dock-btn', '.ss-row:hover', 'button.bg-panel-header', '.dock-menu__row:hover']) {
+    for (const row of ['.palette__item.active', '.ctx-item', '.tab.active', '.dock-zoom.active', '.seg-pill-opt.active', '.dock-btn', '.ss-row:hover', '.dock-menu__row:hover']) {
       const hits = gated(row).filter((r) => /background(-color)?:/.test(r.body))
       expect(hits.length, row).toBeGreaterThan(0)
       for (const r of hits) expect(r.body, row).toMatch(/color:\s*var\(--text-strong\)/)
     }
+    // The default Button's ink holds on its OWN hover lift too — no :not(:hover) on the colour rule
+    // (code review 6 #2: --text on `hover:bg-fill-weak` measured 4.11 dark / 4.04 light).
+    expect(rules.some((r) => r.selector === `${GATE} button.bg-panel-header` && /color:\s*var\(--text-strong\)/.test(r.body))).toBe(true)
     // A Layouts row is one highlight: its main button never stacks a second lift on the row's.
     expect(gated('.dock-menu button').some((r) => /dock-menu button(?!:not\(\.dock-menu__row-main\))/.test(r.selector) && /:hover/.test(r.selector))).toBe(false)
     expect(gated('button.dock-menu__row-main').some((r) => /color:\s*var\(--text-strong\)/.test(r.body))).toBe(true)

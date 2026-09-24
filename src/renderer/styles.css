@@ -12863,6 +12863,9 @@ button.group-node__setup:disabled {
   max-height: 340px;
   overflow-y: auto;
 }
+.theme-select__list {
+  display: contents;
+}
 /* Liquid Glass: the swatch abutted the name (~3px, visual QA M6). Gated like the rest of the look. */
 :root[data-nt-glass='on'] .theme-select__menu button {
   gap: 8px;
@@ -13668,7 +13671,11 @@ body.focus-mode .dock:hover {
     .kanban-header,
     .kanban-col,
     .kanban-add-col,
-    .kanban-modal
+    .kanban-modal,
+    .remote-dialog,
+    .pubdlg,
+    .consent-card,
+    .github-issue-modal
   ) {
   background: var(--glass-chrome-bg) !important;
   -webkit-backdrop-filter: var(--glass-text-blur);
@@ -13897,6 +13904,96 @@ body.focus-mode .dock:hover {
   transform: translateX(-50%);
 }
 
+/* ONE opaque floating surface (visual QA round 4, N4-M1). The popovers that cannot blur (inside a
+   glass node or the card modal — their host is their backdrop root) were five different greys
+   (#323232 with no shadow, #242424, #1e1e1e, #1a1a1a, a near-black 0.98 slab) beside the glass
+   menus. Under glass each is the menu surface's own colour made solid (`--panel`, the colour the
+   glass fill is `--panel` at an alpha of), with the glass hairline and one shadow. Every modal
+   dialog is glass (the text list above); these four are the only opaque floating surfaces. */
+:root[data-nt-glass='on'] :is(.ctx-popover, .color-popover, .label-picker, .kanban-meta__picker) {
+  background: var(--panel);
+  border: 1px solid var(--glass-edge);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, calc(0.45 * var(--shadow-k)));
+  color: var(--text-strong);
+}
+
+/* Labels on glass are monochrome (HIG color.md › Liquid Glass color; visual QA round 4, N4-M3): the
+   active project's name was accent blue, 1.80:1 on light glass. The project's colour dot beside it
+   carries the colour; the pin is ink until it is pinned. */
+:root[data-nt-glass='on'] :is(.ss-group__name, .ss-group.is-active .ss-group__name) {
+  color: var(--text-strong);
+}
+:root[data-nt-glass='on'] .sessions-sidebar__head-actions button:not(.is-on) {
+  color: var(--text-strong);
+}
+
+/* One rim for every glass menu and sheet (visual QA round 4, N4-L1): the `::before`-hosted menus drew
+   the 20% glass hairline and the element-hosted ones (tab menu, palette, sessions, dialogs) their own
+   10% border, so a right-click menu and the project menu read as two materials. */
+:root[data-nt-glass='on'] :is(.tab-menu, .palette, .confirm, .shortcuts, .usage-popover, .sessmem-panel, .sessions-sidebar, .drawer, .phone-pair, .nt-settings, .remote-dialog, .pubdlg, .consent-card, .github-issue-modal, .tooltip, .dictation, .resume-card, .logpanel, .update-card, .announce-banner) {
+  border-color: var(--glass-edge);
+}
+/* The Members picker's hover was a solid accent row with white text (3.65:1) while every other list
+   on glass washes its row (N4-L2). */
+:root[data-nt-glass='on'] .kanban-meta__picker > button:hover {
+  background: var(--glass-select);
+  color: var(--text-strong);
+}
+/* A checkmark on the accent wash is ink, not accent (2.52:1 there, N4-L3). */
+:root[data-nt-glass='on'] .speech-lang__row.is-active .tab-menu__check {
+  color: var(--text-strong);
+}
+/* RAM panel: a row without the pause button reserves its slot, so the MB column lines up (N4-L4). */
+:root[data-nt-glass='on'] .sessmem-row:not(:has(> .sessmem-row__pause)) > .sessmem-row__main {
+  margin-right: 24px;
+}
+/* Scroll edge on the terminal theme list (N4-L5): the list scrolls inside the glass menu and fades
+   its last row like the palette, instead of cutting it in half. */
+:root[data-nt-glass='on'] .theme-select__menu {
+  overflow: hidden;
+}
+:root[data-nt-glass='on'] .theme-select__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  max-height: calc(340px - 12px);
+  overflow-y: auto;
+  padding-bottom: 20px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+}
+/* The node's "+ Label" picker sat flush on the node's left border, its corner cut by the rim (N4-L6). */
+:root[data-nt-glass='on'] .term-node .label-picker__pop {
+  left: 6px;
+}
+/* `--text` is translucent, so where two strokes of an icon overlap the ink painted twice and the
+   joins read brighter (N4-L7). Dock icons draw in opaque ink and fade as one layer instead. */
+:root[data-nt-glass='on'] .dock-btn:not(.dock-add, .active) svg {
+  color: rgb(var(--tint-rgb));
+  opacity: 0.85;
+}
+:root[data-nt-glass='on'] .dock-btn:not(.dock-add, .active):hover:not(:disabled) svg {
+  opacity: 1;
+}
+/* Palette rows take the strong ink so the placeholder, at `--text`'s alpha in light, reads as the
+   lighter of the two (N4-L8: 5.42 vs 5.51:1). */
+:root[data-nt-glass='on'] .palette__item {
+  color: var(--text-strong);
+}
+/* Sessions sidebar: the hover actions faded in over a `--panel-header` gradient, an opaque grey patch
+   on a glass row (code review 6 #3). On glass the title line makes room for them while they show. */
+:root[data-nt-glass='on'] .ss-row__actions {
+  background: none;
+}
+:root[data-nt-glass='on'] :is(.ss-row:hover, .ss-row:focus-within) .ss-row__titleline {
+  padding-right: 44px;
+}
+/* The dino node's header painted `--surface-overlay`, an opaque band on its glass body (code review 6 #4). */
+:root[data-nt-glass='on'] .dino-node__header {
+  background: var(--glass-lift-hover);
+}
+
 /* Top tooltips belong to the dock (the only `placement="top"` user). They pin 6px above the BUTTON,
    which on glass put the bubble on the dock's visible rim (visual QA round 3, NH2): they clear the
    rim by 7px instead. */
@@ -14043,6 +14140,10 @@ body.focus-mode .dock:hover {
    a dark slab, N5): a neutral lift instead; its own hover (`bg-fill-weak`) still applies. */
 :root[data-nt-glass='on'] button.bg-panel-header:not(:hover) {
   background-color: var(--glass-lift-hover);
+}
+/* The ink holds on hover too: the hover fill (`hover:bg-fill-weak`, 10% ink; the shortcut recorder's
+   6% white) is a lift, and `--text` on it measured 4.11 dark / 4.04 light (code review 6 #2). */
+:root[data-nt-glass='on'] button.bg-panel-header {
   color: var(--text-strong);
 }
 /* Segmented controls: the selected segment is a neutral lifted thumb, as in Apple's segmented
@@ -14063,8 +14164,11 @@ body.focus-mode .dock:hover {
 }
 /* Placeholders were a hard-coded #757575 in both themes (2.5–3.5:1, N6). On glass they keep 4.5:1
    on the text-surface fill: `--glass-placeholder` is pinned by glassContrast.test.ts. */
-/* Sticky notes keep theirs: the note's own colour is the surface there, not glass. */
-:root[data-nt-glass='on'] :not(.sticky-node__body)::placeholder {
+/* Sticky notes keep theirs: the note's own colour is the surface there, not glass. So do the OPAQUE
+   floating surfaces (the popovers inside glass nodes, below): the glass placeholder is sized for the
+   translucent fill, and on a solid popover it read brighter than the popover's own body text, as if
+   the field were already filled (visual QA round 4, N4-M2). */
+:root[data-nt-glass='on'] :not(.sticky-node__body, :is(.ctx-popover, .color-popover, .label-picker, .kanban-meta__picker) *)::placeholder {
   color: var(--glass-placeholder);
 }
 /* An empty field must look empty (visual QA round 3, NM1): the placeholder's 4.5:1 floor sits at

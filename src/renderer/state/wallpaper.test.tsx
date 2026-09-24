@@ -62,4 +62,23 @@ describe('useBoardWallpaperStyle', () => {
     expect(board[0]).toBe('url("data:image/png;base64,c.jpg")')
     expect(load).toHaveBeenCalledTimes(2)
   })
+
+  it('eviction takes the least recently USED image, not the first loaded (code review 6 #8)', async () => {
+    const load = vi.fn(async (w: { path: string }) => `data:image/png;base64,${w.path}`)
+    vi.stubGlobal('nodeTerminal', { wallpaper: { load } })
+    useSettings.setState({
+      settings: { ...DEFAULT_SETTINGS, appTheme: 'liquid-glass', desktopWallpaper: { kind: 'image', path: 'e.jpg' } }
+    })
+    mount([]) // the canvas still, first in
+    await act(async () => {})
+    mountEl(<Tile path="f.jpg" />)
+    await act(async () => {})
+    mount([]) // the canvas still is used again: now the most recent
+    mountEl(<Tile path="g.jpg" />) // a third image evicts f, not e
+    await act(async () => {})
+    const board: (string | undefined)[] = []
+    mount(board)
+    expect(board[0]).toBe('url("data:image/png;base64,e.jpg")')
+    expect(load).toHaveBeenCalledTimes(3)
+  })
 })
