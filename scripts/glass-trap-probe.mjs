@@ -286,6 +286,9 @@ async function main() {
     ws = pages.find((p) => p.type === 'page' && !p.url.includes('hud'))?.webSocketDebuggerUrl
     if (!ws) throw new Error(`no app page on port ${port}`)
   }
+  // Everything printed below comes back from the page over CDP. Strip line breaks and other control
+  // characters so a value cannot forge extra log lines or terminal escapes.
+  const clean = (v) => String(v).replace(/[\r\n]/g, ' ').replace(/[\u0000-\u001f\u007f]/g, '')
   const passes = args.includes('--rest') ? [false] : args.includes('--mid-anim') ? [true] : [false, true]
   const results = []
   for (const mid of passes)
@@ -296,11 +299,11 @@ async function main() {
   for (const r of results) {
     traps += r.traps.length
     if (!r.glass || r.checked === 0 || r.leftovers.length) blind = true
-    for (const l of r.leftovers) console.error(`probe left state behind: ${l}`)
+    for (const l of r.leftovers) console.error(`probe left state behind: ${clean(l)}`)
     if (args.includes('--json')) continue
     if (!r.glass) console.log('Liquid Glass is not on (data-nt-glass) — nothing glass to check')
-    console.log(`${r.pass}: ${r.traps.length} trap(s) in ${r.checked} translucent surface(s)${r.pass === 'mid-animation' ? `, ${r.animations} animation(s) seeked to 50%, restored` : ''}`)
-    for (const t of r.traps) console.log(`  ${t.el}  ${t.bg}  ${t.why}  [${t.box.join(',')}]`)
+    console.log(`${clean(r.pass)}: ${clean(r.traps.length)} trap(s) in ${clean(r.checked)} translucent surface(s)${r.pass === 'mid-animation' ? `, ${clean(r.animations)} animation(s) seeked to 50%, restored` : ''}`)
+    for (const t of r.traps) console.log(`  ${clean(t.el)}  ${clean(t.bg)}  ${clean(t.why)}  [${clean(t.box.join(','))}]`)
   }
   process.exit(traps ? 1 : blind ? 2 : 0)
 }
@@ -316,6 +319,6 @@ const isMain = (() => {
 })()
 if (isMain)
   main().catch((e) => {
-    console.error(e.message)
+    console.error(String(e?.message ?? e).replace(/[\r\n]/g, ' ').replace(/[\u0000-\u001f\u007f]/g, ''))
     process.exit(2)
   })
