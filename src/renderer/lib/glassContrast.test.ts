@@ -243,6 +243,16 @@ describe('Keep blur while moving', () => {
   })
 })
 
+it('App applies data-theme and the glass attribute + fill before paint (no transparent first frame)', () => {
+  const src = readFileSync(join(__dirname, '..', 'App.tsx'), 'utf8')
+  for (const marker of ['document.documentElement.dataset.theme = appTheme', "root.dataset.ntGlass = 'on'", "root.style.setProperty(\n      '--glass-chrome-bg'"]) {
+    const at = src.indexOf(marker)
+    expect(at, marker).toBeGreaterThan(0)
+    const before = src.slice(0, at)
+    expect(before.lastIndexOf('useLayoutEffect('), marker).toBeGreaterThan(before.lastIndexOf('useEffect('))
+  }
+})
+
 describe('glass status chip keeps its label readable', () => {
   const rows = TERMINAL_THEMES.map((t) => {
     const readable = glassTintAlpha(t.theme.foreground!, t.theme.background!)

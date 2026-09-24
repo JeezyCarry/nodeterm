@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { Canvas } from './canvas/Canvas'
 import { PromptDialogHost } from './components/promptDialog'
@@ -71,8 +71,12 @@ export default function App() {
   // Publish the resolved appearance as `data-theme` on <html> — what the light palette in
   // styles.css keys off. Absent, or 'dark', leaves every token at its original value, so this one
   // attribute is all that stands between an existing install and the chrome it has always had.
+  // Layout effects, like the two glass effects below: all three land before the browser paints, so
+  // switching Liquid Glass on never shows one frame of `data-nt-glass` without its fill (transparent
+  // chrome), and a theme switch never paints the old theme's fill. The setGlassChrome in the first
+  // glass effect re-renders synchronously, still before paint.
   const appTheme = useAppTheme()
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.dataset.theme = appTheme
   }, [appTheme])
 
@@ -97,7 +101,7 @@ export default function App() {
     rgb?: readonly number[]
     readable: number | null
   } | null>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement
     if (!liquidGlass) {
       delete root.dataset.ntGlass
@@ -114,7 +118,7 @@ export default function App() {
     root.dataset.ntGlass = 'on'
   }, [liquidGlass, appTheme])
   // The slider (and the accessibility overrides) only ever set custom properties.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement
     if (!glassChrome) {
       root.style.removeProperty('--glass-chrome-bg')
