@@ -3940,7 +3940,8 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   opaque — and all four paint ONE solid token, `--panel` (the colour the glass fill is `--panel` at
   an alpha of), with the glass hairline and one shadow (visual QA round 4 N4-M1: they were five
   greys); they keep the theme placeholder, not the glass one (N4-M2). Every MODAL dialog is glass
-  (Remote access, Publish, consent and the GitHub issue modal joined the text list); (c) in-flow pieces that only stack on their own blurred parent (node header, card-modal
+  (Remote access, Publish, consent, the GitHub issue modal and the mobile-launch card joined the
+  text list); (c) in-flow pieces that only stack on their own blurred parent (node header, card-modal
   terminal) are fine. **Two guards.** `styles.glass-traps.test.ts` fails when a rule paints a glass
   fill (`--glass-chrome-bg`, `--glass-control-bg`, `--term-glass-bg`, `--term-glass-header-bg`) on
   a selector with no `backdrop-filter` in that rule or in a blur rule for the same element or its
@@ -3955,15 +3956,29 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   **Glass never fades** (visual QA round 4, N4-H1): opacity < 1 makes an element a backdrop root, so
   a scrim fading its opacity turned the palette/dialog/drawer inside it into clear glass for the
   120–160 ms of every open, and a `::before`-hosted menu fading its own opacity did the same. Under
-  glass scrims fade their `background-color`, glass surfaces enter by transform only, tooltips appear
-  without motion and the focus-mode dock slides. Both guards now see motion: the static test fails
-  on an opacity keyframe or transition on any glass surface or scrim (the scrim list is the probe's
-  exported `SCRIMS`) unless a gated rule overrides it, reads the LAST backdrop-filter declaration,
-  counts `background-image` as a paint and matches coverage on the full selector (`:not()`/`:hover`
-  kept); the probe runs a second pass that replays every finite animation, freezes every animation at
-  half its duration and scans (a blur inside a see-through backdrop root, or a blurred surface fading
-  its own opacity, is a trap), inspects `::after`, gradient fills and mask-border roots, and exits 2 —
-  never 0 — when it checked nothing. Slice E: 0 traps at rest and mid-animation, dark and light
+  glass scrims fade their `background-color`, glass surfaces enter by transform only (Remote access
+  pops like its siblings), tooltips appear without motion and the focus-mode dock slides. The glass
+  entrances sit in a no-preference query; under Reduce Motion the default-look `animation: none` list
+  covers most surfaces, and a gated reduce rule covers the kanban card modal and its scrim (also the
+  GitHub issue modal's), whose `kanban-fade`/`kanban-pop` opacity fades otherwise ran on glass (code
+  review 7 #1). Both guards see motion: the static test fails on an opacity keyframe
+  (`@-webkit-keyframes` too) or transition (a shorthand with no property name is `all`) on any glass
+  surface, blurred `::before` layer, or scrim (the scrim list is the probe's exported `SCRIMS`)
+  unless, in BOTH motion preferences, a rule overrides it — a gated rule, or a later default-look rule
+  on the same selector; an override inside a media query counts only for the preference it names
+  (the kanban modal passed because its only override sat in a no-preference query). A fade selector
+  is matched when it can hit the same element as a surface (either covers the other, or they share a
+  subject class). It reads the LAST backdrop-filter declaration, lets a later unconditional rule on
+  the same element cancel a blur, counts `background-image` as a paint and matches coverage on the
+  full selector (`:not()`/`:hover` kept). The probe runs a second pass that replays every finite
+  animation, seeks every finite RUNNING animation to half its duration and scans (a blur inside a
+  see-through backdrop root, or a blurred surface fading its own opacity, is a trap), inspects
+  `::after`, gradient fills and mask-border roots. It never calls `pause()`/`play()` — on a CSS
+  animation they install a play-state override, and an infinite animation then ignores the idle
+  gate — since one synchronous evaluate cannot see the timeline advance, a seek freezes the frame and
+  a seek back restores it; replayed elements get their `animation-name` re-set once more and lose a
+  `style` attribute they did not have, and the pass verifies its own restoration. It exits 2 — never
+  0 — when it checked nothing, the page does not answer within 20 s, or it left state behind. Slice E: 0 traps at rest and mid-animation, dark and light
   (palette, context menu, Explorer, Remote access, label picker, Settings, sessions). Node blur
   pauses during camera moves; chrome is static and keeps it. **Left opaque, deliberately:** Monaco, `<webview>` and `<video>` bodies (another
   renderer's surface), sticky notes (the colour is the note), and the `surface-sunken` wells
@@ -3984,9 +3999,15 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   readable alpha is solved for every accent swatch (Yellow needs 0.825 dark; bound 0.85). Segmented
   controls select with a neutral lifted thumb, so the one filled accent
   per view is the primary action (N12). `::placeholder` is `--glass-placeholder` (0.78 dark / 0.85
-  light, 4.5:1 on the fill and never above `--text`, pinned by glassContrast.test.ts); light has no
-  room below `--text` at 4.5:1, so TYPED text in chrome fields is `--text-strong` and an empty
-  field still reads empty (round 3 NM1). OK-range usage/context meters are
+  light, 4.5:1 on the fill and never above `--text`, pinned by glassContrast.test.ts; the dark floor
+  is 0.77); light has no room below `--text` at 4.5:1, so TYPED text in chrome fields is
+  `--text-strong` and an empty field still reads empty (round 3 NM1). A placeholder ranks below
+  secondary text (macOS: tertiary), so on dark glass the modal dialogs raise `--muted` to 0.82 (4.9:1
+  worst case) and Remote access's hard-coded 0.55 lines take it (visual QA round 5, N5-M2); light
+  cannot, and keeps the typed-text rule. The RAM panel's hard-coded 0.45–0.6 secondary lines take
+  `--muted` (N5-L2). Destructive menu items (`.ctx-item.danger`, `.tab-menu button.danger`) draw an
+  ink label and keep red only on the icon; their hover is the ordinary lift (N5-M1: the red label was
+  2.7–2.8:1 on dark glass). OK-range usage/context meters are
   neutral ink under glass (M1: green already means unread/success) — the fills are inline literals
   shared with the notch HUD, so the rule matches the serialised `rgb(48, 209, 88)`. Under glass `--muted` is 0.7 dark / 0.8 light and `--muted-2` = `--muted`. The minimap draws node rectangles in translucent theme ink
   (inline node colours overridden with `!important`), keeping the working/attention/unread strokes.
