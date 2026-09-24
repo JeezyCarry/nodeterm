@@ -7179,6 +7179,8 @@ button.group-node__setup:disabled {
   white-space: nowrap;
 }
 .usage-pill__summary > span + span { margin-left: 6px; }
+/* Symmetric around the dot: it hugged the next token ("87% 5h ·98% wk", visual QA L2). */
+.usage-pill__sep { margin-right: 6px; }
 /* While the popover is open, rise above the sessions sidebar (z-index 12) — a tall sidebar
    reaches the bottom-left corner and would cover the panel. Closed pill keeps its low layer so
    it never draws over the sidebar itself.
@@ -12828,6 +12830,10 @@ button.group-node__setup:disabled {
   max-height: 340px;
   overflow-y: auto;
 }
+/* The swatch abutted the name (~3px, visual QA M6). */
+.theme-select__menu button {
+  gap: 8px;
+}
 .theme-select__group {
   padding: 6px 10px 2px;
   font-size: 11px;
@@ -13744,6 +13750,12 @@ body.focus-mode .dock:hover {
 }
 :root[data-nt-glass='on'] .tab.active::after {
   display: none;
+}
+
+/* The node's label row has its own `--panel` fill (for the glyph grid, which stands glass down);
+   on glass that stacked a third band between header and body (visual QA M7). */
+:root[data-nt-glass='on'] .term-node--glass .term-node__labelrow {
+  background: transparent;
 }
 
 /* Every node kind. Terminal nodes keep their own theme-derived tint (.term-node--glass, above);
