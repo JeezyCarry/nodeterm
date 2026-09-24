@@ -13565,9 +13565,15 @@ body.focus-mode .dock:hover {
   --glass-blur: blur(calc(16px + 12px * var(--glass-t))) saturate(calc(200% - 55% * var(--glass-t)))
     var(--glass-refract);
   /* Terminal nodes frost 15% less than the chrome (the user asked for less blur under the terminal
-     windows): same curve, radius × 0.85, same saturation and refraction. */
+     windows): same curve, radius × 0.85, same saturation and refraction. They also FLATTEN the
+     backdrop's luminance (HIG: regular glass "blurs and adjusts the luminosity"): a blurred photo
+     under a big pane otherwise reads as smudges on the glass. contrast() only pulls the backdrop
+     toward mid-grey, so it stays a backdrop colour and cannot touch the 4.5:1 guarantee. Clear
+     keeps the photo (1), Readable 0.3, Tinted 0 (flat — the tint is 0.95 there anyway). Measured
+     at Readable, empty glass over the lake photo's snow/water edge: brightness swing 2.2:1 → 1.28:1
+     (0.51 still left 1.53:1). */
   --glass-term-blur: blur(calc((16px + 12px * var(--glass-t)) * 0.85))
-    saturate(calc(200% - 55% * var(--glass-t))) var(--glass-refract);
+    saturate(calc(200% - 55% * var(--glass-t))) contrast(calc(1 - var(--glass-t))) var(--glass-refract);
 }
 
 /* Outermost chrome: fill + blur. */

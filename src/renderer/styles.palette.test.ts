@@ -260,6 +260,10 @@ describe('terminal glass blur', () => {
     expect(chain.indexOf('blur(')).toBe(0)
     expect(chain.trim().endsWith('var(--glass-refract)')).toBe(true)
   })
+
+  it('terminal glass flattens the backdrop luminance toward Tinted, and not at Clear', () => {
+    expect(blocks(":root[data-nt-glass='on']").get('--glass-term-blur')).toContain('contrast(calc(1 - var(--glass-t)))')
+  })
 })
 
 describe('glass rim light', () => {
