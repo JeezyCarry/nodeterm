@@ -19,7 +19,7 @@ import { resolveUiScale } from '../shared/ui-scale'
 import { resolveTabBarHeight } from '../shared/window-chrome-metrics'
 import { useAppTheme } from './state/useAppTheme'
 import { installWindowActivityOnDocument } from './lib/windowActivity'
-import { glassChromeAlpha, glassSurfaceAlpha, parseCssColor, resolveGlassSlider } from './lib/glassContrast'
+import { glassChromeAlpha, glassChromeAlphas, parseCssColor, resolveGlassSlider } from './lib/glassContrast'
 import { useGlassA11y } from './lib/useGlassA11y'
 import { GlassRefraction } from './components/GlassRefraction'
 import { isLiquidGlass } from './lib/appTheme'
@@ -117,21 +117,23 @@ export default function App() {
     setGlassChrome({ panel, rgb: parseCssColor(panel)?.rgb, readable: glassChromeAlpha(text, panel) })
     root.dataset.ntGlass = 'on'
   }, [liquidGlass, appTheme])
-  // The slider (and the accessibility overrides) only ever set custom properties.
+  // The slider (and the accessibility overrides) only ever set custom properties. Two fills:
+  // `--glass-chrome-bg` for text surfaces (never below the readable alpha) and `--glass-control-bg`
+  // for the small floating controls (follow the slider to a 0.35 floor) — glassChromeAlphas.
   useLayoutEffect(() => {
     const root = document.documentElement
     if (!glassChrome) {
       root.style.removeProperty('--glass-chrome-bg')
+      root.style.removeProperty('--glass-control-bg')
       root.style.removeProperty('--glass-t')
       return
     }
     const { panel, rgb, readable } = glassChrome
-    root.style.setProperty(
-      '--glass-chrome-bg',
-      readable !== null && rgb
-        ? `rgba(${rgb.join(', ')}, ${glassSurfaceAlpha(glassSlider, readable, glassA11y).toFixed(3)})`
-        : panel
-    )
+    // An unparseable token leaves the chrome opaque (`panel` as is).
+    const alphas = readable !== null && rgb ? glassChromeAlphas(glassSlider, readable, glassA11y) : null
+    const fill = (a: number | undefined): string => (a !== undefined && rgb ? `rgba(${rgb.join(', ')}, ${a.toFixed(3)})` : panel)
+    root.style.setProperty('--glass-chrome-bg', fill(alphas?.text))
+    root.style.setProperty('--glass-control-bg', fill(alphas?.control))
     root.style.setProperty('--glass-t', glassT.toFixed(3))
   }, [glassChrome, glassSlider, glassA11y, glassT])
 

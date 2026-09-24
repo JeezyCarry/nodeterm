@@ -111,6 +111,7 @@ describe('every CSS variable resolves', () => {
     '--term-glass-fg',
     '--term-glass-chip-wash', // TerminalNode, status-chip wash per theme (glassChipWash)
     '--glass-chrome-bg', // App.tsx, Liquid Glass chrome fill (lib/glassContrast.ts glassChromeAlpha)
+    '--glass-control-bg', // App.tsx, Liquid Glass small-control fill (glassChromeAlphas)
     '--glass-fill', // GlassSlider, the slider value (fills the track)
     '--glass-tick', // GlassSlider, the Readable tick position (the notch)
     '--peer-color', // presence chips, per peer

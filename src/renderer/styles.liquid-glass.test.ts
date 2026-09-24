@@ -51,9 +51,34 @@ describe('Liquid Glass stylesheet', () => {
 
   it('never blurs a container nested in a blurred one', () => {
     const blurred = gated('').filter((r) => /backdrop-filter:\s*var\(--glass-blur\)/.test(r.body))
-    for (const nested of ['.dock-menu', '.dock-menu__sub', '.usage-refresh', '.sessions-icon-cluster']) {
+    for (const nested of ['.dock-menu', '.dock-menu__sub', '.kanban-card', '.kanban-modal__termwrap']) {
       expect(blurred.some((r) => r.selector.includes(nested))).toBe(false)
     }
+  })
+
+  it('slider scope: text surfaces take the readable-floored fill, small controls the slider fill', () => {
+    const outer = (needle: string): Rule | undefined =>
+      gated(needle).find((r) => /backdrop-filter:/.test(r.body) && r.selector.includes(':is('))
+    for (const text of ['.nt-settings', '.palette', '.ctx-menu', '.tab-menu', '.sessions-sidebar', '.confirm', '.usage-popover', '.kanban-col', '.kanban-modal']) {
+      expect(outer(text)?.body, text).toMatch(/var\(--glass-chrome-bg\)[\s\S]*var\(--glass-text-blur\)/)
+    }
+    for (const control of ['.dock', '.tabbar', '.react-flow__controls', '.react-flow__minimap', '.usage-pill', '.sysres-pill', '.usage-refresh', '.controls-cluster > button', '.sessions-icon-cluster button']) {
+      expect(outer(control)?.body, control).toMatch(/var\(--glass-control-bg\)[\s\S]*var\(--glass-control-blur\)/)
+    }
+  })
+
+  it('row highlights on glass never re-stack a panel token (visual QA H1/H2)', () => {
+    for (const row of ['.palette__item.active', '.settings-nav-row', '.ctx-item', '.tab-menu button', '.tab.active']) {
+      const hits = gated(row).filter((r) => /background:/.test(r.body))
+      expect(hits.length, row).toBeGreaterThan(0)
+      for (const r of hits) expect(r.body, row).not.toMatch(/--panel|--glass-chrome-bg/)
+    }
+  })
+
+  it('kanban cards are a lift without their own blur (no glass on glass)', () => {
+    const card = gated('.kanban-card').find((r) => r.selector === `${GATE} .kanban-card`)
+    expect(card?.body).toMatch(/background:\s*var\(--glass-lift-hover\)/)
+    expect(gated('.kanban-card').some((r) => /backdrop-filter/.test(r.body))).toBe(false)
   })
 
   it('draws minimap nodes in neutral ink, not node colour, and keeps status strokes', () => {

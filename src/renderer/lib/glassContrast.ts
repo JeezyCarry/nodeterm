@@ -262,6 +262,10 @@ export function glassChromeAlpha(text: string, panel: string, minRatio = 4.5): n
 
 /** Tint alpha at the Clear end: never fully clear, the tint still says where a surface is. */
 export const GLASS_CLEAR_ALPHA = 0.2
+/** Chrome floor at Clear for the small floating CONTROLS (dock, zoom, toolbar buttons, minimap,
+ *  pills, tab bar): Apple's one published dimming figure ("consider adding a dark dimming layer of
+ *  35% opacity", materials.md). At 0.2 their icons vanished over a bright wallpaper (visual QA H4). */
+export const GLASS_CONTROL_CLEAR_ALPHA = 0.35
 /** Tint alpha at the Tinted end (a surface whose readable alpha is higher keeps its own). */
 export const GLASS_TINTED_ALPHA = 0.95
 /** Where the Readable tick sits on the track — also the default, so an untouched slider is the
@@ -277,11 +281,12 @@ export function resolveGlassSlider(value: unknown): number {
     : GLASS_READABLE_TICK
 }
 
-/** The tint alpha of a surface whose readable alpha is `readable`, at slider position `t`. */
-export function glassSliderAlpha(t: number, readable: number): number {
+/** The tint alpha of a surface whose readable alpha is `readable`, at slider position `t`.
+ *  `clear` is the surface's alpha at the Clear end (terminal nodes 0.2, controls 0.35). */
+export function glassSliderAlpha(t: number, readable: number, clear = GLASS_CLEAR_ALPHA): number {
   const tinted = Math.max(readable, GLASS_TINTED_ALPHA)
   if (t <= GLASS_READABLE_TICK) {
-    return GLASS_CLEAR_ALPHA + ((readable - GLASS_CLEAR_ALPHA) * t) / GLASS_READABLE_TICK
+    return clear + ((readable - clear) * t) / GLASS_READABLE_TICK
   }
   return readable + ((tinted - readable) * (t - GLASS_READABLE_TICK)) / (1 - GLASS_READABLE_TICK)
 }
@@ -303,9 +308,32 @@ export interface GlassA11y {
 export const NO_GLASS_A11Y: GlassA11y = { reduceTransparency: false, moreContrast: false }
 
 /** The tint alpha a surface actually gets: the slider's, unless an accessibility setting wins. */
-export function glassSurfaceAlpha(t: number, readable: number, a11y: GlassA11y = NO_GLASS_A11Y): number {
+export function glassSurfaceAlpha(
+  t: number,
+  readable: number,
+  a11y: GlassA11y = NO_GLASS_A11Y,
+  clear = GLASS_CLEAR_ALPHA
+): number {
   if (a11y.reduceTransparency) return 1
-  return glassSliderAlpha(a11y.moreContrast ? 1 : t, readable)
+  return glassSliderAlpha(a11y.moreContrast ? 1 : t, readable, clear)
+}
+
+/**
+ * The two chrome fills (Phase 4 slider scope; HIG: the regular variant for anything with a lot of
+ * text). Left of the Readable tick only the small floating CONTROLS follow the slider, down to
+ * `GLASS_CONTROL_CLEAR_ALPHA`; TEXT surfaces (Settings, menus, popovers, the palette, dialogs, the
+ * sessions sidebar, kanban columns) never go below their readable alpha. Right of the tick both
+ * follow the slider. Terminal nodes are neither: they keep their own tint (`glassTint`).
+ */
+export function glassChromeAlphas(
+  t: number,
+  readable: number,
+  a11y: GlassA11y = NO_GLASS_A11Y
+): { text: number; control: number } {
+  return {
+    text: glassSurfaceAlpha(Math.max(t, GLASS_READABLE_TICK), readable, a11y),
+    control: glassSurfaceAlpha(t, readable, a11y, GLASS_CONTROL_CLEAR_ALPHA)
+  }
 }
 
 /** Magnetic detent, like a macOS slider's tick marks: a drag within this of the tick lands on it. */

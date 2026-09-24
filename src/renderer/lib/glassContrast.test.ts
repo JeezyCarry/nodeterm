@@ -14,6 +14,8 @@ import {
   parseHex,
   worstContrast,
   GLASS_CLEAR_ALPHA,
+  GLASS_CONTROL_CLEAR_ALPHA,
+  glassChromeAlphas,
   GLASS_READABLE_TICK,
   GLASS_TINTED_ALPHA,
   glassRefraction,
@@ -204,6 +206,22 @@ describe('Glass slider (Clear ↔ Tinted)', () => {
   })
 })
 
+describe('slider scope: text surfaces floor at Readable, controls at 0.35 (Phase 4)', () => {
+  it.each([0.7, 0.745])('readable %s', (readable) => {
+    for (let i = 0; i <= 100; i++) {
+      const t = i / 100
+      const { text, control } = glassChromeAlphas(t, readable)
+      expect(text).toBeGreaterThanOrEqual(readable - 1e-9)
+      expect(control).toBeGreaterThanOrEqual(GLASS_CONTROL_CLEAR_ALPHA - 1e-9)
+      // Right of the tick both follow the slider exactly.
+      if (t >= GLASS_READABLE_TICK) expect(text).toBeCloseTo(control, 10)
+    }
+    expect(glassChromeAlphas(0, readable).text).toBeCloseTo(readable, 10)
+    expect(glassChromeAlphas(0, readable).control).toBe(GLASS_CONTROL_CLEAR_ALPHA)
+    expect(glassChromeAlphas(0, readable, { reduceTransparency: true, moreContrast: false })).toEqual({ text: 1, control: 1 })
+  })
+})
+
 describe('accessibility outranks the Glass slider', () => {
   it('Reduce Transparency is opaque; Increase Contrast pins to Tinted', () => {
     expect(glassSurfaceAlpha(0, 0.7, { reduceTransparency: true, moreContrast: false })).toBe(1)
@@ -245,7 +263,7 @@ describe('Keep blur while moving', () => {
 
 it('App applies data-theme and the glass attribute + fill before paint (no transparent first frame)', () => {
   const src = readFileSync(join(__dirname, '..', 'App.tsx'), 'utf8')
-  for (const marker of ['document.documentElement.dataset.theme = appTheme', "root.dataset.ntGlass = 'on'", "root.style.setProperty(\n      '--glass-chrome-bg'"]) {
+  for (const marker of ['document.documentElement.dataset.theme = appTheme', "root.dataset.ntGlass = 'on'", "root.style.setProperty('--glass-chrome-bg'", "root.style.setProperty('--glass-control-bg'"]) {
     const at = src.indexOf(marker)
     expect(at, marker).toBeGreaterThan(0)
     const before = src.slice(0, at)
