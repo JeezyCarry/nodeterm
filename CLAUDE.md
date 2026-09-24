@@ -3888,7 +3888,11 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   than #1e1e1e yet dark on a #e4e4e4 bar — judged by the theme, that bar went translucent at 1.00:1).
   **One verdict per panel colour per terminal** (`panelVerdicts`): fill computed once, each text
   colour checked once, opaque sticks (a multi-row light box never stripes), reset on alpha or theme
-  bg/fg change — addon-webgl rebuilds every row on any cell change, cursor blink included. The wrap
+  bg/fg change — addon-webgl rebuilds every row on any cell change, cursor blink included. Capped at
+  `PANEL_VERDICTS_MAX` (4096) colours, cleared past it (truecolor images add thousands). A colour
+  that turns opaque mid-pass re-runs `updateBackgrounds` once (also wrapped), so the rows already
+  drawn in that pass do not stay translucent on an idle screen — `term.refresh` would not do it: the
+  addon calls `updateBackgrounds` only when a model cell changed. The wrap
   body after the stock rectangle is try/caught per call (fail open per frame, not only at install). Reduce Transparency (t = 1) → opaque. Written premultiplied as `(c·√k, √k)` — the
   canvas is premultiplied and the addon blends alpha with SRC_ALPHA, so this stores exactly `(c·k, k)`.
   Only terminals registered through `setGlassCellAlpha` (TerminalNode, `glassOn` only) are touched —

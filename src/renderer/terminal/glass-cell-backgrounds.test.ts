@@ -9,6 +9,7 @@ import {
   installGlassCellBackgrounds,
   GLASS_CELL_REBUILD_MS,
   oklab,
+  PANEL_VERDICTS_MAX,
   scheduleGlassCellAlpha,
   setGlassCellAlpha
 } from './glass-cell-backgrounds'
@@ -230,6 +231,13 @@ function fakeAddon(cells: Record<number, FakeCell>, rows: Record<number, Record<
       v.attributes.set([0, 0, 1, 1, ((rgba >>> 24) & 255) / 255, ((rgba >>> 16) & 255) / 255, ((rgba >>> 8) & 255) / 255, 1], offset)
       void fg
     }
+    /** Like the real one: a full rebuild of every run from the model, through `_updateRectangle`. */
+    _vertices = { attributes: new Float32Array(64) }
+    passes = 0
+    updateBackgrounds(model: { fg: number; bg: number; x: number; endX: number; y: number }[]): void {
+      this.passes++
+      model.forEach((r, i) => this._updateRectangle(this._vertices, 8 * i, r.fg, r.bg, r.x, r.endX, r.y))
+    }
   }
   const rr = new RectangleRenderer()
   const addon = { _renderer: { _rectangleRenderer: { value: rr } } } as unknown as WebglAddon
@@ -279,6 +287,40 @@ describe('installGlassCellBackgrounds', () => {
     expect(draw(0, bar, 0, 2, 0)[7]).toBe(1) // and the first row on the next rebuild
     setGlassCellAlpha(rr._terminal, 0.7) // a slider move starts over
     expect(draw(0, bar, 0, 2, 0)[7]).toBeLessThan(1)
+  })
+
+  it('a colour that turns opaque mid-pass re-runs the pass once, so earlier rows are not left translucent', () => {
+    const bar = CM_RGB | 0xe0e0e0
+    const blank = { 0: { bg: bar }, 1: { bg: bar } }
+    const texted = { 0: { bg: bar }, 1: { bg: bar, fg: CM_RGB | 0x000000, ch: 'x' } }
+    const { addon, rr } = fakeAddon({}, { 0: blank, 1: texted, 2: blank })
+    installGlassCellBackgrounds(addon)
+    setGlassCellAlpha(rr._terminal, 0.675)
+    const model = [0, 1, 2].map((y) => ({ fg: 0, bg: bar, x: 0, endX: 2, y }))
+    const alphas = (): number[] => model.map((_, i) => rr._vertices.attributes[8 * i + 7])
+    rr.updateBackgrounds(model)
+    expect(alphas()).toEqual([1, 1, 1]) // row 0 was drawn translucent before row 1 flipped it
+    expect(rr.passes).toBe(2)
+    rr.updateBackgrounds(model) // no flip: one pass, no loop
+    expect(rr.passes).toBe(3)
+  })
+
+  it('panel verdicts are bounded: past PANEL_VERDICTS_MAX colours they start over', () => {
+    const bar = CM_RGB | 0xe0e0e0
+    const rows: Record<number, Record<number, FakeCell>> = {
+      0: { 0: { bg: bar }, 1: { bg: bar } },
+      1: { 0: { bg: bar }, 1: { bg: bar, fg: CM_RGB | 0x000000, ch: 'x' } }
+    }
+    const colour = (i: number): number => CM_RGB | (0x100000 + i) // distinct, never the bar
+    for (let i = 0; i < PANEL_VERDICTS_MAX; i++) rows[2 + i] = { 0: { bg: colour(i) } }
+    const { addon, rr, draw } = fakeAddon({}, rows)
+    installGlassCellBackgrounds(addon)
+    setGlassCellAlpha(rr._terminal, 0.675)
+    draw(0, bar, 0, 2, 1) // the bar turns opaque
+    for (let i = 0; i < PANEL_VERDICTS_MAX - 1; i++) draw(0, colour(i), 0, 1, 2 + i) // map now full
+    expect(draw(0, bar, 0, 2, 0)[7]).toBe(1) // still remembered at the cap
+    draw(0, colour(PANEL_VERDICTS_MAX - 1), 0, 1, 1 + PANEL_VERDICTS_MAX) // one more: cleared
+    expect(draw(0, bar, 0, 2, 0)[7]).toBeLessThan(1) // forgotten, decided afresh
   })
 
   it('an exception after the original leaves the stock rectangle instead of breaking the frame', () => {

@@ -187,8 +187,9 @@ export function setGlassCellAlpha(term: Terminal, alpha: number | null): boolean
  * rectangles on any cell change (each cursor blink included), and deciding each row alone striped a
  * multi-row light box (rows with dark text opaque, the blank rows of the same box lifted). The fill
  * is computed once; each text colour is checked once; a failure makes the colour opaque for good —
- * the rows drawn before it catch up on the next rebuild. Dropped whenever the slider alpha or the
- * theme's bg/fg changes.
+ * and the pass that saw it is re-run (see the `updateBackgrounds` wrap) so the rows drawn before it
+ * do not stay translucent on an idle screen. Dropped whenever the slider alpha or the theme's bg/fg
+ * changes, and wholesale past `PANEL_VERDICTS_MAX` colours (truecolor images/video paint thousands).
  * ponytail: an OSC 4 palette-only change keeps the old verdicts until the next alpha/theme change;
  * key on the ANSI table too if an app is ever seen recolouring its panels that way.
  */
@@ -197,6 +198,10 @@ interface PanelVerdicts {
   panels: Map<number, { fill: PanelFill | null; ok: Set<number> }>
 }
 const panelVerdicts = new WeakMap<Terminal, PanelVerdicts>()
+/** ponytail: a full clear past this many panel colours, not an LRU — verdicts are cheap to redo. */
+export const PANEL_VERDICTS_MAX = 4096
+/** Set when a panel colour turns opaque mid-pass; read by the `updateBackgrounds` wrap. */
+let flippedThisPass = false
 
 /** The colour part of a packed fg/bg word (mode + palette index or RGB), flags stripped. */
 const COLOR_BITS = CM_MASK | 0xffffff
@@ -248,6 +253,7 @@ interface CellLike {
 /** Kept on the prototype, not in module state, so a hot-reloaded copy of this module re-wraps the
  *  ORIGINAL instead of stacking a second wrap over the first. */
 const ORIGINAL = Symbol.for('nodeterm.glassCellBackgrounds.original')
+const ORIGINAL_UPDATE_BACKGROUNDS = Symbol.for('nodeterm.glassCellBackgrounds.originalUpdateBackgrounds')
 
 const rgbOf = (rgba: number): Rgb => [(rgba >>> 24) & 255, (rgba >>> 16) & 255, (rgba >>> 8) & 255]
 
@@ -312,7 +318,10 @@ export function installGlassCellBackgrounds(addon: WebglAddon): boolean {
       const run: Rgb = [a[offset + 4] * 255, a[offset + 5] * 255, a[offset + 6] * 255]
       const theme = { bg: rgbOf(back), fg: rgbOf(fore) }
       let panel = verdicts.panels.get(bg & COLOR_BITS)
-      if (!panel) verdicts.panels.set(bg & COLOR_BITS, (panel = { fill: panelFill(run, theme, t), ok: new Set() }))
+      if (!panel) {
+        if (verdicts.panels.size >= PANEL_VERDICTS_MAX) verdicts.panels.clear()
+        verdicts.panels.set(bg & COLOR_BITS, (panel = { fill: panelFill(run, theme, t), ok: new Set() }))
+      }
       // The run's text colours: a run spans cells of one bg but any fg, and the fg the renderer
       // passes is only the first cell's. Each colour is checked once per panel colour.
       for (let x = startX; x < endX && panel.fill && line && scratch; x++) {
@@ -328,7 +337,10 @@ export function installGlassCellBackgrounds(addon: WebglAddon): boolean {
               ? rgbOf(colors.ansi[f & 0xff].rgba)
               : rgbOf(fore)
         if (panelTextOk(text, run, panel.fill, theme, t)) panel.ok.add(f & COLOR_BITS)
-        else panel.fill = null // opaque sticks for this colour
+        else {
+          panel.fill = null // opaque sticks for this colour
+          flippedThisPass = true
+        }
       }
       if (panel.fill) writeFill(a, offset, panel.fill.rgb, panel.fill.alpha)
     }
@@ -351,6 +363,23 @@ export function installGlassCellBackgrounds(addon: WebglAddon): boolean {
         glassRectangle(this, v.attributes, offset, fg, bg, startX, endX, y, t)
       } catch {
         /* stock rectangle */
+      }
+    }
+    // A verdict that turns opaque mid-pass leaves the rows ALREADY drawn in this pass translucent,
+    // and `term.refresh` would not fix them: the addon calls `updateBackgrounds` only when a model
+    // cell changed. `updateBackgrounds` is a full rebuild from the model, so re-run it once — the
+    // re-run cannot flip again (an opaque colour's text loop is skipped). Optional: missing ⇒ the
+    // rows catch up on the next rebuild, as before.
+    const origUpdate = (proto[ORIGINAL_UPDATE_BACKGROUNDS] ?? proto.updateBackgrounds) as
+      | ((model: unknown) => void)
+      | undefined
+    if (typeof origUpdate === 'function') {
+      proto[ORIGINAL_UPDATE_BACKGROUNDS] = origUpdate
+      proto.updateBackgrounds = function (this: unknown, model: unknown): void {
+        flippedThisPass = false
+        origUpdate.call(this, model)
+        if (flippedThisPass) origUpdate.call(this, model)
+        flippedThisPass = false
       }
     }
     return true
