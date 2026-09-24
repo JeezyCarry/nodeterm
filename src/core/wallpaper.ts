@@ -23,6 +23,11 @@ import { platform } from './platform'
  * child of the cache dir with a hash-shaped name (`cachedImagePath`). So a hand-edited
  * settings.json cannot aim `load` at anything else, and there is no traversal to reject because
  * no caller-supplied segment is ever joined.
+ *
+ * `import` is the one exception: it takes a caller-supplied source path (the file picker's answer)
+ * and copies any JPEG/PNG/WebP/HEIC-named regular file into the cache, whose bytes `load` then
+ * returns. That is no wider than what the same caller already has (`fs:read` on both shells), but
+ * it means the jail above governs `load`, not what can ENTER the cache.
  */
 
 const run = promisify(execFile)
@@ -240,10 +245,13 @@ export async function importWallpaper(sourcePath: unknown): Promise<DesktopWallp
     throw new Error('Choose a JPEG, PNG, WebP or HEIC image.')
   }
   const src = path.resolve(sourcePath)
-  const current = currentWallpaper()
+  const keepNow = currentKeep()
   const mac = process.platform === 'darwin'
   const heic = /\.heic$/i.test(src)
-  const tooBig = (await stat(src)).size > MAX_LOAD_BYTES
+  const srcStat = await stat(src)
+  // A FIFO or device named `x.png` would hang copyFile/sips and wedge publishOnce for the run.
+  if (!srcStat.isFile()) throw new Error('Choose a JPEG, PNG, WebP or HEIC image.')
+  const tooBig = srcStat.size > MAX_LOAD_BYTES
   let result: DesktopWallpaper
   if (mac && (heic || tooBig || ((await longEdge(src)) ?? Infinity) > FULL_PX)) {
     result = { kind: 'image', path: await convertWithSips(src, FULL_PX, '') }
@@ -257,9 +265,11 @@ export async function importWallpaper(sourcePath: unknown): Promise<DesktopWallp
     await publishOnce(target, (tmp) => copyFile(src, tmp))
     result = { kind: 'image', path: target }
   }
-  // The setting is written by the renderer after this returns, so keep BOTH the new file and
-  // whatever is on screen now; the settings hook prunes the old one once the choice lands.
-  void pruneWallpaperCache([current, result])
+  // The setting is written by the renderer after this returns, so keep the new file AND everything
+  // the saved settings still name (the wallpaper on screen and the "Your image" tile's recent import):
+  // if that save never lands, nothing the settings point at may be gone. The settings hook prunes
+  // the old ones once the choice is saved.
+  void pruneWallpaperCache([...keepNow, result])
   return result
 }
 
@@ -302,7 +312,7 @@ export async function pruneWallpaperCache(keep: unknown[], dir = wallpaperCacheD
   }
 }
 
-let currentWallpaper: () => unknown = () => undefined
+let currentKeep: () => unknown[] = () => []
 
 /**
  * Wire onto the platform's RPC surface (Electron ipcMain / server WS-RPC alike). The settings
@@ -315,7 +325,7 @@ export function registerWallpaperIpc(settings: {
   get: () => { desktopWallpaper?: unknown; recentWallpaperImage?: unknown }
   onChange: (cb: (s: { desktopWallpaper?: unknown; recentWallpaperImage?: unknown }) => void) => unknown
 }): void {
-  currentWallpaper = () => settings.get().desktopWallpaper
+  currentKeep = () => wallpapersToKeep(settings.get())
   // The user's most recent import is kept too (`wallpapersToKeep`): choosing a preset must not
   // delete the image the "Your image" tile still offers.
   const key = (s: { desktopWallpaper?: unknown; recentWallpaperImage?: unknown }): string =>
