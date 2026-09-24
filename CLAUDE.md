@@ -3937,7 +3937,10 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   scroll (a scrolling menu cannot host a flyout, and a `::before` would scroll away with its rows);
   (b) a popover INSIDE a glass node or the card modal (`.ctx-popover`, `.color-popover`,
   `.label-picker`, `.kanban-meta__picker`; the host is its root) is simply not listed, so it is
-  opaque; (c) in-flow pieces that only stack on their own blurred parent (node header, card-modal
+  opaque — and all four paint ONE solid token, `--panel` (the colour the glass fill is `--panel` at
+  an alpha of), with the glass hairline and one shadow (visual QA round 4 N4-M1: they were five
+  greys); they keep the theme placeholder, not the glass one (N4-M2). Every MODAL dialog is glass
+  (Remote access, Publish, consent and the GitHub issue modal joined the text list); (c) in-flow pieces that only stack on their own blurred parent (node header, card-modal
   terminal) are fine. **Two guards.** `styles.glass-traps.test.ts` fails when a rule paints a glass
   fill (`--glass-chrome-bg`, `--glass-control-bg`, `--term-glass-bg`, `--term-glass-header-bg`) on
   a selector with no `backdrop-filter` in that rule or in a blur rule for the same element or its
@@ -3948,7 +3951,20 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   blur is ineffective (none behind it, floating over a blurred/solid ancestor's content, or a blur
   escaping its backdrop root) and exits 1 on any. Slice D ran it over 27 states (dock menus,
   context menu + flyout, popovers, tab menu, palette, drawers, phone, help, Settings + theme menu,
-  sessions, RAM, usage, label pickers, tooltips, kanban, card modal + pickers): 0 traps. Node blur
+  sessions, RAM, usage, label pickers, tooltips, kanban, card modal + pickers): 0 traps — at REST.
+  **Glass never fades** (visual QA round 4, N4-H1): opacity < 1 makes an element a backdrop root, so
+  a scrim fading its opacity turned the palette/dialog/drawer inside it into clear glass for the
+  120–160 ms of every open, and a `::before`-hosted menu fading its own opacity did the same. Under
+  glass scrims fade their `background-color`, glass surfaces enter by transform only, tooltips appear
+  without motion and the focus-mode dock slides. Both guards now see motion: the static test fails
+  on an opacity keyframe or transition on any glass surface or scrim (the scrim list is the probe's
+  exported `SCRIMS`) unless a gated rule overrides it, reads the LAST backdrop-filter declaration,
+  counts `background-image` as a paint and matches coverage on the full selector (`:not()`/`:hover`
+  kept); the probe runs a second pass that replays every finite animation, freezes every animation at
+  half its duration and scans (a blur inside a see-through backdrop root, or a blurred surface fading
+  its own opacity, is a trap), inspects `::after`, gradient fills and mask-border roots, and exits 2 —
+  never 0 — when it checked nothing. Slice E: 0 traps at rest and mid-animation, dark and light
+  (palette, context menu, Explorer, Remote access, label picker, Settings, sessions). Node blur
   pauses during camera moves; chrome is static and keeps it. **Left opaque, deliberately:** Monaco, `<webview>` and `<video>` bodies (another
   renderer's surface), sticky notes (the colour is the note), and the `surface-sunken` wells
   (`bg-bg` inputs are a sink/lift of the page on glass). **Kanban**: header strip + columns are
