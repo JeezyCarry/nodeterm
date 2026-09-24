@@ -982,3 +982,27 @@ describe('link project boundary guidance', () => {
     }
   })
 })
+
+describe('trigger wording does not claim in-process subagent requests (issue #917)', () => {
+  const bodies: [string, string][] = [
+    ['skill', buildCanvasSkillBody('/x/shim.sh')],
+    ['instructions', buildCanvasControlInstructions('/x/shim.sh')]
+  ]
+
+  it('both bodies route on visible canvas work, and say background subagents are not it', () => {
+    for (const [name, body] of bodies) {
+      // "subagents" / "delegate to other agents" also describe Claude Code's own Agent tool, so a
+      // request for background subagents was routed into opening canvas nodes instead.
+      expect(body, name).not.toMatch(/subagents\/agents/)
+      expect(body, name).not.toMatch(/delegate parts of a task/)
+      expect(body, name).toMatch(/separate, visible canvas sessions or\s+worktrees/)
+      expect(body, name).toMatch(/in-process/)
+    }
+  })
+
+  it('the orchestration recipe leaves the fan-out size to step 0', () => {
+    const skill = buildCanvasSkillBody('/x/shim.sh')
+    expect(skill).not.toMatch(/2–5 independent workstreams/)
+    expect(skill).toMatch(/independent workstreams step 0 identified/)
+  })
+})
