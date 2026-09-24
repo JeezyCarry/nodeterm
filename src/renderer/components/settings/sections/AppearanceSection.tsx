@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSettings } from '../../../state/settings'
+import { useWallpaperBackgroundFor } from '../../../state/wallpaper'
 import { isLiquidGlass } from '@renderer/lib/appTheme'
 import {
   GLASS_READABLE_TICK,
@@ -253,11 +254,22 @@ function WallpaperTile({
       onClick={onClick}
       style={background ? { background } : undefined}
       className={cn(
-        'flex h-14 w-24 items-center justify-center overflow-hidden rounded-md border-2 text-[11px] text-muted',
+        'relative flex h-14 w-24 items-center justify-center overflow-hidden rounded-md border-2 text-[11px] text-muted',
         selected ? 'border-text' : 'border-border'
       )}
     >
       {children}
+      {/* The ring alone was the only sign of the choice (visual QA L5); a check badge says it
+          without relying on the ring's contrast against the picture. White on a picture in both
+          themes, like the macOS wallpaper picker. */}
+      {selected && (
+        <span
+          aria-hidden
+          className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-white text-[10px] font-bold leading-none text-black shadow"
+        >
+          ✓
+        </span>
+      )}
     </button>
   )
 }
@@ -273,6 +285,9 @@ function WallpaperPicker(): React.JSX.Element {
   const recent = recentWallpaperImage(useSettings((s) => s.settings.recentWallpaperImage))
   // The tile offers the current image, else the last one imported (kept when a preset is chosen).
   const yourImage = value.kind === 'image' ? value : recent
+  // Its own picture, like every preset tile (visual QA round 2, N7). Imports have no cached
+  // thumbnail, so this is the wallpaper itself — the one already loaded when it is the current one.
+  const yourImageBg = useWallpaperBackgroundFor(yourImage)
   const update = useSettings((s) => s.update)
   const [stills, setStills] = useState<WallpaperStill[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -335,8 +350,13 @@ function WallpaperPicker(): React.JSX.Element {
           />
         ))}
         {yourImage && (
-          <WallpaperTile label="Your image" selected={is(yourImage)} onClick={() => pick(yourImage)}>
-            Your image
+          <WallpaperTile
+            label="Your image"
+            selected={is(yourImage)}
+            background={yourImageBg ? `center / cover no-repeat ${yourImageBg}` : undefined}
+            onClick={() => pick(yourImage)}
+          >
+            {yourImageBg ? null : 'Your image'}
           </WallpaperTile>
         )}
         {!isBrowserRuntime() && (
@@ -469,6 +489,7 @@ export function AppearanceSection({ isActive }: { isActive: boolean }): React.JS
                 type="button"
                 aria-label={`Accent ${label}`}
                 title={label}
+                aria-pressed={accent === c}
                 onClick={() => update({ accent: c })}
                 style={{ background: c }}
                 className={cn(

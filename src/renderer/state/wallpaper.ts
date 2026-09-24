@@ -52,7 +52,12 @@ function load(w: DesktopWallpaper): Promise<string | null> {
 }
 
 export function useWallpaperBackground(): string | null {
-  const raw = useSettings((s) => s.settings.desktopWallpaper)
+  return useWallpaperBackgroundFor(useSettings((s) => s.settings.desktopWallpaper))
+}
+
+/** The same background for any wallpaper value (the Settings "Your image" tile shows the imported
+ *  picture this way). `null`/absent = none. */
+export function useWallpaperBackgroundFor(raw: unknown): string | null {
   const w = normalizeWallpaper(raw)
   const key = cacheKey(w)
   // null = no wallpaper, a string = a gradient, undefined = a file that has to be loaded.
