@@ -3905,7 +3905,13 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   explicit backgrounds opaque (inline truecolor `background-color`).
 - **Liquid Glass chrome** (`:root[data-nt-glass='on']`, set by App.tsx only for that appearance, so
   every other look is byte-identical). ONE chrome fill, `--glass-chrome-bg` = the resolved `--panel`
-  at `glassChromeAlpha(--text, --panel)` — **dark 0.70, light 0.745** on the shipped palettes. The
+  at `glassChromeAlpha(--text, --panel, 4.5, highlights)` — **dark 0.74, light 0.745** on the shipped
+  palettes. `highlights` (`glassChromeHighlights`) are the washes that stack on the SAME fill — the ink
+  lift (`GLASS_LIFT_ALPHA` 0.14: hover rows, the active tab) and the accent selection
+  (`GLASS_SELECT_MIX` 0.3) — each with the `--text-strong` ink styles.css gives highlighted states, so
+  a highlighted row keeps 4.5:1 exactly like a plain one (plain fill alone: dark 0.70; the active tab
+  then measured 3.9:1, visual QA round 2 N2). A new highlight wash on glass owes an entry there and
+  `--text-strong` ink. The
   app's `--text` is itself TRANSLUCENT (`rgba(var(--tint-rgb), 0.85)`), so the ink moves with the
   backdrop and the white/black endpoint argument does not hold; the backdrop is SAMPLED (6×6×6 grid +
   grey ramp) and the test re-checks a fine sweep against the real tokens of both themes. App.tsx
@@ -3916,10 +3922,18 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   panel that paints them; nesting only stacks the same tint, and every alpha above the computed one
   also passes, so a nested surface cannot break the guarantee. The floating containers that
   hard-code `rgba(var(--menu-rgb), .98)` & co. are LISTED in the block at the end of styles.css — a
-  new floating container owes an entry there. **Blur goes on outermost containers only** (a blur
-  inside a blurred element re-blurs its parent's pixels at double cost); nested pieces (dock menus,
-  sidebar icon buttons) take the fill alone. Node blur pauses during camera moves; chrome is static
-  and keeps it. **Left opaque, deliberately:** Monaco, `<webview>` and `<video>` bodies (another
+  new floating container owes an entry there. **Never translucent without a working blur** (visual
+  QA round 2 N1): an element with its own `backdrop-filter` (or filter, opacity < 1, mask, clip-path,
+  blend mode) is a BACKDROP ROOT — a blur on anything inside it samples only the root's pixels, so a
+  menu that pops out of it, or covers sharp content inside it, shows that content crisp through its
+  tint. So: (a) a container that HOSTS pop-out menus keeps its glass on a `::before` layer (fill,
+  hairline, blur) and is no backdrop root — `.dock`, `.dock-menu`, `.dock-menu__sub`; (b) a popover
+  INSIDE a glass node (`.ctx-popover`, `.color-popover`; the node is its root) is solid
+  `rgb(var(--menu-rgb))`; (c) in-flow pieces that only stack on their own blurred parent (node header,
+  find bar, sidebar filter well, card-modal terminal) are fine. Audited live with a DOM probe over
+  every overlay (dock Add/Layouts/Zoom, context and colour popovers, tab menu, node context menu,
+  palette, sessions sidebar, RAM panel, usage popover, Settings + theme popover, kanban + card modal):
+  those five were the only traps. Node blur pauses during camera moves; chrome is static and keeps it. **Left opaque, deliberately:** Monaco, `<webview>` and `<video>` bodies (another
   renderer's surface), sticky notes (the colour is the note), and the `surface-sunken` wells
   (`bg-bg` inputs are a sink/lift of the page on glass). **Kanban**: header strip + columns are
   text-surface glass, cards a `--glass-lift-hover` lift WITHOUT their own blur, column/header dots
@@ -3927,11 +3941,18 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   **Two chrome fills (slider scope)**: `--glass-chrome-bg` for TEXT surfaces never drops below the
   readable alpha (and `--glass-text-blur` below the tick's blur); `--glass-control-bg` for the small
   floating CONTROLS (tab bar, dock, zoom, toolbar buttons, minimap, pills, sessions toggle) follows
-  the slider to `GLASS_CONTROL_CLEAR_ALPHA` 0.35, and `--glass-control-blur` dims (dark, ×0.7) or
+  the slider down to `glassControlClearAlpha` — at least 0.35 and enough for 3:1 icons over every
+  sampled backdrop after the control blur's `brightness(--glass-control-dim)`: dark 0.35, light 0.57
+  (brightening cannot lift near-black water; round 2 H4) — and `--glass-control-blur` dims (dark, ×0.7) or
   brightens (light, ×1.3) their backdrop left of the tick — both from `glassChromeAlphas`. A new
   floating container goes in ONE of the two lists. **Highlights** are `--glass-lift(-hover)` (theme
-  ink 14%/10%) or `--glass-select` (accent 30%) for THE selection — never `--panel*`, which is the
-  fill again (visual QA H1/H2). Under glass `--muted` is 0.7 dark / 0.8 light and `--muted-2` = `--muted`. The minimap draws node rectangles in translucent theme ink
+  ink 14%/10%) or `--glass-select` (accent 30%) for THE selection, with `--text-strong` ink — never
+  `--panel*`, which is the fill again (visual QA H1/H2; round 2 N5: dock/zoom/sessions-row hovers and
+  the default Button). Segmented controls select with a neutral lifted thumb, so the one filled accent
+  per view is the primary action (N12). `::placeholder` is `--glass-placeholder` (0.78 dark / 0.86
+  light, 4.5:1 on the fill, pinned by glassContrast.test.ts). OK-range usage/context meters are
+  neutral ink under glass (M1: green already means unread/success) — the fills are inline literals
+  shared with the notch HUD, so the rule matches the serialised `rgb(48, 209, 88)`. Under glass `--muted` is 0.7 dark / 0.8 light and `--muted-2` = `--muted`. The minimap draws node rectangles in translucent theme ink
   (inline node colours overridden with `!important`), keeping the working/attention/unread strokes.
 - **No window accents under Liquid Glass.** A terminal window's per-node colour arrives as INLINE
   styles (`borderTopColor`, the colour dot's background), so the overrides carry `!important`: a
@@ -3957,8 +3978,9 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   alpha right of it is higher — so Readable→Tinted keeps 4.5:1; left of the tick the row says the
   guarantee is off. Measured: chrome dark 0.20 / 0.70 / 0.95, chrome light 0.20 / 0.745 / 0.95,
   nodeterm-dark 0.20 / 0.675 / 0.95 (Clear / Readable / Tinted). App.tsx sets `--glass-t` (blur
-  16→28px on chrome and × 0.85 = 13.6→23.8px on terminal nodes via `--glass-term-blur`, saturation
-  200→145%). **Refraction** is ONE shared SVG filter
+  16→28px on chrome and × 0.85 = 13.6→23.8px on terminal nodes via `--glass-term-blur`; saturation
+  `--glass-sat` 180% at Clear → 150% from the Readable tick to Tinted, text surfaces a flat 150% —
+  round 2 N9: 1.6–2.0 turned glass olive or pink over bright wallpapers). **Refraction** is ONE shared SVG filter
   (`components/GlassRefraction.tsx`, `#nt-refract`: a 256² edge-lens displacement map generated once,
   `primitiveUnits="objectBoundingBox"` so one filter fits every element), referenced from
   `--glass-blur` as `url(#nt-refract)` — no per-node filters. **It runs LAST in the chain**
