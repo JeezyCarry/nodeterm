@@ -154,6 +154,7 @@ import {
   restartEligibility,
   restartSessionId,
   RESTART_EXIT_TIMEOUT_MS,
+  RESTART_LATE_EXIT_MS,
   type ExitPhaseOutcome,
   type PauseOutcome,
   type ResumePhaseOutcome
@@ -3916,6 +3917,9 @@ export function TerminalNode({
             sessionId: agentSessionId,
             io: restartIo,
             paneCommand: () => api.pty.paneCommand(id),
+            // A user-asked restart, like performRestartResume: a CLI that is slow to quit is
+            // waited on rather than left to quit unwatched (issue #899 was this exact action).
+            lateExitMs: RESTART_LATE_EXIT_MS,
             isLive: restartTarget
           })
           if (exited !== 'exited') return exited

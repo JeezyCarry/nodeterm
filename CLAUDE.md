@@ -795,7 +795,12 @@ Lifecycle, by intent:
   (250 ms) until a SHELL owns the pane, then echo-deliver `resumeCommand(...)` — the same
   `claude --resume` / `codex resume` the cold restore uses. **Nothing is ever killed**: if the CLI
   has not quit within `RESTART_EXIT_TIMEOUT_MS` (6 s) the run reports `exit-timeout` and leaves the
-  session running. A `working` **or `blocked`** session is refused — `/exit` typed into a
+  session running. **A user-asked restart gets a late window on top** (`RESTART_LATE_EXIT_MS`, 60 s,
+  spent only while the pane still reads): issue #899 was a 19 h cron session whose CLI quit a moment
+  AFTER the 6 s, with nothing left watching — the node sat at a bare shell with no agent and no
+  resume. The Eco sweep and Pause keep the bare 6 s (the sweep is serialized canvas-wide). The
+  exit-timeout notice (`exitTimeoutNotice`) hands over the bare resume line for exactly that
+  late-quit case. A `working` **or `blocked`** session is refused — `/exit` typed into a
   permission prompt would ANSWER it, not quit — and a node is held one-restart-at-a-time until the
   resume line has actually LEFT the pane (an un-submitted line is where a second `/exit` would be
   spliced in). The bulk action runs the same per-node closure sequentially over every idle agent
