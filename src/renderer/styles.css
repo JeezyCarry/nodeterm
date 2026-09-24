@@ -13806,6 +13806,97 @@ body.focus-mode .dock:hover {
   -webkit-backdrop-filter: var(--glass-text-blur);
   backdrop-filter: var(--glass-text-blur);
 }
+/* Glass never fades (visual QA round 4, N4-H1). An element with opacity < 1 is a backdrop root, so
+   while a scrim faded in, the palette/dialog/drawer inside it blurred only the dim scrim and the
+   canvas read SHARP through the tint for 120–160 ms, then snapped to frosted; a menu fading its own
+   opacity (the `::before`-hosted ones) laid the page sharp under its blur the same way. Under glass:
+   scrims fade their COLOUR (a keyframe with only `from` animates to the scrim's own background),
+   glass surfaces enter by transform alone, tooltips appear without motion (their transform is their
+   placement), and the focus-mode dock slides instead of fading. `styles.glass-traps.test.ts` fails
+   on an opacity animation or transition left on any glass surface or scrim; the probe's
+   mid-animation pass checks the live page. Reduce Motion keeps `animation: none` (these sit in a
+   no-preference query so their `animation-name` cannot re-enable what that rule switched off). */
+@keyframes nt-glass-scrim-in {
+  from {
+    background-color: transparent;
+  }
+}
+@keyframes nt-glass-pop {
+  from {
+    transform: scale(0.97) translateY(4px);
+  }
+}
+@keyframes nt-glass-menu-in {
+  from {
+    transform: translateY(-3px);
+  }
+}
+@keyframes nt-glass-drawer-in {
+  from {
+    transform: translateX(10px);
+  }
+}
+@keyframes nt-glass-onb-menu {
+  0%,
+  19% {
+    visibility: hidden;
+    transform: scale(0.92);
+  }
+  23%,
+  52% {
+    visibility: visible;
+    transform: scale(1);
+  }
+  56%,
+  100% {
+    visibility: hidden;
+    transform: scale(0.97);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-nt-glass='on'] :is(.confirm-overlay, .sc-overlay, .palette-overlay, .drawer-overlay, .kanban-modal-scrim) {
+    animation-name: nt-glass-scrim-in;
+  }
+  :root[data-nt-glass='on'] :is(.confirm, .shortcuts, .palette, .kanban-modal) {
+    animation-name: nt-glass-pop;
+  }
+  :root[data-nt-glass='on'] :is(.ctx-menu, .tab-menu) {
+    animation-name: nt-glass-menu-in;
+  }
+  :root[data-nt-glass='on'] .drawer {
+    animation-name: nt-glass-drawer-in;
+  }
+  :root[data-nt-glass='on'] body.focus-mode .dock {
+    transition: transform 0.16s ease-out;
+  }
+}
+:root[data-nt-glass='on'] .tooltip {
+  animation-name: none;
+}
+/* The onboarding scene replays the REAL .ctx-menu: it appears and disappears by visibility. */
+:root[data-nt-glass='on'] .ctx-menu.onb-menu {
+  opacity: 1;
+  visibility: hidden;
+  animation-name: nt-glass-onb-menu;
+}
+/* The focus-mode exit pill rested at 40% opacity — a glass control that was itself see-through.
+   It rests at full opacity in secondary ink instead. */
+:root[data-nt-glass='on'] .focus-exit {
+  opacity: 1;
+  color: var(--muted);
+  transition: color 0.16s ease-out;
+}
+:root[data-nt-glass='on'] .focus-exit:hover {
+  color: var(--text-strong);
+}
+:root[data-nt-glass='on'] body.focus-mode .dock {
+  opacity: 1;
+  transform: translate(-50%, calc(100% + var(--float-gap) + 12px));
+}
+:root[data-nt-glass='on'] :is(body.focus-mode.focus-reveal-bottom .dock, body.focus-mode .dock:hover) {
+  transform: translateX(-50%);
+}
+
 /* Top tooltips belong to the dock (the only `placement="top"` user). They pin 6px above the BUTTON,
    which on glass put the bubble on the dock's visible rim (visual QA round 3, NH2): they clear the
    rim by 7px instead. */
