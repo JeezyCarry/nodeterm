@@ -872,9 +872,12 @@ empty band and no explanation. `latestClaimSize` (`core/pty-size.ts`) picks the 
 highest recency — bumped by an attach, a claim that CHANGES, and a write that is not an emulator's
 automatic answer (`core/terminal-reports.ts`; every attached xterm answers a DA/CPR/OSC query, and
 counting those would hand the session to whoever answered last). Three rules, each load-bearing:
-(1) a viewer that cannot adapt is a CEILING — today's phone ignores `OP.Resized`, and a pty wider
-than its screen wraps into garbage, so a relay sink is `bounding` unless `pty.attach` said
-`resizedFrames: true`; (2) the real size flows back to every viewer (`SessionHostPty.onSize` →
+(1) a viewer that cannot adapt is a CEILING — a pty wider than the phone's screen would wrap into
+garbage there (or, rendered at the pty's size, be clipped to its left ~45 columns), so a relay sink is
+`bounding` unless `pty.attach` said `resizedFrames: true`. The iOS app deliberately does NOT send it:
+it reads `OP.Resized` only to show a "Sized to another screen · Fit this screen" hint, and every
+phone report is ANSWERED (the sink's `sinkShown` is forgotten on each report) because the phone
+clears that hint whenever it sends a size; (2) the real size flows back to every viewer (`SessionHostPty.onSize` →
 `PtyManager.applyBackendSize` → `pty:size`, and `OP.Resized` to the sink), and a session-host
 `Session`'s `applySize` only VOTES; (3) the host's `geometry` push is NEGOTIATED at `hello`
 (`SESSION_HOST_FEATURES`) and sent only to sockets that asked — an older client reads every

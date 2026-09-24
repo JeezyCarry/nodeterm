@@ -3978,8 +3978,12 @@ export class PtyManager {
     } else {
       const size = normalizeSize(cols, rows)
       session.sizes.set(sub, size)
-      // The sink's viewer fits itself too; that fit is what it is rendering until told otherwise.
-      if (sub === null) session.sinkShown = size
+      // A sink that reports a size is owed an ANSWER to that report, even an unchanged one: the
+      // phone clears its "sized to another screen" hint whenever it sends a size (it cannot tell
+      // on its own whether it just became the active viewer), and a `Resized` that was already in
+      // flight would otherwise re-raise the hint with nothing coming to correct it. So forget what
+      // the sink was last told; the backend's next answer is forwarded unconditionally.
+      if (sub === null) session.sinkShown = undefined
       // The view's own xterm fits itself locally (as it always has), so its fit — not the last
       // authoritative size we sent it — is what it is rendering right now. If that fit isn't the
       // effective size, applySize() below corrects it straight back.

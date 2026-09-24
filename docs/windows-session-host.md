@@ -271,10 +271,15 @@ every attached xterm answers a DA/CPR/OSC query, and counting those would hand t
 whoever answered last). Three rules come with it:
 
 - **A viewer that cannot adapt is a ceiling.** Every renderer view renders the size it is told
-  (`pty:size`: letterbox a smaller grid, clip a larger one, as a tmux client does). The phone today
-  does not — it ignores `OP.Resized` — and a pty wider than its screen would wrap into garbage, so a
-  relay sink is `bounding` unless `pty.attach` carried `resizedFrames: true`, and the chosen size is
-  clamped componentwise to every bounding claim.
+  (`pty:size`: letterbox a smaller grid, clip a larger one, as a tmux client does). A pty wider than
+  the phone's screen would wrap into garbage there, or — rendered at the pty's size — be clipped to
+  its left ~45 columns, so a relay sink is `bounding` unless `pty.attach` carried
+  `resizedFrames: true`, and the chosen size is clamped componentwise to every bounding claim. The
+  iOS app keeps it that way on purpose: it reads `OP.Resized` only to explain the empty band
+  ("Sized to another screen") and to offer "Fit this screen", which re-claims the size with a
+  rows+1 → rows wiggle (an unchanged claim is not activity). Because the phone clears that hint
+  every time it sends a size, the host ANSWERS every sink report, unchanged or not — the sink's
+  `sinkShown` is forgotten on each report.
 - **The pty's real size flows back to every viewer.** `SessionHostPty.onSize` → `PtyManager`
   `applyBackendSize` → `pty:size` to each view whose xterm is not already at it, and `OP.Resized`
   (payload = `OP.Resize`'s, 2× uint16 LE) to the relay sink. A session-host `Session` only VOTES in
