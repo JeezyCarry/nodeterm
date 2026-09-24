@@ -262,6 +262,15 @@ describe('glass status chip keeps its label readable', () => {
     }
   })
 
+  // glassTint sizes the wash at the tick for every slider position; that is only safe because the
+  // wash can only grow with the alpha (the scan is contiguous, so the tick's wash passes above it).
+  it.each(rows)('%s: the wash never shrinks right of the Readable tick', (_id, t, readable, wash) => {
+    for (const a of [readable, (readable + 1) / 2, 0.95, 1].filter((x) => x >= readable)) {
+      expect(glassChipWash(t.theme.foreground!, t.theme.background!, a)).toBeGreaterThanOrEqual(wash)
+    }
+    expect(glassTint(t.theme, 1)!.chipWash).toBe(glassTint(t.theme)!.chipWash)
+  })
+
   it('the stylesheet uses the computed wash, never a fixed one', () => {
     const css = readFileSync(join(__dirname, '..', 'styles.css'), 'utf8')
     const rule = css.slice(css.indexOf(":root[data-nt-glass='on'] .term-node__status {"))

@@ -176,8 +176,10 @@ export function glassTint(
   const readable = glassTintAlpha(foreground, theme.background!)
   const alpha = glassSurfaceAlpha(slider, readable, a11y)
   const rgb = bg.join(', ')
-  // Left of the Readable tick the contrast promise is off anyway; size the chip for the tick.
-  const chipWash = glassChipWash(foreground, theme.background!, Math.max(alpha, readable))
+  // Sized at the Readable tick, whatever the slider: left of it the promise is off anyway, and
+  // right of it a denser tint only leaves MORE room for the wash, so the tick's wash still passes —
+  // one computation per theme instead of a ~21k-check cache miss per slider step.
+  const chipWash = glassChipWash(foreground, theme.background!, readable)
   return {
     background: `rgba(${rgb}, ${alpha.toFixed(3)})`,
     header: `rgba(${rgb}, ${HEADER_LAYER_ALPHA})`,
