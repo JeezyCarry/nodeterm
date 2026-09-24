@@ -19,17 +19,25 @@
  *
  * Two passes, both by default:
  *   - at rest: what is on screen now;
- *   - mid-animation: every finite CSS animation on the page is restarted, every animation is paused
- *     at half its duration, the page is scanned, then each is finished or resumed as it was. The
+ *   - mid-animation: every finite CSS animation on the page is restarted and every finite RUNNING
+ *     animation is set to half its duration, the page is scanned, and everything is put back. The
  *     open animations of overlays are 120–160 ms long; a probe that only looks at rest never sees
  *     them (QA round 4: both probes reported 0 with the palette scrim at opacity 0.17).
+ *     It never calls pause()/play() (code review 7 #6: on a CSS animation they install a play-state
+ *     override, and an infinite animation then stops obeying the idle gate, `--nt-anim-state`). The
+ *     whole pass is one synchronous task, so the timeline cannot advance while it scans: seeking
+ *     `currentTime` is enough to freeze a frame, and seeking back restores it exactly. Restarted
+ *     elements get their `animation-name` re-set once more afterwards (a fresh animation, no API
+ *     call on it ever) and lose the `style` attribute if they had none. The pass checks its own
+ *     restoration — style attributes, and each untouched animation's play state and time — and
+ *     the script exits 2 if anything was left behind.
  *
  * Usage (a dev build with remote debugging, e.g. `--remote-debugging-port=9333`):
  *   node scripts/glass-trap-probe.mjs [--port 9333 | --ws ws://…] [--rest | --mid-anim] [--json]
  * Open the overlay under test first; the probe checks what is on screen. Exits 1 on any trap, 2
- * when it could not check anything (no page, Liquid Glass off, nothing scanned) — never a silent 0.
- * It only reads computed styles and replays animations the page already declares; it never clicks,
- * types or changes app state.
+ * when it could not check anything (no page, no answer within 20 s, Liquid Glass off, nothing
+ * scanned) or failed its own restoration check — never a silent 0. It only reads computed styles
+ * and replays animations the page already declares; it never clicks, types or changes app state.
  */
 
 import { realpathSync } from 'node:fs'
@@ -107,26 +115,35 @@ export function glassTrapProbe(SCRIMS, midAnim) {
     return true
   }
 
-  // Mid-animation: replay every finite animation the page declares, freeze everything at half way.
+  // Mid-animation: replay every finite animation the page declares, seek every finite running
+  // animation to half way (no pause()/play() — see the header).
+  const styleAttrs = () => new Map([...document.querySelectorAll('[style]')].map((e) => [e, e.getAttribute('style')]))
+  const stylesBefore = midAnim ? styleAttrs() : null
+  const untouched = midAnim ? document.getAnimations().map((a) => ({ a, state: a.playState, time: a.currentTime })) : []
   const replayed = []
   const frozen = []
+  // The element's own CSS animations are replaced when its animation-name is re-set.
+  const wasRestarted = (a) =>
+    a instanceof CSSAnimation && !a.effect?.pseudoElement && replayed.some((r) => r.el === a.effect?.target)
+  const restart = (el, prev) => {
+    el.style.animationName = 'none'
+    void getComputedStyle(el).animationName
+    el.style.animationName = prev
+  }
   if (midAnim) {
     for (const el of document.body.querySelectorAll('*')) {
       const cs = getComputedStyle(el)
-      if (none(cs.animationName) || /infinite/.test(cs.animationIterationCount) || cs.display === 'none') continue
+      if (none(cs.animationName) || /infinite/.test(cs.animationIterationCount) || /paused/.test(cs.animationPlayState) || cs.display === 'none') continue
       const prev = el.style.animationName
-      el.style.animationName = 'none'
-      void getComputedStyle(el).animationName
-      el.style.animationName = prev
-      replayed.push(el)
+      restart(el, prev)
+      replayed.push({ el, prev, hadStyle: stylesBefore.has(el) })
     }
     void document.body.offsetWidth
     for (const a of document.getAnimations()) {
       const t = a.effect?.getTiming?.()
-      if (!t) continue
+      if (!t || t.iterations === Infinity || a.playState !== 'running') continue
       const d = typeof t.duration === 'number' ? t.duration : a.effect.getComputedTiming().duration
-      frozen.push({ a, wasRunning: a.playState === 'running', finite: t.iterations !== Infinity })
-      a.pause()
+      frozen.push({ a, time: a.currentTime })
       a.currentTime = (t.delay || 0) + (d || 0) / 2
     }
   }
@@ -202,9 +219,24 @@ export function glassTrapProbe(SCRIMS, midAnim) {
       check(el, '::after')
     }
   } finally {
-    for (const { a, wasRunning, finite } of frozen) {
-      if (finite && replayed.includes(a.effect?.target)) a.finish()
-      else if (wasRunning) a.play()
+    // Restarted elements: a fresh animation replaces the seeked one (it plays its entrance once
+    // more, as when the overlay opened). Everything else: seek back to where it was.
+    for (const { a, time } of frozen) if (!wasRestarted(a)) a.currentTime = time
+    for (const { el, prev, hadStyle } of replayed) {
+      restart(el, prev)
+      if (!hadStyle) el.removeAttribute('style')
+    }
+  }
+  // Self-check: nothing left behind.
+  const leftovers = []
+  if (midAnim) {
+    const after = styleAttrs()
+    for (const [e, v] of after) if (stylesBefore.get(e) !== v) leftovers.push(`style changed on ${name(e)}`)
+    for (const [e] of stylesBefore) if (!after.has(e)) leftovers.push(`style removed from ${name(e)}`)
+    const same = (x, y) => x === y || (x != null && y != null && Math.abs(x - y) < 0.01)
+    for (const { a, state, time } of untouched) {
+      if (wasRestarted(a)) continue
+      if (a.playState !== state || !same(a.currentTime, time)) leftovers.push(`animation ${a.animationName || a.id || '?'} on ${a.effect?.target ? name(a.effect.target) : '?'} not restored`)
     }
   }
   return {
@@ -213,12 +245,19 @@ export function glassTrapProbe(SCRIMS, midAnim) {
     checked,
     animations: frozen.length,
     traps,
+    leftovers,
   }
 }
 
-async function evaluate(ws, expression) {
+async function evaluate(ws, expression, ms = 20000) {
   const sock = new WebSocket(ws)
   return new Promise((resolve, reject) => {
+    // A page that never answers (paused in a debugger, hung renderer) is "could not check": exit 2.
+    const timer = setTimeout(() => {
+      reject(new Error(`no answer from ${ws} within ${ms / 1000}s`))
+      sock.close()
+    }, ms)
+    sock.onclose = () => clearTimeout(timer)
     sock.onerror = () => reject(new Error(`cannot connect to ${ws}`))
     sock.onopen = () => sock.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression, returnByValue: true } }))
     sock.onmessage = (m) => {
@@ -237,7 +276,7 @@ async function main() {
   let ws = opt('--ws')
   if (!ws) {
     const port = opt('--port') ?? '9333'
-    const pages = await (await fetch(`http://localhost:${port}/json`)).json()
+    const pages = await (await fetch(`http://localhost:${port}/json`, { signal: AbortSignal.timeout(5000) })).json()
     ws = pages.find((p) => p.type === 'page' && !p.url.includes('hud'))?.webSocketDebuggerUrl
     if (!ws) throw new Error(`no app page on port ${port}`)
   }
@@ -250,10 +289,11 @@ async function main() {
   let blind = false
   for (const r of results) {
     traps += r.traps.length
-    if (!r.glass || r.checked === 0) blind = true
+    if (!r.glass || r.checked === 0 || r.leftovers.length) blind = true
+    for (const l of r.leftovers) console.error(`probe left state behind: ${l}`)
     if (args.includes('--json')) continue
     if (!r.glass) console.log('Liquid Glass is not on (data-nt-glass) — nothing glass to check')
-    console.log(`${r.pass}: ${r.traps.length} trap(s) in ${r.checked} translucent surface(s)${r.pass === 'mid-animation' ? `, ${r.animations} animation(s) frozen at 50%` : ''}`)
+    console.log(`${r.pass}: ${r.traps.length} trap(s) in ${r.checked} translucent surface(s)${r.pass === 'mid-animation' ? `, ${r.animations} animation(s) seeked to 50%, restored` : ''}`)
     for (const t of r.traps) console.log(`  ${t.el}  ${t.bg}  ${t.why}  [${t.box.join(',')}]`)
   }
   process.exit(traps ? 1 : blind ? 2 : 0)
