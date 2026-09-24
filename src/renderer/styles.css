@@ -7179,8 +7179,9 @@ button.group-node__setup:disabled {
   white-space: nowrap;
 }
 .usage-pill__summary > span + span { margin-left: 6px; }
-/* Symmetric around the dot: it hugged the next token ("87% 5h ·98% wk", visual QA L2). */
-.usage-pill__sep { margin-right: 6px; }
+/* Liquid Glass: symmetric around the dot — it hugged the next token ("87% 5h ·98% wk", visual QA
+   L2). Gated so the default look stays byte-identical. */
+:root[data-nt-glass='on'] .usage-pill__sep { margin-right: 6px; }
 /* While the popover is open, rise above the sessions sidebar (z-index 12) — a tall sidebar
    reaches the bottom-left corner and would cover the panel. Closed pill keeps its low layer so
    it never draws over the sidebar itself.
@@ -12830,8 +12831,8 @@ button.group-node__setup:disabled {
   max-height: 340px;
   overflow-y: auto;
 }
-/* The swatch abutted the name (~3px, visual QA M6). */
-.theme-select__menu button {
+/* Liquid Glass: the swatch abutted the name (~3px, visual QA M6). Gated like the rest of the look. */
+:root[data-nt-glass='on'] .theme-select__menu button {
   gap: 8px;
 }
 .theme-select__group {
