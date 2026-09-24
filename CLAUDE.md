@@ -3129,7 +3129,12 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
     - **The copy says the edits flow both ways**, because a link is not a copy: editing a shared
       skill from inside the account edits the machine's own file. A user who reads "share" as "copy"
       finds that out by losing work. Result sentences are the pure `renderer/lib/skillSharing.ts`.
-    - **Surfaces.** Desktop: full. **Server Edition: full** — the whole implementation is core, so
+    - **Agent TUIs after a live switch to a light terminal theme** keep the dark palette they latched at
+  launch. A/B, nodeterm Light, Readable glass vs opaque Light, same frames: Codex composer 1.25:1 vs
+  dark-on-black (unreadable both), Codex model line 1.6 vs 1.41, Claude dim status 1.96 vs 2.86, Grok
+  identical — the apps' colours, not the glass (app colours are outside the guarantee). Left as is;
+  restart agents after a theme switch.
+- **Surfaces.** Desktop: full. **Server Edition: full** — the whole implementation is core, so
       the ws-bridge leg is a real passthrough and the machine the browser is served from is exactly
       the machine whose `~/.claude/skills` is shared (the canvas skill is not installed there, but
       its name stays reserved: a reserved name that is never created is inert). **SSH accounts:
@@ -3784,6 +3789,11 @@ or browser nodes means adding the draw and the set together, in one change.
   mount independently and a thirty-card board would otherwise re-read the same bytes thirty times per
   open. Caching by path is safe: `saveCanvasImage` creates exclusively, so re-picking yields
   `logo (2).png` rather than overwriting.
+- **Agent TUIs after a live switch to a light terminal theme** keep the dark palette they latched at
+  launch. A/B, nodeterm Light, Readable glass vs opaque Light, same frames: Codex composer 1.25:1 vs
+  dark-on-black (unreadable both), Codex model line 1.6 vs 1.41, Claude dim status 1.96 vs 2.86, Grok
+  identical — the apps' colours, not the glass (app colours are outside the guarantee). Left as is;
+  restart agents after a theme switch.
 - **Surfaces.** Desktop: full. **Server Edition**: full — every leg is already core (`fs.readBinary`,
   `files.saveCanvasImage`) or has a real browser implementation (`dialog.selectFile` → the web
   picker), so no new IPC was added and nothing is stubbed. **Mobile**: N/A for v1 — *nodeterm mobile*
@@ -3848,9 +3858,10 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   `allowTransparency`, so the WebGL atlas is rasterised without a baked-in background. Both toggle
   LIVE through `applyLiveOptions` (the addon rebuilds its atlas on any option change); the card
   modal and the settings preview never pass glass. Glass stands down while a shared glyph grid is
-  mounted (it paints text BELOW the nodes, so a tint would cover it), and the blur is dropped while
-  the camera moves (`.canvas-moving`, toggled by `onMoveStart`/`onMoveEnd` via classList so a pan
-  does not re-render Canvas) — the tint alone carries the contrast guarantee.
+  mounted (it paints text BELOW the nodes, so a tint would cover it), and, only when **Keep blur while
+  moving** is off, the blur is dropped while the camera moves (`.canvas-moving`, toggled by
+  `onMoveStart`/`onMoveEnd` via classList so a pan does not re-render Canvas) — the tint alone
+  carries the contrast guarantee.
 - **App-painted cell backgrounds become glass** (`terminal/glass-cell-backgrounds.ts`). addon-webgl
   0.18.0 paints every background rectangle at alpha 1 (`RectangleRenderer._updateRectangle`,
   `$a = 1`), so full-screen TUIs read as slabs: Grok's `48;2;20;20;20` screen fill, Codex's composer,
@@ -3874,11 +3885,18 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   the renderer passes is only the first cell's): inverted-polarity text (dark text on a light bar,
   dark theme) must keep min(4.5, its opaque contrast) or the panel stays opaque; other text, while
   the guarantee is on, must fare no worse than on plain glass; glyphs under 3:1 on the opaque panel
-  are decoration. Reduce Transparency (t = 1) → opaque. Written premultiplied as `(c·√k, √k)` — the
+  are decoration. **Polarity is judged against the PANEL, not the theme bg** (#303030 text is lighter
+  than #1e1e1e yet dark on a #e4e4e4 bar — judged by the theme, that bar went translucent at 1.00:1).
+  **One verdict per panel colour per terminal** (`panelVerdicts`): fill computed once, each text
+  colour checked once, opaque sticks (a multi-row light box never stripes), reset on alpha or theme
+  bg/fg change — addon-webgl rebuilds every row on any cell change, cursor blink included. The wrap
+  body after the stock rectangle is try/caught per call (fail open per frame, not only at install). Reduce Transparency (t = 1) → opaque. Written premultiplied as `(c·√k, √k)` — the
   canvas is premultiplied and the addon blends alpha with SRC_ALPHA, so this stores exactly `(c·k, k)`.
   Only terminals registered through `setGlassCellAlpha` (TerminalNode, `glassOn` only) are touched —
   others are byte-identical; an alpha change calls `term.clearTextureAtlas()` because backgrounds
-  only rebuild for changed cells. The test pins addon-webgl 0.18.0 and every private name, and
+  only rebuild for changed cells — through `scheduleGlassCellAlpha`, which debounces a change between
+  two glass alphas by 150 ms (a slider drag streams 0.01 steps and each rebuild wipes the SHARED glyph
+  atlas); glass on/off is immediate. The test pins addon-webgl 0.18.0 and every private name, and
   sweeps both default themes to prove the Readable guarantee on panels. Ceilings: Increase Contrast
   does not strengthen panels (it pins the node to Tinted already); the DOM-renderer fallback keeps
   explicit backgrounds opaque (inline truecolor `background-color`).
@@ -3930,7 +3948,18 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   200→145%). **Refraction** is ONE shared SVG filter
   (`components/GlassRefraction.tsx`, `#nt-refract`: a 256² edge-lens displacement map generated once,
   `primitiveUnits="objectBoundingBox"` so one filter fits every element), referenced from
-  `--glass-blur` as `url(#nt-refract)` — no per-node filters. Its scale is `0.025 × (1 − t)`; it moves
+  `--glass-blur` as `url(#nt-refract)` — no per-node filters. **It runs LAST in the chain**
+  (`blur() saturate() url()`) and composites over its SourceGraphic so its output is opaque: first in
+  the chain (plus an in-filter soft blur with default edgeMode) it let Chromium show a 20–40px band of
+  SHARP backdrop inside every glass rim at every slider value (visual QA C1). Measured on an empty
+  `.ctx-menu` over terminal text, rim-band high-frequency energy 2.55 → 0.20 (Clear), 1.90 → 0.07
+  (Readable) = the interior's. **Terminal glass flattens luminance**: `--glass-term-blur` adds
+  `contrast(calc(1 - var(--glass-t)))` (1 at Clear, 0.3 at Readable, 0 at Tinted) — a blurred photo
+  under a big pane read as smudges; empty glass at Readable over the lake photo went 2.2:1 → 1.28:1
+  brightness swing. It keeps the backdrop a backdrop colour, so the guarantee is untouched. The status
+  chip wash is sized at the Readable tick for every slider position (the wash only grows with alpha).
+  App.tsx sets `data-theme`, `data-nt-glass` and the glass custom properties in LAYOUT effects, so no
+  frame paints the attribute without its fill. Its scale is `0.025 × (1 − t)`; it moves
   backdrop pixels, never the tint, so it cannot touch contrast. Glass NODES carry a 1px rim light instead of a sheen: a
   masked-ring `::before` (anchored to the React Flow wrapper), brightest top-left; a surface-wide
   diagonal sheen was tried and washed the pane out. Refraction scale max is 0.025 (was 0.06). Node blur+refraction pause while the camera moves
@@ -3955,6 +3984,11 @@ glass never sits over plain black; a wallpaper the user chose is never replaced.
   because the fills are INLINE custom properties a media query cannot override. **Reduce Motion**
   holds the three state glows static-lit (the idle gate's values) and stops the minimap and badge
   pulses, in every appearance — the state still reads, nothing breathes.
+- **Agent TUIs after a live switch to a light terminal theme** keep the dark palette they latched at
+  launch. A/B, nodeterm Light, Readable glass vs opaque Light, same frames: Codex composer 1.25:1 vs
+  dark-on-black (unreadable both), Codex model line 1.6 vs 1.41, Claude dim status 1.96 vs 2.86, Grok
+  identical — the apps' colours, not the glass (app colours are outside the guarantee). Left as is;
+  restart agents after a theme switch.
 - **Surfaces.** Desktop: full. Server Edition: gradients + glass; the stills list is empty (not
   macOS) and "Choose image…" is hidden (a picker there browses the SERVER's disk). Relay tabs keep
   a stub (no stills, import refused). Mobile: N/A (no canvas). Kanban: N/A (the board is opaque).
