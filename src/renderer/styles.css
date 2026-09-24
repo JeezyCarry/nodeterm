@@ -7182,6 +7182,19 @@ button.group-node__setup:disabled {
 /* Liquid Glass: symmetric around the dot — it hugged the next token ("87% 5h ·98% wk", visual QA
    L2). Gated so the default look stays byte-identical. */
 :root[data-nt-glass='on'] .usage-pill__sep { margin-right: 6px; }
+/* Liquid Glass: when the pill runs out of room it drops whole trailing segments ("100% Grok"), never
+   characters ("100% Fable…", visual QA round 2, N8) — a one-line wrapping row whose overflow is
+   clipped. Every provider stays in the popover. */
+:root[data-nt-glass='on'] .usage-pill__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  height: 16px;
+  line-height: 16px;
+}
+:root[data-nt-glass='on'] .usage-pill__summary > * {
+  flex: 0 0 auto;
+}
 /* While the popover is open, rise above the sessions sidebar (z-index 12) — a tall sidebar
    reaches the bottom-left corner and would cover the panel. Closed pill keeps its low layer so
    it never draws over the sidebar itself.
@@ -12835,6 +12848,10 @@ button.group-node__setup:disabled {
 :root[data-nt-glass='on'] .theme-select__menu button {
   gap: 8px;
 }
+/* …and the trigger left-aligns the name like the list does (space-between centred it, M6). */
+:root[data-nt-glass='on'] .theme-select__trigger .bind-select__val {
+  flex: 1;
+}
 .theme-select__group {
   padding: 6px 10px 2px;
   font-size: 11px;
@@ -13582,19 +13599,23 @@ body.focus-mode .dock:hover {
      energy of a 20px rim band): Clear 2.55 → 0.20, Readable 1.90 → 0.07 — now equal to the
      menu's own interior, i.e. no sharper at the rim than in the middle. */
   --glass-t: 0.7;
+  /* Saturation: 1.5 from the Readable tick to Tinted, rising to 1.8 only at Clear (visual QA round
+     2, N9: 1.6–2.0 turned dark glass over a yellow wallpaper olive and light Clear glass pink;
+     HIG liquid-glass › Tauri and Electron suggests about 1.2–1.5). */
+  --glass-sat: calc(150% + 30% * max(0, 1 - var(--glass-t) / 0.7));
   --glass-refract: url(#nt-refract);
-  --glass-blur: blur(calc(16px + 12px * var(--glass-t))) saturate(calc(200% - 55% * var(--glass-t)))
+  --glass-blur: blur(calc(16px + 12px * var(--glass-t))) saturate(var(--glass-sat))
     var(--glass-refract);
   /* Small controls left of the tick: the backdrop under them is DIMMED (dark theme) or brightened
      (light theme) as the fill thins, toward Apple's "dark dimming layer" for bright content
      (materials.md). 1 at the tick and right of it; `--glass-control-dim` at Clear. The fill alone
      (0.35) left the tab label at 1.98:1 over the Sunrise gradient. It moves backdrop pixels only. */
   --glass-control-dim: 0.7;
-  --glass-control-blur: blur(calc(16px + 12px * var(--glass-t))) saturate(calc(200% - 55% * var(--glass-t)))
+  --glass-control-blur: blur(calc(16px + 12px * var(--glass-t))) saturate(var(--glass-sat))
     brightness(calc(1 - (1 - var(--glass-control-dim)) * max(0, 1 - var(--glass-t) / 0.7))) var(--glass-refract);
   /* Text surfaces never frost less than at the Readable tick (0.7), whatever the slider says. */
   --glass-text-blur: blur(calc(16px + 12px * max(var(--glass-t), 0.7)))
-    saturate(calc(200% - 55% * max(var(--glass-t), 0.7))) var(--glass-refract);
+    saturate(150%) var(--glass-refract);
   /* Terminal nodes frost 15% less than the chrome (the user asked for less blur under the terminal
      windows): same curve, radius × 0.85, same saturation and refraction. They also FLATTEN the
      backdrop's luminance (HIG: regular glass "blurs and adjusts the luminosity"): a blurred photo
@@ -13604,7 +13625,7 @@ body.focus-mode .dock:hover {
      at Readable, empty glass over the lake photo's snow/water edge: brightness swing 2.2:1 → 1.28:1
      (0.51 still left 1.53:1). */
   --glass-term-blur: blur(calc((16px + 12px * var(--glass-t)) * 0.85))
-    saturate(calc(200% - 55% * var(--glass-t))) contrast(calc(1 - var(--glass-t))) var(--glass-refract);
+    saturate(var(--glass-sat)) contrast(calc(1 - var(--glass-t))) var(--glass-refract);
 }
 
 /* Outermost chrome: fill + blur, in two groups (Phase 4 slider scope, lib/glassContrast.ts
@@ -13631,6 +13652,7 @@ body.focus-mode .dock:hover {
     .nt-settings,
     .kanban-header,
     .kanban-col,
+    .kanban-add-col,
     .kanban-modal
   ) {
   background: var(--glass-chrome-bg) !important;
@@ -13663,6 +13685,18 @@ body.focus-mode .dock:hover {
    glass a hover is a neutral lift over the same fill. */
 :root[data-nt-glass='on'] .usage-refresh {
   color: var(--text);
+  /* One diameter for the round buttons in the bottom-left row (RAM pill 26, refresh was 24 — N10). */
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
+}
+/* The zoom column matches the sessions toggle above it (34px, not 30 — their centres sat 2px apart,
+   visual QA L4/N10). The canvas pills' left offset reads the same variable and moves with it. */
+:root[data-nt-glass='on'] {
+  --controls-w: 34px;
+}
+:root[data-nt-glass='on'] .react-flow__controls-button:hover {
+  background: var(--glass-lift-hover);
 }
 :root[data-nt-glass='on'] :is(.sysres-pill, .usage-pill, .usage-refresh):hover {
   background:
@@ -13749,16 +13783,21 @@ body.focus-mode .dock:hover {
    slab, visual QA L7), and the flares go. */
 :root[data-nt-glass='on'] .tab.active {
   background: var(--glass-lift);
+  color: var(--text-strong);
+}
+/* Its two icons read at 3:1 on the lift (visual QA round 2, N2: 2.0:1 at the default 0.45). */
+:root[data-nt-glass='on'] .tab.active :is(.tab__board-toggle, .tab__caret) {
+  opacity: 0.8;
 }
 
 /* Input wells: the default `bg-bg` well is the opaque page colour, which read as a hole punched in
    the frosted page (visual QA M4). On glass it is a sink (dark) or a lift (light) of the page with a
    hairline — each moves AWAY from the ink, so the field's text keeps at least the page's contrast. */
-:root[data-nt-glass='on'] :is(input, select, textarea).bg-bg {
+:root[data-nt-glass='on'] :is(:is(input, select, textarea).bg-bg, .bind-select) {
   background: rgba(0, 0, 0, 0.22);
   border-color: var(--glass-edge);
 }
-:root[data-nt-glass='on'][data-theme='light'] :is(input, select, textarea).bg-bg {
+:root[data-nt-glass='on'][data-theme='light'] :is(:is(input, select, textarea).bg-bg, .bind-select) {
   background: rgba(255, 255, 255, 0.55);
 }
 
@@ -13780,9 +13819,35 @@ body.focus-mode .dock:hover {
   background: var(--glass-lift);
   color: var(--text-strong);
 }
-/* Its two icons read at 3:1 on the lift (visual QA round 2, N2: 2.0:1 at the default 0.45). */
-:root[data-nt-glass='on'] .tab.active :is(.tab__board-toggle, .tab__caret) {
-  opacity: 0.8;
+/* Hovers that painted `--panel-header` (= the fill again, a dark slab on glass — N5). */
+:root[data-nt-glass='on'] :is(.dock-btn:not(.dock-add):hover:not(:disabled), .dock-zoom:hover, .ss-row:hover) {
+  background: var(--glass-lift-hover);
+}
+:root[data-nt-glass='on'] .dock-zoom.active {
+  background: var(--glass-lift);
+  color: var(--text-strong);
+}
+/* The default Button is `bg-panel-header`, the fill stacked on its own panel ("Set default" read as
+   a dark slab, N5): a neutral lift instead; its own hover (`bg-fill-weak`) still applies. */
+:root[data-nt-glass='on'] button.bg-panel-header:not(:hover) {
+  background-color: var(--glass-lift-hover);
+}
+/* Segmented controls: the selected segment is a neutral lifted thumb, as in Apple's segmented
+   control, so the one filled accent per view stays the primary action (N12: Settings → Agents
+   showed seven accent fills). */
+:root[data-nt-glass='on'] .seg-pill-opt {
+  color: var(--muted);
+}
+:root[data-nt-glass='on'] .seg-pill-opt.active {
+  background: var(--glass-lift);
+  color: var(--text-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+/* Placeholders were a hard-coded #757575 in both themes (2.5–3.5:1, N6). On glass they keep 4.5:1
+   on the text-surface fill: `--glass-placeholder` is pinned by glassContrast.test.ts. */
+/* Sticky notes keep theirs: the note's own colour is the surface there, not glass. */
+:root[data-nt-glass='on'] :not(.sticky-node__body)::placeholder {
+  color: var(--glass-placeholder);
 }
 :root[data-nt-glass='on'] .settings-nav-row {
   background: transparent;
@@ -13790,9 +13855,14 @@ body.focus-mode .dock:hover {
 :root[data-nt-glass='on'] :is(.palette__item.active, .settings-nav-row[aria-current='page']) {
   background: var(--glass-select);
   box-shadow: none;
+  color: var(--text-strong);
 }
 :root[data-nt-glass='on'] .tab.active::after {
   display: none;
+}
+/* The project menu hangs from its caret, 3px INSIDE the glass bar (N11); on glass it clears the bar. */
+:root[data-nt-glass='on'] .tab-menu--tabbar {
+  top: calc(var(--tabbar-h) + 4px) !important;
 }
 
 /* The node's label row has its own `--panel` fill (for the glyph grid, which stands glass down);
@@ -13867,6 +13937,24 @@ body.focus-mode .dock:hover {
 :root[data-nt-glass='on'] .kanban-col {
   border-color: var(--glass-edge);
 }
+/* "+ Add column" was styled for an opaque board (4% tint, 50% ink, dashed 15% border) and vanished
+   into the wallpaper (visual QA round 2, N3). On glass it is a text surface like the columns. */
+:root[data-nt-glass='on'] .kanban-add-col {
+  border: 1px solid var(--glass-edge);
+  color: var(--text);
+}
+:root[data-nt-glass='on'] .kanban-add-col:hover {
+  background:
+    linear-gradient(var(--glass-lift), var(--glass-lift)),
+    var(--glass-chrome-bg) !important;
+  border-color: var(--glass-edge);
+  color: var(--text-strong);
+}
+/* On the board the toolbar cluster straddled the header strip's bottom edge and sat 6px above the
+   columns (N4): it drops into the strip's row instead, centred in its 46px. */
+:root[data-nt-glass='on'] .canvas-root:has(> .kanban-overlay) > .controls-cluster {
+  top: calc(var(--tabbar-h) + 6px);
+}
 :root[data-nt-glass='on'] :is(.kanban-col__dot, .kanban-header__dot) {
   background: transparent !important;
   box-shadow: inset 0 0 0 1.5px var(--muted);
@@ -13877,37 +13965,6 @@ body.focus-mode .dock:hover {
 }
 :root[data-nt-glass='on'] .kanban-card:hover {
   background: var(--glass-lift);
-  color: var(--text-strong);
-}
-/* Hovers that painted `--panel-header` (= the fill again, a dark slab on glass — N5). */
-:root[data-nt-glass='on'] :is(.dock-btn:not(.dock-add):hover:not(:disabled), .dock-zoom:hover, .ss-row:hover) {
-  background: var(--glass-lift-hover);
-}
-:root[data-nt-glass='on'] .dock-zoom.active {
-  background: var(--glass-lift);
-  color: var(--text-strong);
-}
-/* The default Button is `bg-panel-header`, the fill stacked on its own panel ("Set default" read as
-   a dark slab, N5): a neutral lift instead; its own hover (`bg-fill-weak`) still applies. */
-:root[data-nt-glass='on'] button.bg-panel-header:not(:hover) {
-  background-color: var(--glass-lift-hover);
-}
-/* Segmented controls: the selected segment is a neutral lifted thumb, as in Apple's segmented
-   control, so the one filled accent per view stays the primary action (N12: Settings → Agents
-   showed seven accent fills). */
-:root[data-nt-glass='on'] .seg-pill-opt {
-  color: var(--muted);
-}
-:root[data-nt-glass='on'] .seg-pill-opt.active {
-  background: var(--glass-lift);
-  color: var(--text-strong);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
-}
-/* Placeholders were a hard-coded #757575 in both themes (2.5–3.5:1, N6). On glass they keep 4.5:1
-   on the text-surface fill: `--glass-placeholder` is pinned by glassContrast.test.ts. */
-/* Sticky notes keep theirs: the note's own colour is the surface there, not glass. */
-:root[data-nt-glass='on'] :not(.sticky-node__body)::placeholder {
-  color: var(--glass-placeholder);
 }
 :root[data-nt-glass='on'] .kanban-col--drop {
   border-color: var(--text);
@@ -13920,7 +13977,6 @@ body.focus-mode .dock:hover {
 :root[data-nt-glass='on'] .kanban-card--drop-after::after {
   background: var(--text);
   box-shadow: none;
-  color: var(--text-strong);
 }
 :root[data-nt-glass='on'] .kanban-badge--running {
   color: var(--state-working);
@@ -13933,6 +13989,11 @@ body.focus-mode .dock:hover {
 /* The card modal's terminal: the same glass as a terminal node (ModalTerminal sets the
    `--term-glass-*` tint inline). The modal itself is text-surface glass (listed above), so the
    tint needs no blur of its own; the tint alone carries its foreground's 4.5:1. */
+/* The card modal's comments & activity panel hard-codes 35–55% ink for its title, times and events
+   (3.1–3.6:1 on glass, visual QA M3): secondary label on glass, like the rest of the look. */
+:root[data-nt-glass='on'] :is(.board-log__title, .board-log__hint, .board-log__time, .board-log__event-body) {
+  color: var(--muted);
+}
 :root[data-nt-glass='on'] .kanban-modal__termwrap--glass {
   background: var(--term-glass-bg);
 }
@@ -13981,6 +14042,21 @@ body.focus-mode .dock:hover {
   --mm-working: var(--state-working);
   --mm-attention: var(--state-attention);
   --mm-unread: var(--state-unread);
+}
+
+/* Meters in the OK range were solid system green, which on glass also means "finished, unseen" and
+   "success" (visual QA M1: one colour, two meanings). Under Liquid Glass an OK meter is neutral ink;
+   yellow and red still mean warning and critical. The fills are inline literals from
+   lib/usageFormat.ts (the notch HUD draws them too and loads no stylesheet), so this matches the
+   serialised green — `styles.liquid-glass.test.ts` pins that literal. The default look is untouched.
+   ponytail: attribute match on the inline colour; move the fills to tokens if the HUD ever loads CSS. */
+:root[data-nt-glass='on']
+  :is(.usage-bar__fill, .usage-pill__minibar-fill, .ctx-pill__fill, .ctx-bar__fill)[style*='rgb(48, 209, 88)'] {
+  background: rgba(var(--tint-rgb), 0.6) !important;
+}
+:root[data-nt-glass='on'] .ss-ctx[style*='rgb(48, 209, 88)'] {
+  background: var(--glass-lift) !important;
+  color: var(--text-strong);
 }
 
 /* Status labels on a glass header are ink, not coloured text: the hue tints the chip BEHIND the

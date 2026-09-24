@@ -472,7 +472,7 @@ export function TabBar({
         createPortal(
           <div
             ref={menuFlip.ref}
-            className="tab-menu"
+            className="tab-menu tab-menu--tabbar"
             style={{ top: menuFlip.top, left: menuFlip.left }}
             onClick={(e) => e.stopPropagation()}
           >

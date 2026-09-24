@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { SYSTEM_COLORS } from './lib/palette'
 
 /**
  * Liquid Glass is a THEME, so its CSS must (a) be unreachable unless `data-nt-glass` is on, and
@@ -59,20 +60,53 @@ describe('Liquid Glass stylesheet', () => {
   it('slider scope: text surfaces take the readable-floored fill, small controls the slider fill', () => {
     const outer = (needle: string): Rule | undefined =>
       gated(needle).find((r) => /backdrop-filter:/.test(r.body) && r.selector.includes(':is('))
-    for (const text of ['.nt-settings', '.palette', '.ctx-menu', '.tab-menu', '.sessions-sidebar', '.confirm', '.usage-popover', '.kanban-col', '.kanban-modal']) {
+    for (const text of ['.nt-settings', '.palette', '.ctx-menu', '.tab-menu', '.sessions-sidebar', '.confirm', '.usage-popover', '.kanban-col', '.kanban-add-col', '.kanban-modal']) {
       expect(outer(text)?.body, text).toMatch(/var\(--glass-chrome-bg\)[\s\S]*var\(--glass-text-blur\)/)
     }
-    for (const control of ['.tabbar','.react-flow__controls', '.react-flow__minimap', '.usage-pill', '.sysres-pill', '.usage-refresh', '.controls-cluster > button', '.sessions-icon-cluster button']) {
+    for (const control of ['.tabbar', '.react-flow__controls', '.react-flow__minimap', '.usage-pill', '.sysres-pill', '.usage-refresh', '.controls-cluster > button', '.sessions-icon-cluster button']) {
       expect(outer(control)?.body, control).toMatch(/var\(--glass-control-bg\)[\s\S]*var\(--glass-control-blur\)/)
     }
   })
 
   it('row highlights on glass never re-stack a panel token (visual QA H1/H2)', () => {
-    for (const row of ['.palette__item.active', '.settings-nav-row', '.ctx-item', '.tab-menu button', '.tab.active']) {
-      const hits = gated(row).filter((r) => /background:/.test(r.body))
+    for (const row of ['.palette__item.active', '.settings-nav-row', '.ctx-item', '.tab-menu button', '.tab.active', '.dock-btn', '.dock-zoom', '.ss-row:hover', 'button.bg-panel-header', '.seg-pill-opt.active']) {
+      const hits = gated(row).filter((r) => /background(-color)?:/.test(r.body))
       expect(hits.length, row).toBeGreaterThan(0)
       for (const r of hits) expect(r.body, row).not.toMatch(/--panel|--glass-chrome-bg/)
     }
+  })
+
+  it('highlighted rows carry --text-strong, the ink their readable alpha is solved for (N2)', () => {
+    for (const row of ['.palette__item.active', '.ctx-item', '.tab.active', '.dock-zoom.active', '.seg-pill-opt.active']) {
+      const hits = gated(row).filter((r) => /background(-color)?:/.test(r.body))
+      expect(hits.some((r) => /color:\s*var\(--text-strong\)/.test(r.body)), row).toBe(true)
+    }
+  })
+
+  it('never translucent without a working blur (N1)', () => {
+    // A container that hosts pop-out menus is no backdrop root: its glass lives on ::before.
+    const host = rules.find((r) => r.selector === `${GATE} :is(.dock, .dock-menu, .dock-menu__sub)`)
+    expect(host?.body).toMatch(/background:\s*transparent\s*!important/)
+    expect(host?.body).toMatch(/(^|[^-])backdrop-filter:\s*none/)
+    const layer = rules.find((r) => r.selector === `${GATE} :is(.dock, .dock-menu, .dock-menu__sub)::before`)
+    expect(layer?.body).toMatch(/background:\s*var\(--glass-chrome-bg\)[\s\S]*backdrop-filter:\s*var\(--glass-text-blur\)/)
+    const dock = rules.find((r) => r.selector === `${GATE} .dock::before`)
+    expect(dock?.body).toMatch(/var\(--glass-control-bg\)[\s\S]*var\(--glass-control-blur\)/)
+    // Popovers inside a glass node (their backdrop root) cannot blur, so they are solid.
+    const solid = rules.find((r) => r.selector === `${GATE} :is(.ctx-popover, .color-popover)`)
+    expect(solid?.body).toMatch(/background:\s*rgb\(var\(--menu-rgb\)\)\s*!important/)
+    // …and nothing else hands any of them a translucent glass fill on the element itself.
+    for (const nested of ['.dock-menu', '.dock-menu__sub', '.ctx-popover', '.color-popover']) {
+      const fills = gated(nested).filter(
+        (r) => !r.selector.includes('::before') && /background:[^;]*var\(--glass-(chrome|control)-bg\)/.test(r.body)
+      )
+      expect(fills.map((r) => r.selector), nested).toEqual([])
+    }
+  })
+
+  it('OK-range meters match the literal green the fills are drawn in (M1)', () => {
+    expect(SYSTEM_COLORS.dark.green.toLowerCase()).toBe('#30d158') // = rgb(48, 209, 88)
+    expect(gated('[style*=').some((r) => r.selector.includes("[style*='rgb(48, 209, 88)']"))).toBe(true)
   })
 
   it('kanban cards are a lift without their own blur (no glass on glass)', () => {
