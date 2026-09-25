@@ -30,6 +30,9 @@ describe('DEFAULT_SETTINGS', () => {
     // still waits for the turn boundary, exactly as before the feature.
     expect(DEFAULT_SETTINGS.autoHideFinishedSubagentCards).toBe(false)
   })
+  it('keeps Pi AI naming opt-in because it spends a model call', () => {
+    expect(DEFAULT_SETTINGS.piAutoNameAfterFirstTurn).toBe(false)
+  })
 
   it('keeps common identifier and path characters inside terminal word selections', () => {
     expect(DEFAULT_SETTINGS.terminalWordSeparator).not.toMatch(/[-_/.]/)

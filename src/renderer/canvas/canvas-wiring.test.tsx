@@ -207,6 +207,19 @@ describe('the auto-hide preference reaches the ephemeral-card store', () => {
   })
 })
 
+describe('Pi auto-name wiring', () => {
+  it('runs once only after a successful turn and preserves a manual rename race', () => {
+    expect(CANVAS_SRC).toContain('!useSettings.getState().settings.piAutoNameAfterFirstTurn ||')
+    expect(CANVAS_SRC).toContain("e.agentId !== 'pi' ||")
+    expect(CANVAS_SRC).toContain("e.state !== 'done' ||")
+    expect(CANVAS_SRC).toContain('e.interrupted ||')
+    expect(CANVAS_SRC).toContain('e.errored ||')
+    expect(CANVAS_SRC).toContain('autoNamedPiSessionsRef.current.has(key)')
+    expect(CANVAS_SRC).toContain('current.titleAuto === false')
+    expect(CANVAS_SRC).toContain("typeof node.cwd === 'string' ? node.cwd : undefined,\n        true")
+  })
+})
+
 describe('deleteNodes also records persisted closed-session history', () => {
   it('builds entries from the full pre-delete tree and the same "now" used for reopenHistory', () => {
     expect(CANVAS_SRC).toContain('const deletedAt = Date.now()')

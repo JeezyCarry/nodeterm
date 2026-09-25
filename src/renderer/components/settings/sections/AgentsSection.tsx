@@ -130,6 +130,10 @@ const ROWS = {
     title: 'One-click approvals',
     keywords: ['approve', 'deny', 'approval', 'permission', 'hook', 'phone', 'canvas', 'one click', 'claude']
   },
+  piAutoNameAfterFirstTurn: {
+    title: 'Auto-name Pi sessions',
+    keywords: ['pi', 'name', 'title', 'automatic', 'ai', 'first turn', 'model call']
+  },
   autoHideFinishedSubagentCards: {
     title: 'Hide finished subagent cards',
     keywords: [
@@ -583,6 +587,19 @@ export function AgentsSection({ isActive }: { isActive: boolean }): React.JSX.El
               checked={settings.hookReplyApprovals}
               ariaLabel="One-click hook-reply approvals"
               onChange={(on) => update({ hookReplyApprovals: on })}
+            />
+          }
+        />
+      </SearchableRow>
+      <SearchableRow {...ROWS.piAutoNameAfterFirstTurn}>
+        <FieldRow
+          label="Auto-name Pi sessions"
+          description="After the first successful turn, generate one AI title and apply it to both the canvas node and Pi session. Uses the agent configured under Commit messages (AI), costs one extra model call, and never replaces a manual name."
+          control={
+            <Switch
+              checked={settings.piAutoNameAfterFirstTurn}
+              ariaLabel="Auto-name Pi sessions after the first turn"
+              onChange={(on) => update({ piAutoNameAfterFirstTurn: on })}
             />
           }
         />

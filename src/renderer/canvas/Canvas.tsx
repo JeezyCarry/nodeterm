@@ -12998,18 +12998,76 @@ export function Canvas() {
   // Sidebar "Name with AI": generate a title from the session's captured terminal output
   // (same BYO-agent path as the terminal node's ✦), then apply it via renameSession.
   const aiNameSession = useCallback(
-    async (projectId: string, id: string, cwd?: string) => {
+    async (projectId: string, id: string, cwd?: string, onlyWhileAuto = false) => {
       // Track progress in a store keyed by node id so the spinner survives the row/sidebar
       // unmounting mid-request; this Canvas-level call completes and applies the name anyway.
       useSessionNaming.getState().set(id, true)
       try {
         const r = await api.pty.generateName(id, cwd ?? '')
-        if (r.ok) renameSession(projectId, id, r.message)
+        if (!r.ok) return false
+        if (onlyWhileAuto) {
+          const { projects, activeProjectId: activeId } = useProjects.getState()
+          const current =
+            projectId === activeId
+              ? nodesRef.current.find((node) => node.id === id)?.data
+              : projects.find((project) => project.id === projectId)?.nodes.find((node) => node.id === id)
+          if (
+            !current ||
+            !useSettings.getState().settings.piAutoNameAfterFirstTurn ||
+            current.titleAuto === false
+          )
+            return false
+        }
+        renameSession(projectId, id, r.message)
+        return true
       } finally {
         useSessionNaming.getState().set(id, false)
       }
     },
     [renameSession]
+  )
+
+  // Optional one-shot naming for Pi. The session id is the idempotency key; titleAuto is checked
+  // both before and after the model call so a manual rename always wins the race.
+  const autoNamedPiSessionsRef = useRef(new Set<string>())
+  useEffect(() =>
+    api.onAgentStatus((e) => {
+      if (
+        !useSettings.getState().settings.piAutoNameAfterFirstTurn ||
+        e.agentId !== 'pi' ||
+        e.kind !== 'state' ||
+        e.state !== 'done' ||
+        e.interrupted ||
+        e.errored ||
+        !e.sessionId
+      )
+        return
+
+      const key = `${e.nodeId}:${e.sessionId}`
+      if (autoNamedPiSessionsRef.current.has(key) || useSessionNaming.getState().byId[e.nodeId]) return
+
+      const { projects, activeProjectId: activeId } = useProjects.getState()
+      const live = nodesRef.current.find((node) => node.id === e.nodeId)
+      const owner = live
+        ? projects.find((project) => project.id === activeId)
+        : projects.find((project) => project.nodes.some((node) => node.id === e.nodeId))
+      const node = live?.data ?? owner?.nodes.find((candidate) => candidate.id === e.nodeId)
+      if (!owner || !node || node.titleAuto === false) return
+
+      autoNamedPiSessionsRef.current.add(key)
+      void aiNameSession(
+        owner.id,
+        e.nodeId,
+        typeof node.cwd === 'string' ? node.cwd : undefined,
+        true
+      ).then(
+        (named) => {
+          if (!named) autoNamedPiSessionsRef.current.delete(key)
+        },
+        () => autoNamedPiSessionsRef.current.delete(key)
+      )
+    }),
+    [aiNameSession]
   )
 
   // Sidebar "Name with AI" for a canvas group: generate a title from its member terminals'
@@ -15281,7 +15339,9 @@ export function Canvas() {
         onCloseSession={closeSession}
         onRenameSession={renameSession}
         onReorderProject={reorderProject}
-        onAiNameSession={aiNameSession}
+        onAiNameSession={async (projectId, nodeId, cwd) => {
+          await aiNameSession(projectId, nodeId, cwd)
+        }}
         onAiNameGroup={aiNameGroup}
         onMoveToGroup={moveSessionToGroup}
         onReorder={reorderSession}

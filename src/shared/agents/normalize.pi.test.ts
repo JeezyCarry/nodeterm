@@ -36,7 +36,21 @@ describe('normalizePi', () => {
       lastMessage: 'Choose'
     })
     expect(normalizePi(event({ event: 'ui_prompt_end' }))).toMatchObject({ state: 'working' })
-    expect(normalizePi(event({ event: 'agent_settled' }))).toMatchObject({ state: 'done' })
+    expect(normalizePi(event({ event: 'agent_settled', stop_reason: 'end_turn' }))).toMatchObject({
+      state: 'done',
+      interrupted: false,
+      errored: false
+    })
+    expect(normalizePi(event({ event: 'agent_settled', stop_reason: 'aborted' }))).toMatchObject({
+      state: 'done',
+      interrupted: true,
+      errored: false
+    })
+    expect(normalizePi(event({ event: 'agent_settled', stop_reason: 'error' }))).toMatchObject({
+      state: 'done',
+      interrupted: false,
+      errored: true
+    })
   })
 
   it('maps pi-subagents-lite lifecycle events', () => {

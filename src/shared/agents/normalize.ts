@@ -556,6 +556,7 @@ interface PiPayload {
   session_name?: string
   reason?: string
   message?: string
+  stop_reason?: string
   subagent_id?: string
   subagent_type?: string
   task_label?: string
@@ -605,7 +606,15 @@ export function normalizePi(env: RawHookEnvelope): NormalizedAgentEvent | null {
     return { ...base, kind: 'state', state: 'blocked', lastMessage: p.message }
   }
   if (p.event === 'ui_prompt_end') return { ...base, kind: 'state', state: 'working' }
-  if (p.event === 'agent_settled') return { ...base, kind: 'state', state: 'done' }
+  if (p.event === 'agent_settled') {
+    return {
+      ...base,
+      kind: 'state',
+      state: 'done',
+      interrupted: p.stop_reason === 'aborted',
+      errored: p.stop_reason === 'error'
+    }
+  }
   if (p.event === 'session_shutdown' && p.reason === 'quit') {
     return { ...base, kind: 'session', sessionPhase: 'end' }
   }

@@ -77,6 +77,10 @@ describe('generated Pi extension', () => {
     })
     handlers.session_start({ reason: 'startup' }, context('/tmp/session.jsonl'))
     handlers.before_agent_start({}, context('/tmp/session.jsonl'))
+    handlers.agent_end(
+      { messages: [{ role: 'assistant', stopReason: 'end_turn' }] },
+      context('/tmp/session.jsonl')
+    )
     handlers.agent_settled({}, context('/tmp/session.jsonl'))
     handlers.tool_execution_start(
       {
@@ -129,6 +133,7 @@ describe('generated Pi extension', () => {
       'subagent_update',
       'subagent_end'
     ])
+    expect(received[2]).toMatchObject({ stop_reason: 'end_turn' })
     expect(received[0]).toMatchObject({
       session_id: 'session-1',
       session_name: 'Build Pi',

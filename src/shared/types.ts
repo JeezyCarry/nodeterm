@@ -1789,6 +1789,10 @@ export interface Settings {
    *  hook holds briefly for a phone/canvas Approve/Deny before falling through to the normal
    *  interactive prompt. Off ⇒ the env var is absent ⇒ exact legacy behavior. Claude-only. */
   hookReplyApprovals: boolean
+  /** After the first successful turn in a new Pi session, spend one extra configured AI-agent
+   *  call to name both the canvas node and Pi session. Manual names (`titleAuto: false`) win.
+   *  Default off because naming has model cost. Settings → Agents. */
+  piAutoNameAfterFirstTurn: boolean
   /** Remove a subagent's ephemeral canvas card the moment that subagent REPORTS finished, instead
    *  of keeping it until the parent agent's next turn clears it. Default off ⇒ exact legacy
    *  behavior. A card whose subagent is still running is never removed by this, and neither is one
@@ -1984,6 +1988,8 @@ export const DEFAULT_SETTINGS: Settings = {
   // Deterministic hook-reply approvals default ON (existing users pick it up on hydrate). Only
   // affects Claude terminal sessions; off reproduces the pre-feature launch bit-for-bit.
   hookReplyApprovals: true,
+  // AI naming costs one extra model call, so existing and new installs must opt in.
+  piAutoNameAfterFirstTurn: false,
   autoHideFinishedSubagentCards: false,
   // Keep-awake-while-agents-work default ON (existing users pick it up on hydrate — deliberate,
   // same note style as hookReplyApprovals). Held only while a local agent is actually working.

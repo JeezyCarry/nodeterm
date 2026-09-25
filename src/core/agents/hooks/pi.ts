@@ -30,6 +30,7 @@ export default function NodetermStatus(pi) {
   if (!nodeId || process.env.NODETERM_AGENT_ID !== 'pi') return
   const subagentCalls = new Map()
   const subagentPrefixes = new Map()
+  let lastStopReason
 
   const stringValue = (value) => typeof value === 'string' ? value : undefined
   const numberValue = (value) => typeof value === 'number' && Number.isFinite(value) ? value : undefined
@@ -111,7 +112,14 @@ export default function NodetermStatus(pi) {
   pi.on('session_info_changed', (event, ctx) =>
     post('session_info_changed', ctx, { session_name: event.name })
   )
-  pi.on('before_agent_start', (_event, ctx) => post('before_agent_start', ctx))
+  pi.on('before_agent_start', (_event, ctx) => {
+    lastStopReason = undefined
+    post('before_agent_start', ctx)
+  })
+  pi.on('agent_end', (event) => {
+    const assistant = [...event.messages].reverse().find((message) => message?.role === 'assistant')
+    lastStopReason = stringValue(assistant?.stopReason)
+  })
   pi.on('tool_execution_start', (event, ctx) => {
     if (event.toolName !== 'Agent') {
       post('tool_execution_start', ctx, { tool_call_id: event.toolCallId, tool_name: event.toolName })
@@ -187,7 +195,9 @@ export default function NodetermStatus(pi) {
   pi.on('ui_prompt_end', (event, ctx) =>
     post('ui_prompt_end', ctx, { prompt_kind: event.kind })
   )
-  pi.on('agent_settled', (_event, ctx) => post('agent_settled', ctx))
+  pi.on('agent_settled', (_event, ctx) =>
+    post('agent_settled', ctx, { stop_reason: lastStopReason })
+  )
   pi.on('session_shutdown', (event, ctx) => {
     post('session_shutdown', ctx, { reason: event.reason })
     subagentCalls.clear()
