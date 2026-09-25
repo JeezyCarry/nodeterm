@@ -556,6 +556,13 @@ interface PiPayload {
   session_name?: string
   reason?: string
   message?: string
+  subagent_id?: string
+  subagent_type?: string
+  task_label?: string
+  duration_ms?: number
+  tokens?: number
+  tool_uses?: number
+  result?: string
 }
 
 export function normalizePi(env: RawHookEnvelope): NormalizedAgentEvent | null {
@@ -570,6 +577,26 @@ export function normalizePi(env: RawHookEnvelope): NormalizedAgentEvent | null {
   }
   if (p.event === 'before_agent_start') {
     return { ...base, kind: 'state', state: 'working', newTurn: true }
+  }
+  if (p.event === 'subagent_start' && p.subagent_id) {
+    return {
+      ...base,
+      kind: 'subagent-start',
+      toolUseId: p.subagent_id,
+      subagentType: p.subagent_type,
+      taskLabel: p.task_label
+    }
+  }
+  if (p.event === 'subagent_end' && p.subagent_id) {
+    return {
+      ...base,
+      kind: 'subagent-end',
+      toolUseId: p.subagent_id,
+      durationMs: p.duration_ms,
+      tokens: p.tokens,
+      toolUses: p.tool_uses,
+      result: p.result
+    }
   }
   if (p.event === 'tool_execution_start' || p.event === 'tool_execution_end') {
     return { ...base, kind: 'state', state: 'working' }

@@ -78,18 +78,77 @@ describe('generated Pi extension', () => {
     handlers.session_start({ reason: 'startup' }, context('/tmp/session.jsonl'))
     handlers.before_agent_start({}, context('/tmp/session.jsonl'))
     handlers.agent_settled({}, context('/tmp/session.jsonl'))
+    handlers.tool_execution_start(
+      {
+        toolCallId: 'tool-1',
+        toolName: 'Agent',
+        args: { agent: 'luna-patch', description: 'Fix names', run_in_background: true }
+      },
+      context('/tmp/session.jsonl')
+    )
+    handlers.tool_execution_end(
+      {
+        toolCallId: 'tool-1',
+        toolName: 'Agent',
+        isError: false,
+        result: {
+          content: [{ type: 'text', text: '[Agent running]' }],
+          details: {
+            agentId: '12345678-abcd',
+            status: 'running',
+            outputFile: '/tmp/pi-agent-outputs/12345678-abcd.log'
+          }
+        }
+      },
+      context('/tmp/session.jsonl')
+    )
+    handlers.message_end(
+      {
+        message: {
+          customType: 'subagent-result',
+          content: '[Subagent "luna-patch" 12345678 completed]\\n\\nDone',
+          details: {
+            durationMs: 25,
+            input: 10,
+            output: 5,
+            toolUses: 2,
+            outputFile: '/tmp/pi-agent-outputs/12345678-abcd.log'
+          }
+        }
+      },
+      context('/tmp/session.jsonl')
+    )
     handlers.session_start({ reason: 'startup' }, context(undefined))
 
-    await vi.waitFor(() => expect(received).toHaveLength(3))
+    await vi.waitFor(() => expect(received).toHaveLength(6))
     expect(received.map((payload) => payload.event)).toEqual([
       'session_start',
       'before_agent_start',
-      'agent_settled'
+      'agent_settled',
+      'subagent_start',
+      'subagent_update',
+      'subagent_end'
     ])
     expect(received[0]).toMatchObject({
       session_id: 'session-1',
       session_name: 'Build Pi',
       transcript_path: '/tmp/session.jsonl'
+    })
+    expect(received[3]).toMatchObject({
+      subagent_id: 'tool-1',
+      subagent_type: 'luna-patch',
+      task_label: 'Fix names'
+    })
+    expect(received[4]).toMatchObject({
+      subagent_id: 'tool-1',
+      output_file: '/tmp/pi-agent-outputs/12345678-abcd.log'
+    })
+    expect(received[5]).toMatchObject({
+      subagent_id: 'tool-1',
+      output_file: '/tmp/pi-agent-outputs/12345678-abcd.log',
+      duration_ms: 25,
+      tokens: 15,
+      tool_uses: 2
     })
     await new Promise<void>((resolve) => server.close(() => resolve()))
   })

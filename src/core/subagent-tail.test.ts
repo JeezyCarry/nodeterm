@@ -4,6 +4,7 @@ import os from 'os'
 import path from 'path'
 import {
   createSubagentTail,
+  formatPiSubagentChunk,
   formatSubagentChunk,
   splitCompleteLines,
   SUBAGENT_READ_CAP
@@ -23,6 +24,21 @@ describe('formatSubagentChunk', () => {
     // formatLine emits assistant text verbatim ('hi') and tool_use as `$ <name> <arg>` ('$ Bash ls');
     // the chunk joins surviving lines with '\n' (mirrors the tail's read loop exactly).
     expect(formatSubagentChunk(text)).toBe('hi\n$ Bash ls')
+  })
+})
+
+describe('formatPiSubagentChunk', () => {
+  it('strips log timestamps and keeps live prose and tool activity', () => {
+    expect(
+      formatPiSubagentChunk(
+        [
+          '2026-01-01T00:00:00.000Z [USER] Fix names',
+          '2026-01-01T00:00:01.000Z [TOOL] read config.ts',
+          '2026-01-01T00:00:02.000Z [ASSISTANT] Done',
+          'garbled'
+        ].join('\n')
+      )
+    ).toBe('Fix names\n$ read config.ts\nDone')
   })
 })
 

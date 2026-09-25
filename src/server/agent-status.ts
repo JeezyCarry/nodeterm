@@ -8,13 +8,13 @@
 //
 // This module must import nothing from electron or `../main` (see no-electron.test.ts).
 import { grokHomeDir, grokSessionDir, grokSessionsDir } from '../core/agents/grok-paths'
-import { join, resolve } from 'path'
+import { basename, dirname, join, resolve } from 'path'
 import { homedir } from 'os'
 import { hookServer } from '../core/agents/hook-server'
 import { recordAgentEvent, recordRawToolEvent, recordContextUsage,
   recordQuestionResult, ignoreQuestionHook
 } from '../core/agent-status-mirror'
-import { createSubagentTail, type SubagentTail } from '../core/subagent-tail'
+import { createSubagentTail, formatPiSubagentChunk, type SubagentTail } from '../core/subagent-tail'
 import { createContextTail, type ContextTail, type TaskNotification } from '../core/context-tail'
 import { geminiContextParse } from '../core/gemini-session'
 import { codexContextParse } from '../core/codex-session'
@@ -186,10 +186,45 @@ export function wireAgentStatus(
       ? abs
       : undefined
   }
+  const piSubagentOutputName = /^[A-Za-z0-9._-]+\.log$/
+  const safePiSubagentOutputPath = (value: unknown): string | undefined => {
+    if (typeof value !== 'string') return undefined
+    const abs = resolve(value)
+    return dirname(abs) === resolve('/tmp/pi-agent-outputs') && piSubagentOutputName.test(basename(abs))
+      ? abs
+      : undefined
+  }
 
   const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])
   // Hook server validates session-env capacity and caller identity once for both shells.
   hooks.setRawListener((agentId, nodeId, payload, _meta) => {
+    if (agentId === 'pi') {
+      const p = payload as { event?: string; subagent_id?: string; output_file?: string }
+      const toolUseId = p.subagent_id
+      if (toolUseId && (p.event === 'subagent_start' || p.event === 'subagent_update')) {
+        subagentTail.trackFile(
+          toolUseId,
+          safePiSubagentOutputPath(p.output_file),
+          () => formatPiSubagentChunk
+        )
+        const set = nodeSubagents.get(nodeId) ?? new Set<string>()
+        set.add(toolUseId)
+        nodeSubagents.set(nodeId, set)
+      } else if (toolUseId && p.event === 'subagent_end') {
+        subagentTail.trackFile(
+          toolUseId,
+          safePiSubagentOutputPath(p.output_file),
+          () => formatPiSubagentChunk
+        )
+        subagentTail.finish(toolUseId)
+        nodeSubagents.get(nodeId)?.delete(toolUseId)
+      }
+      if (p.event === 'session_shutdown') {
+        for (const id of nodeSubagents.get(nodeId) ?? []) subagentTail.finish(id)
+        nodeSubagents.delete(nodeId)
+      }
+      return
+    }
     if (agentId === 'grok') {
       // This branch records two associations, neither of which grok's envelope states outright.
       // Everything the claude path does below hangs off `transcript_path`. Grok DOES send one --

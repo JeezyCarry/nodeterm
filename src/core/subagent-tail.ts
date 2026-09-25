@@ -124,6 +124,19 @@ export function formatSubagentChunk(text: string): string {
     .join('\n')
 }
 
+/** Format pi-subagents-lite's optional /tmp/pi-agent-outputs/*.log stream. */
+export function formatPiSubagentChunk(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => {
+      const match = line.match(/^\S+ \[(USER|TOOL|ASSISTANT|THINKING|TOOL_RESULT|DONE)\] ?(.*)$/)
+      if (!match) return ''
+      return match[1] === 'TOOL' ? `$ ${match[2]}` : match[2]
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
 // Split accumulated transcript bytes at the last newline: everything up to it decodes to
 // complete lines, the rest is carried (still raw bytes) into the next read. Splitting at the
 // byte level is what makes a mid-multibyte tear safe — '\n' (0x0a) never occurs inside a

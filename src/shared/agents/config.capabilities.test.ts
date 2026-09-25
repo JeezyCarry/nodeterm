@@ -69,6 +69,7 @@ describe('pi capabilities', () => {
     expect(canRename('pi')).toBe(true)
     expect(canReadTitle('pi')).toBe(true)
     expect(canBranch('pi')).toBe(true)
+    expect(canSubagent('pi')).toBe(true)
     expect(mintsSessionId('pi')).toBe(true)
     expect(supportsSessionIdFlag('pi', false, false)).toBe(true)
     expect(resumeCommand('pi', 'abc-123')).toBe('pi --session abc-123')
@@ -77,7 +78,6 @@ describe('pi capabilities', () => {
   it('does not claim integrations before their Pi-specific leaf exists', () => {
     for (const can of [
       canContextLink,
-      canSubagent,
       canRecur,
       hasUsage,
       canChat,

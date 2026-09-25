@@ -25,10 +25,11 @@ interface Tracked {
   reading: boolean
   /** Partial trailing line held back until the next read completes it (see subagent-tail.ts). */
   carry: Buffer | null
+  format?: (text: string) => string
 }
 
 export interface RemoteSubagentTail {
-  track(toolUseId: string, ref: RemoteFileRef | undefined): void
+  track(toolUseId: string, ref: RemoteFileRef | undefined, format?: (text: string) => string): void
   untrack(toolUseId: string): void
 }
 
@@ -52,7 +53,7 @@ export function createRemoteSubagentTail(win: BrowserWindow, remoteFile: RemoteF
         const read = data
         const { text: complete, carry } = splitCompleteLines(e.carry?.length ? Buffer.concat([e.carry, read]) : read)
         e.carry = carry
-        const out = formatSubagentChunk(complete)
+        const out = (e.format ?? formatSubagentChunk)(complete)
         if (out) send(toolUseId, out + '\n')
       }
     } finally {
@@ -69,9 +70,9 @@ export function createRemoteSubagentTail(win: BrowserWindow, remoteFile: RemoteF
   }
 
   return {
-    track(toolUseId, ref) {
+    track(toolUseId, ref, format) {
       if (!ref || tracked.has(toolUseId)) return
-      tracked.set(toolUseId, { ref, offset: 0, reading: false, carry: null })
+      tracked.set(toolUseId, { ref, offset: 0, reading: false, carry: null, format })
       void readOne(toolUseId, tracked.get(toolUseId)!) // immediate first read
       if (!timer) timer = setInterval(tick, POLL_MS)
     },
@@ -81,7 +82,7 @@ export function createRemoteSubagentTail(win: BrowserWindow, remoteFile: RemoteF
       // The transcript is complete on untrack — a held-back carry is a final line missing
       // only its trailing newline; flush instead of dropping it.
       if (e?.carry?.length) {
-        const out = formatSubagentChunk(e.carry.toString('utf-8'))
+        const out = (e.format ?? formatSubagentChunk)(e.carry.toString('utf-8'))
         e.carry = null
         if (out) send(toolUseId, out + '\n')
       }

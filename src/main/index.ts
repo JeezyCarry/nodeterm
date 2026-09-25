@@ -3,7 +3,7 @@ import { isKnownRemoteCodexAccount } from '../core/remote-ssh/codex-home'
 import { createRemoteCodexContext } from '../core/remote-ssh/codex-context'
 import { subagentReplay } from '../core/subagent-replay'
 import { grokHomeDir, grokSessionDir, grokSessionsDir } from '../core/agents/grok-paths'
-import { join, resolve, posix } from 'path'
+import { basename, dirname, join, resolve, posix } from 'path'
 import { startSessionNameSweep, displayNodeTitle } from '../core/session-name-sweep'
 import { startTriggerService } from '../core/trigger-service'
 import { readAgentSessionName, type AgentSessionNameDeps } from '../core/agent-session-name'
@@ -201,7 +201,7 @@ import { initRemoteStatusPush } from './remote-ssh/remote-status-push'
 import { initCanvasSync } from '../core/canvas-sync'
 import { retainUntilDismissed } from './notifications'
 import { installManagedAgentHooks } from '../core/agents/hooks'
-import { createSubagentTail } from '../core/subagent-tail'
+import { createSubagentTail, formatPiSubagentChunk } from '../core/subagent-tail'
 import { createContextTail, type TaskNotification } from '../core/context-tail'
 import { registerContextEnsureIpc } from '../core/context-ensure'
 import { grokContextParse, GROK_SIGNALS_FILE } from '../core/grok-signals'
@@ -2992,9 +2992,62 @@ app.whenReady().then(async () => {
     const abs = posix.resolve(tp)
     return isSafeRemoteTranscriptPath(abs, remoteHome) ? abs : undefined
   }
+  const piSubagentOutputName = /^[A-Za-z0-9._-]+\.log$/
+  const safePiSubagentOutputPath = (value: unknown): string | undefined => {
+    if (typeof value !== 'string') return undefined
+    const abs = resolve(value)
+    return dirname(abs) === resolve('/tmp/pi-agent-outputs') && piSubagentOutputName.test(basename(abs))
+      ? abs
+      : undefined
+  }
+  const safeRemotePiSubagentOutputPath = (value: unknown): string | undefined => {
+    if (typeof value !== 'string') return undefined
+    const abs = posix.resolve(value)
+    return posix.dirname(abs) === '/tmp/pi-agent-outputs' && piSubagentOutputName.test(posix.basename(abs))
+      ? abs
+      : undefined
+  }
+  const trackPiSubagentOutput = (nodeId: string, toolUseId: string, value: unknown): void => {
+    const rt = ptyManager.sshRemoteForNode(nodeId)
+    if (rt) {
+      const output = safeRemotePiSubagentOutputPath(value)
+      if (output) {
+        remoteSubagentTail.track(
+          toolUseId,
+          { conn: rt.conn, controlPath: rt.controlPath, path: output },
+          formatPiSubagentChunk
+        )
+      }
+      return
+    }
+    subagentTail.trackFile(toolUseId, safePiSubagentOutputPath(value), () => formatPiSubagentChunk)
+  }
   const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])
   // Hook server validates session-env capacity and caller identity once for both shells.
   hookServer.setRawListener((agentId, nodeId, payload, _meta) => {
+    if (agentId === 'pi') {
+      const p = payload as { event?: string; subagent_id?: string; output_file?: string }
+      const toolUseId = p.subagent_id
+      if (toolUseId && (p.event === 'subagent_start' || p.event === 'subagent_update')) {
+        trackPiSubagentOutput(nodeId, toolUseId, p.output_file)
+        const set = nodeSubagents.get(nodeId) ?? new Set<string>()
+        set.add(toolUseId)
+        nodeSubagents.set(nodeId, set)
+      } else if (toolUseId && p.event === 'subagent_end') {
+        trackPiSubagentOutput(nodeId, toolUseId, p.output_file)
+        subagentTail.finish(toolUseId)
+        remoteSubagentTail.untrack(toolUseId)
+        nodeSubagents.get(nodeId)?.delete(toolUseId)
+      }
+      if (p.event === 'session_shutdown') {
+        for (const id of nodeSubagents.get(nodeId) ?? []) {
+          subagentTail.finish(id)
+          remoteSubagentTail.untrack(id)
+        }
+        nodeSubagents.delete(nodeId)
+      }
+      return
+    }
     if (agentId === 'grok') {
       // This branch records two associations, neither of which grok's envelope states outright.
       // Everything the claude path does below hangs off `transcript_path`. Grok DOES send one --

@@ -184,6 +184,36 @@ describe('wireAgentStatus', () => {
     expect(sub.calls.some((c) => c.m === 'finish' && c.args[0] === 'tu1')).toBe(true)
   })
 
+  it('tails a jailed pi-subagents-lite output file and finishes the same card', () => {
+    const fh = fakeHooks()
+    const sub = recTail()
+    wireAgentStatus(platform, { hooks: fh.hooks as never, subagentTail: sub.tail as never })
+    fh.fireRaw('pi', 'n1', {
+      event: 'subagent_update',
+      subagent_id: 'tool-1',
+      output_file: '/tmp/pi-agent-outputs/agent-1.log'
+    })
+    const tracked = sub.calls.find((c) => c.m === 'trackFile')
+    expect(tracked?.args[0]).toBe('tool-1')
+    expect(tracked?.args[1]).toBe(path.resolve('/tmp/pi-agent-outputs/agent-1.log'))
+    expect(tracked?.args[2]).toEqual(expect.any(Function))
+
+    fh.fireRaw('pi', 'n1', { event: 'subagent_end', subagent_id: 'tool-1' })
+    expect(sub.calls.some((c) => c.m === 'finish' && c.args[0] === 'tool-1')).toBe(true)
+  })
+
+  it('refuses a pi subagent output path outside its dedicated directory', () => {
+    const fh = fakeHooks()
+    const sub = recTail()
+    wireAgentStatus(platform, { hooks: fh.hooks as never, subagentTail: sub.tail as never })
+    fh.fireRaw('pi', 'n1', {
+      event: 'subagent_update',
+      subagent_id: 'tool-1',
+      output_file: path.join(os.homedir(), '.ssh', 'id_rsa')
+    })
+    expect(sub.calls.find((c) => c.m === 'trackFile')?.args[1]).toBeUndefined()
+  })
+
   it('ignores non-claude raw events', () => {
     const fh = fakeHooks()
     const sub = recTail()

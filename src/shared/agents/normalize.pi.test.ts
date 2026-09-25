@@ -39,6 +39,44 @@ describe('normalizePi', () => {
     expect(normalizePi(event({ event: 'agent_settled' }))).toMatchObject({ state: 'done' })
   })
 
+  it('maps pi-subagents-lite lifecycle events', () => {
+    expect(
+      normalizePi(
+        event({
+          event: 'subagent_start',
+          subagent_id: 'tool-1',
+          subagent_type: 'luna-patch',
+          task_label: 'Fix names'
+        })
+      )
+    ).toMatchObject({
+      kind: 'subagent-start',
+      toolUseId: 'tool-1',
+      subagentType: 'luna-patch',
+      taskLabel: 'Fix names'
+    })
+    expect(
+      normalizePi(
+        event({
+          event: 'subagent_end',
+          subagent_id: 'tool-1',
+          duration_ms: 25,
+          tokens: 15,
+          tool_uses: 2,
+          result: 'Done'
+        })
+      )
+    ).toMatchObject({
+      kind: 'subagent-end',
+      toolUseId: 'tool-1',
+      durationMs: 25,
+      tokens: 15,
+      toolUses: 2,
+      result: 'Done'
+    })
+    expect(normalizePi(event({ event: 'subagent_update', subagent_id: 'tool-1' }))).toBeNull()
+  })
+
   it('ends only when Pi itself quits', () => {
     expect(normalizePi(event({ event: 'session_shutdown', reason: 'reload' }))).toBeNull()
     expect(normalizePi(event({ event: 'session_shutdown', reason: 'quit' }))).toMatchObject({

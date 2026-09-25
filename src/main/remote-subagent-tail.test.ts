@@ -61,6 +61,24 @@ describe('createRemoteSubagentTail', () => {
     tail.untrack('tool-3')
   }, 5000)
 
+  it('uses a per-entry formatter for non-Claude output files', async () => {
+    const { win, send } = fakeWin()
+    let served = false
+    const remoteFile = {
+      readFromCapped: vi.fn(async (_r: RemoteFileRef, o: number) => {
+        if (served) return { data: Buffer.alloc(0), newOffset: o }
+        served = true
+        const data = Buffer.from('raw pi line\n')
+        return { data, newOffset: o + data.length }
+      })
+    }
+    const tail = createRemoteSubagentTail(win, remoteFile as never)
+    tail.track('tool-pi', ref, (text) => `PI: ${text.trim()}`)
+    await tick()
+    expect(send.mock.calls.at(-1)?.[1].chunk).toBe('PI: raw pi line\n')
+    tail.untrack('tool-pi')
+  })
+
   it('does not send when the chunk is empty', async () => {
     const { win, send } = fakeWin()
     const remoteFile = {

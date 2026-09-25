@@ -2,12 +2,12 @@ import { create } from 'zustand'
 import { WORKING_STALE_MS } from '@shared/agents/stale'
 
 /**
- * Transient visualization of subagents a Claude node spawns (Task/Agent tool), keyed by the
- * tool_use_id from the hooks. These render as ephemeral nodes + edges on the canvas; they are
+ * Transient visualization of subagents an agent node spawns, keyed by the instance id reported
+ * through hooks. These render as ephemeral nodes + edges on the canvas; they are
  * never persisted to workspace.json and never enter undo/redo (see Canvas).
  */
 export interface SubagentViz {
-  /** The Claude terminal node that spawned this subagent. */
+  /** The terminal node that spawned this subagent. */
   parentNodeId: string
   /** Subagent type, e.g. 'general-purpose'. */
   type?: string
