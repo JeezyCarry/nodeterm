@@ -283,13 +283,12 @@ export const TRANSFER_SOURCE_CAPABLE = ['claude', 'codex', 'gemini', 'grok'] as 
 // Before adding an id: find its normalizer's `sessionPhase: 'end'` branch. If there isn't one, the
 // branch is the change — this list is a consequence of it, never a substitute for it.
 export const SESSION_END_CAPABLE = ['claude', 'gemini', 'copilot', 'grok', 'pi'] as const
-// Agents that accept a node title being PUSHED back into the session — the write leg only. The
-// write is the same literal `/rename <name>` for both, which grok also accepts as `/title`.
-// The READ leg is TITLE_READ_CAPABLE below, which is a superset: an agent can name its own session
-// without offering any way to rename it (gemini). Read legs are per-agent (claude: the transcript
-// .jsonl; grok: its session summary.json; gemini: its update_topic tool call), routed once in
+// Agents that accept a node title being PUSHED back into the session — the write leg only.
+// Claude and grok use `/rename`; Pi uses `/name`. The READ leg is TITLE_READ_CAPABLE below,
+// which is a superset: an agent can name its own session without offering a write command.
+// Pi's managed extension reports its current name directly; the other readers are routed through
 // core/agent-session-name.ts.
-export const RENAME_CAPABLE = ['claude', 'grok'] as const
+export const RENAME_CAPABLE = ['claude', 'grok', 'pi'] as const
 // Agents whose OWN session name we can READ and adopt into the node title.
 //
 // Separate from RENAME_CAPABLE because the two directions are separate facts, and gemini has only
@@ -306,7 +305,7 @@ export const RENAME_CAPABLE = ['claude', 'grok'] as const
 // (SHARED_IDENTITY_CAPABLE below) a node owns a THREAD, and that thread carries a `Thread.name` we
 // can read over the server's own socket (core/codex-session-name.ts). There is still no measured
 // rename command, so it stays out of RENAME_CAPABLE — the read⊇write invariant holds either way.
-export const TITLE_READ_CAPABLE = ['claude', 'codex', 'grok', 'gemini'] as const
+export const TITLE_READ_CAPABLE = ['claude', 'codex', 'grok', 'gemini', 'pi'] as const
 // Agents whose canvas nodes share ONE managed CLI server per machine and keep a stable per-node
 // identity inside it, instead of each node owning a whole process tree.
 //

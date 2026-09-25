@@ -31,9 +31,17 @@ describe('session-name title gates', () => {
   it('the node-title poll is gated on the READ capability', () => {
     // The effect that adopts the agent's own session name into data.title.
     expect(terminalNode).toContain('const canReadTitleNode = !!agentId && canReadTitle(agentId)')
-    expect(terminalNode).toContain('if (!canReadTitleNode || data.titleAuto === false) return')
+    expect(terminalNode).toContain(
+      'if (!canReadTitleNode || piTitleEvents || data.titleAuto === false) return'
+    )
     // The pre-split gate must be gone from that effect — with it, a gemini node never polls.
     expect(terminalNode).not.toContain('if (!canRenameNode || data.titleAuto === false) return')
+  })
+
+  it('keeps Pi node and session names equal from hook events', () => {
+    expect(terminalNode).toContain("const piTitleEvents = !!agentId && capabilityAgentId(agentId) === 'pi'")
+    expect(terminalNode).toContain('const name = status?.session?.trim()')
+    expect(terminalNode).toContain("updateNodeData(id, { title: name })")
   })
 
   it('the `/rename` push is gated on the WRITE capability', () => {
@@ -60,6 +68,7 @@ describe('session-name title gates', () => {
       // The composition shape specifically — a template literal interpolating the name — not the
       // string `/rename`, which both files mention in prose.
       expect(src.includes('`/rename ${'), `${name} composes the rename line itself`).toBe(false)
+      expect(src.includes('`/name ${'), `${name} composes the Pi name line itself`).toBe(false)
     }
     expect(sessionRename).toContain('export function renameCommand')
     expect(sessionRename).toContain('oneLine(name)')

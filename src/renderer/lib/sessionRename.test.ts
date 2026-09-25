@@ -27,6 +27,12 @@ describe('pushSessionRename', () => {
     expect(x.sent).toEqual(['/rename My session'])
   })
 
+  it('uses Pi\'s /name command', async () => {
+    const x = io(['pi'])
+    await expect(pushSessionRename(x, 'n1', 'My session', 'Old name', 'pi')).resolves.toBe(true)
+    expect(x.sent).toEqual(['/name My session'])
+  })
+
   it('NEVER writes while a shell owns the pane — that is the launch command being typed', async () => {
     // The regression this exists for: `claude '<long prompt>'` mid-delivery, cut in half by an
     // interleaved rename, leaving the shell at `quote>` and the agent never started.

@@ -86,5 +86,8 @@ export function readAgentSessionName(
   // Never falls through to claude's reader: that one SCANS ~/.claude/projects on a cache miss, so
   // an unrouted codex node would pay that scan once a minute for a guaranteed null.
   if (agentId === 'codex') return readCodexSessionName(sessionId)
+  // Pi names arrive through its managed extension and are applied from normalized hook state.
+  // Do not fall through to Claude's transcript scanner if a non-renderer caller asks directly.
+  if (agentId === 'pi') return Promise.resolve(null)
   return readSessionName(sessionId, accountId)
 }

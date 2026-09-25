@@ -6,6 +6,7 @@ import type { TextDeliveryResult } from '@shared/text-delivery'
 // not a nicety. Lives outside Canvas.tsx for that reason alone.
 import { isShellCommand } from '../terminal/agent-restart'
 import { oneLine } from '@shared/one-line'
+import { capabilityAgentId, type AgentId } from '@shared/agents/config'
 
 /** How long to wait for an agent CLI to take its pane before giving up on the mirror. */
 export const RENAME_PUSH_ATTEMPTS = 12
@@ -24,8 +25,9 @@ export const RENAME_PUSH_RETRY_MS = 500
  * Both push sites call this (here and TerminalNode's header rename). A second composition site is
  * how the two would drift, and this file already exists because of one such drift.
  */
-export function renameCommand(name: string): string {
-  return `/rename ${oneLine(name)}`
+export function renameCommand(name: string, agentId: AgentId = 'claude'): string {
+  const command = capabilityAgentId(agentId) === 'pi' ? '/name' : '/rename'
+  return `${command} ${oneLine(name)}`
 }
 
 /**
@@ -82,7 +84,8 @@ export async function pushSessionRename(
   io: RenamePushIo,
   nodeId: string,
   name: string,
-  current: string
+  current: string,
+  agentId: AgentId = 'claude'
 ): Promise<boolean> {
   if (sessionNameUnchanged(name, current)) return false
   const sleep = io.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
@@ -90,7 +93,7 @@ export async function pushSessionRename(
     if (i > 0) await sleep(RENAME_PUSH_RETRY_MS)
     const pane = await io.paneCommand(nodeId).catch(() => null)
     if (pane && !isShellCommand(pane)) {
-      return reportTextDelivery(await io.sendText(nodeId, renameCommand(name)))
+      return reportTextDelivery(await io.sendText(nodeId, renameCommand(name, agentId)))
     }
   }
   return false

@@ -1562,6 +1562,7 @@ export function TerminalNode({
   // READ leg: adopt the agent's own session name into the title. A superset of canRenameNode —
   // gemini names its own sessions but has no rename command, so it polls and never pushes.
   const canReadTitleNode = !!agentId && canReadTitle(agentId)
+  const piTitleEvents = !!agentId && capabilityAgentId(agentId) === 'pi'
   const agentLabel = (agentId ? agentConfig(agentId) : undefined)?.label ?? 'Agent'
   // Could this node's CLI ever be hibernated — quit AND brought back? A durable property of the
   // agent, not of its current state: the offscreen release consults it to decide whether waiting
@@ -5178,7 +5179,7 @@ export function TerminalNode({
   const applyManualTitle = (raw: string, current: string) => {
     const name = raw.trim()
     updateNodeData(id, { title: name, titleAuto: false })
-    if (canRenameNode && name) void pushSessionRename(api.pty, id, name, current)
+    if (canRenameNode && name) void pushSessionRename(api.pty, id, name, current, agentId)
   }
 
   // Close the rename box, committing only if the value actually changed (so just clicking in
@@ -5210,6 +5211,14 @@ export function TerminalNode({
     if (selected) useAgentStatus.getState().clearUnread(id)
   }, [selected, id])
 
+  // Pi reports its session name directly. Keep both names equal even after a manual node rename;
+  // equality prevents the `/name` echo from creating a feedback loop.
+  useEffect(() => {
+    if (!piTitleEvents || editingTitle) return
+    const name = status?.session?.trim()
+    if (name && name !== titleRef.current) updateNodeData(id, { title: name })
+  }, [id, piTitleEvents, editingTitle, status?.session, updateNodeData])
+
   // Keep the node title in sync with the agent session's display name — the name shown in
   // `/resume` (`/rename` name, else auto name). This is the authoritative source: `/rename` doesn't
   // update the OSC terminal title, so reading the agent's own session store is the only way the name
@@ -5228,7 +5237,7 @@ export function TerminalNode({
   // ref (`accountForReadsRef`, refreshed every render) rather than the deps so a late observation
   // is picked up by the very next poll instead of tearing down and restarting the timer chain.
   useEffect(() => {
-    if (!canReadTitleNode || data.titleAuto === false) return
+    if (!canReadTitleNode || piTitleEvents || data.titleAuto === false) return
     const sid = status?.sessionId ?? ''
     if (!sid) return
     let cancelled = false
@@ -5260,7 +5269,7 @@ export function TerminalNode({
       cancelled = true
       if (timer) clearTimeout(timer)
     }
-  }, [id, canReadTitleNode, status?.sessionId, data.titleAuto, updateNodeData])
+  }, [id, canReadTitleNode, piTitleEvents, status?.sessionId, data.titleAuto, updateNodeData])
 
   // Cmd/Ctrl+M toggles markdown view of this terminal's output (only when hovered).
   useEffect(() => {

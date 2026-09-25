@@ -66,6 +66,8 @@ describe('pi capabilities', () => {
     expect(canResume('pi')).toBe(true)
     expect(hasHooks('pi')).toBe(true)
     expect(reportsSessionEnd('pi')).toBe(true)
+    expect(canRename('pi')).toBe(true)
+    expect(canReadTitle('pi')).toBe(true)
     expect(mintsSessionId('pi')).toBe(true)
     expect(supportsSessionIdFlag('pi', false, false)).toBe(true)
     expect(resumeCommand('pi', 'abc-123')).toBe('pi --session abc-123')
@@ -80,8 +82,6 @@ describe('pi capabilities', () => {
       hasUsage,
       canChat,
       canTransferFrom,
-      canRename,
-      canReadTitle,
       canControlCanvas,
       hasPermissionMode,
       canSwitchModel
@@ -344,8 +344,8 @@ describe('title read vs rename write', () => {
     expect(canRename('gemini')).toBe(false)
   })
 
-  it('claude and grok do both', () => {
-    for (const id of ['claude', 'grok'] as const) {
+  it('claude, grok and Pi support both title directions', () => {
+    for (const id of ['claude', 'grok', 'pi'] as const) {
       expect(canReadTitle(id), id).toBe(true)
       expect(canRename(id), id).toBe(true)
     }

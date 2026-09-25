@@ -85,6 +85,10 @@ describe('readAgentSessionName', () => {
     expect(await readAgentSessionName('thread-1', 'acct-2', 'codex')).toBeNull()
     delete process.env.CODEX_HOME
   })
+  it("keeps Pi out of Claude's transcript scanner", async () => {
+    expect(await readAgentSessionName('pi-session-1', undefined, 'pi')).toBeNull()
+  })
+
 
   it('answers null for an empty session id without asking either reader', async () => {
     expect(await readAgentSessionName('', undefined, 'grok')).toBeNull()
