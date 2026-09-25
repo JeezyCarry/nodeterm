@@ -366,7 +366,7 @@ describe('the off-screen disposition table (the verbs that used to travel)', () 
     }
     expect(why('arrange')).toMatch(/measured/)
     expect(why('group')).toMatch(/measured/)
-    expect(why('branch')).toMatch(/parks the original/)
+    expect(why('branch')).toMatch(/source conversation terminal/)
     expect(why('verify')).toMatch(/live canvas/)
     expect(why('open-worktree')).toMatch(/worktree store/)
     expect(why('browser')).toMatch(/webview/)
