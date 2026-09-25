@@ -247,9 +247,8 @@ const OFF_SCREEN_REFUSALS: Readonly<Record<string, string>> = {
   // these defer a graph, and an armed station is fired by the live canvas effect.
   verify: 'a review panel arms its reviewers against the live canvas',
   'spawn-team': 'a team arms its members against the live canvas',
-  // branchClaude parks the ORIGINAL node's live terminal and resumes it in the new one. Off screen
-  // there is no live terminal to park.
-  branch: 'branching parks the original session, which needs its terminal mounted',
+  // Branching needs the live source: Claude mutates its terminal; Pi reads its current session id.
+  branch: 'branching needs the source conversation terminal mounted',
   // The worktree store is epoch-scoped to the ACTIVE project, so off canvas its repoRoot and
   // staleness answers describe a different project's checkout.
   'open-worktree': 'the worktree store only answers for the project on screen',

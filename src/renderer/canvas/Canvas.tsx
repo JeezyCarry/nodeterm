@@ -456,6 +456,7 @@ import { nodeIconDialog } from '../components/NodeIconPicker'
 import { applyIconChoice } from '../lib/nodeIconChoice'
 import type { NodeIcon } from '@shared/node-icon'
 import { branchClaudeSession } from '../lib/claudeBranch'
+import { piBranchCommand } from '../lib/piBranch'
 import {
   useSession,
   SessionProvider,
@@ -7076,47 +7077,76 @@ export function Canvas() {
     })
   }, [bulkRestartPlan, setConfirm])
 
-  // Run Claude's /branch in this node, then open a new node that resumes the original
-  // conversation (claude -r <ORIGINAL_ID>). The source node stays on the new branch.
-  // We already know the current session id from the hooks; only fall back to parsing the
-  // terminal output if it's unknown.
-  const branchClaude = useCallback(
+  // Claude branches in place and the copy resumes the original. Pi keeps the source unchanged and
+  // starts a caller-owned session forked from its current head.
+  const branchConversation = useCallback(
     async (
       nodeId: string,
       opts?: { interactive?: boolean; at?: { x: number; y: number } }
     ): Promise<{ ok: boolean; error?: string; newNodeId?: string }> => {
       const source = nodesRef.current.find((n) => n.id === nodeId) as CanvasNode | undefined
       if (!source) return { ok: false, error: `no node with id ${nodeId}` }
+      const sourceAgentId = source.data.agentId
+      const grammar = sourceAgentId ? capabilityAgentId(sourceAgentId) : undefined
       const known = useAgentStatus.getState().byId[nodeId]?.sessionId
-      let originalId = known
-      if (known) {
-        const delivery = await api.pty.sendText(nodeId, '/branch')
-        if (delivery !== true) return { ok: false, error: delivery === 'pasted-not-submitted' ? TEXT_NOT_SUBMITTED : 'Branch delivery failed.' }
-      } else {
-        const res = await branchClaudeSession(api, nodeId)
-        if (!res.ok || !res.originalId) {
-          const error = res.error ?? 'Branch failed.'
-          // The error dialog is for humans; agent-CLI calls get the error in the reply instead.
-          if (opts?.interactive !== false) {
-            setConfirm({ message: error, alert: true, onConfirm: () => setConfirm(null) })
-          }
-          return { ok: false, error }
+      const fail = (error: string): { ok: false; error: string } => {
+        if (opts?.interactive !== false) {
+          setConfirm({ message: error, alert: true, onConfirm: () => setConfirm(null) })
         }
-        originalId = res.originalId
+        return { ok: false, error }
       }
       const copy = duplicateNode(source)
-      copy.data = {
-        ...copy.data,
-        // Built fresh here (never re-wrapping a persisted command), so it is flagged exactly once.
-        initialCommand: withPermissionMode(
-          // The branched copy stays in the project it was branched from, so it comes back through
-          // that project's wrapper exactly like the source node did.
-          `${claudeLaunchCommand(useProjects.getState().activeProjectId)} -r ${originalId}`,
+
+      if (grammar === 'pi' && sourceAgentId) {
+        if (!known) return fail('Branch requires an active Pi session. Start the conversation first.')
+        const newSessionId = uuid()
+        const title = oneLine(`${source.data.title} (branch)`) || 'Pi branch'
+        const command = piBranchCommand(
+          agentLaunchOverride(sourceAgentId, useProjects.getState().activeProjectId) ??
+            agentConfig(sourceAgentId)?.launchCmd ?? 'pi',
+          known,
+          newSessionId,
+          title
+        )
+        if (!command) return fail('Branch requires a valid Pi session id.')
+        copy.data = {
+          ...copy.data,
+          initialCommand: command,
+          agentSessionId: newSessionId,
+          title
+        }
+      } else {
+        let originalId = known
+        if (known) {
+          const delivery = await api.pty.sendText(nodeId, '/branch')
+          if (delivery !== true) {
+            return fail(
+              delivery === 'pasted-not-submitted'
+                ? TEXT_NOT_SUBMITTED
+                : 'Branch delivery failed.'
+            )
+          }
+        } else {
+          const res = await branchClaudeSession(api, nodeId)
+          if (!res.ok || !res.originalId) return fail(res.error ?? 'Branch failed.')
+          originalId = res.originalId
+        }
+        if (!originalId) return fail('Branch did not return a Claude session id.')
+        const command = resumeCommand(
           'claude',
-          activePermissionMode()
-        ),
-        title: `${source.data.title} (original)`
+          originalId,
+          false,
+          claudeLaunchCommand(useProjects.getState().activeProjectId)
+        )
+        if (!command) return fail('Branch returned an invalid Claude session id.')
+        copy.data = {
+          ...copy.data,
+          initialCommand: withPermissionMode(command, 'claude', activePermissionMode()),
+          agentSessionId: originalId,
+          title: `${source.data.title} (original)`
+        }
       }
+
       copy.selected = true
       // Where the user right-clicked when the action came from the node menu; beside the source
       // otherwise (the agent-CLI `branch` verb and the header action have no cursor).
@@ -7130,7 +7160,7 @@ export function Canvas() {
 
   // Transfer this agent's full conversation to a different agent. We render the source
   // agent's native transcript to a handoff file (main) and open a target node that reads it
-  // and continues. The source node stays. Mirrors branchClaude's placement.
+  // and continues. The source node stays. Mirrors branchConversation's placement.
   const transferConversation = useCallback(
     async (
       sourceNodeId: string,
@@ -8641,7 +8671,7 @@ export function Canvas() {
             {
               label: 'Branch conversation',
               icon: <IconBranch />,
-              onClick: () => void branchClaude(ids[0], { at })
+              onClick: () => void branchConversation(ids[0], { at })
             }
           ] as MenuItem[])
         : []),
@@ -8911,7 +8941,7 @@ export function Canvas() {
     removeFromGroup,
     setNodesColor,
     duplicateNodes,
-    branchClaude,
+    branchConversation,
     transferConversation,
     agentIdOf,
     toggleCollapseNodes,
@@ -12080,10 +12110,10 @@ export function Canvas() {
               reply({ ok: false, error: 'branch: node is not a branch-capable agent node' })
               return
             }
-            const res = await branchClaude(id, { interactive: false })
+            const res = await branchConversation(id, { interactive: false })
             reply(
               res.ok
-                ? { ok: true, message: `branched ${id}; original resumes in ${res.newNodeId}`, result: { newNodeId: res.newNodeId } }
+                ? { ok: true, message: `branched ${id}; second conversation opened in ${res.newNodeId}`, result: { newNodeId: res.newNodeId } }
                 : { ok: false, error: res.error }
             )
             return
