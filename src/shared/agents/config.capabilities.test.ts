@@ -68,6 +68,7 @@ describe('pi capabilities', () => {
     expect(reportsSessionEnd('pi')).toBe(true)
     expect(canRename('pi')).toBe(true)
     expect(canReadTitle('pi')).toBe(true)
+    expect(canBranch('pi')).toBe(true)
     expect(mintsSessionId('pi')).toBe(true)
     expect(supportsSessionIdFlag('pi', false, false)).toBe(true)
     expect(resumeCommand('pi', 'abc-123')).toBe('pi --session abc-123')
@@ -78,7 +79,6 @@ describe('pi capabilities', () => {
       canContextLink,
       canSubagent,
       canRecur,
-      canBranch,
       hasUsage,
       canChat,
       canTransferFrom,

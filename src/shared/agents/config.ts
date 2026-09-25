@@ -204,7 +204,7 @@ export const UNCONDITIONAL_SESSION_ID_CAPABLE = ['copilot', 'pi'] as const
 // the stop share — on the start `sessionId` is the PARENT's.
 export const SUBAGENT_CAPABLE = ['claude', 'codex', 'grok'] as const
 export const RECURRING_CAPABLE = ['claude'] as const // /loop, /schedule, /cron
-export const BRANCH_CAPABLE = ['claude'] as const
+export const BRANCH_CAPABLE = ['claude', 'pi'] as const
 // grok joins with NO installer of its own: it scans `~/.claude/skills` for Claude Code
 // compatibility, which is exactly where `get-linked-context` is already written — the same
 // argument `CANVAS_CONTROL_CAPABLE` makes below. That premise used to be marked unverified;
