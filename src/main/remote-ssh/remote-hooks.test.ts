@@ -1021,12 +1021,19 @@ describe('RemoteHooks.setup — install concurrency', () => {
     expect(res?.endpointPath).toBe(`/home/u/.nodeterm/hook-endpoint-p1-${ownerT}.env`)
   })
 
-  it('still installs every agent — claude, gemini, codex, grok and copilot', async () => {
+  it('still installs every agent — claude, gemini, codex, grok, copilot and Pi', async () => {
     const { rh, calls } = harness()
     await rh.setup('p1', conn, '/s.sock', { port: 1, token: 't', version: '1' })
     const joined = calls.map((c) => c.args.join(' '))
     for (const agent of ['claude', 'gemini', 'codex', 'grok', 'copilot']) {
       expect(joined.some((j) => j.includes(`agent-hooks/${agent}.sh`))).toBe(true)
     }
+    expect(
+      calls.some(
+        (c) =>
+          c.cmd.includes('/home/u/.pi/agent/extensions/') &&
+          (c.stdin ?? '').startsWith('// nodeterm-managed-pi-extension-v1')
+      )
+    ).toBe(true)
   })
 })

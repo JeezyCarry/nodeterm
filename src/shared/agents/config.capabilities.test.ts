@@ -21,6 +21,7 @@ import {
   hasPermissionMode,
   hasUsage,
   reportsOwnCopy,
+  reportsSessionEnd,
   RENAME_CAPABLE,
   hasSharedIdentity,
   agentLaunchProgram,
@@ -63,6 +64,8 @@ describe('pi capabilities', () => {
       expectedProcess: 'pi'
     })
     expect(canResume('pi')).toBe(true)
+    expect(hasHooks('pi')).toBe(true)
+    expect(reportsSessionEnd('pi')).toBe(true)
     expect(mintsSessionId('pi')).toBe(true)
     expect(supportsSessionIdFlag('pi', false, false)).toBe(true)
     expect(resumeCommand('pi', 'abc-123')).toBe('pi --session abc-123')
@@ -70,7 +73,6 @@ describe('pi capabilities', () => {
 
   it('does not claim integrations before their Pi-specific leaf exists', () => {
     for (const can of [
-      hasHooks,
       canContextLink,
       canSubagent,
       canRecur,

@@ -549,6 +549,42 @@ export function normalizeCopilot(env: RawHookEnvelope): NormalizedAgentEvent | n
   return null
 }
 
+// Pi extension payload (core/agents/hooks/pi.ts). Field names are owned by nodeterm, not Pi.
+interface PiPayload {
+  event?: string
+  session_id?: string
+  session_name?: string
+  reason?: string
+  message?: string
+}
+
+export function normalizePi(env: RawHookEnvelope): NormalizedAgentEvent | null {
+  const p = env.payload as PiPayload
+  const base = { nodeId: env.nodeId, agentId: env.agentId, sessionId: p.session_id }
+
+  if (p.event === 'session_start') {
+    return { ...base, kind: 'session', sessionPhase: 'start', sessionTitle: p.session_name }
+  }
+  if (p.event === 'session_info_changed') {
+    return p.session_name ? { ...base, kind: 'session', sessionTitle: p.session_name } : null
+  }
+  if (p.event === 'before_agent_start') {
+    return { ...base, kind: 'state', state: 'working', newTurn: true }
+  }
+  if (p.event === 'tool_execution_start' || p.event === 'tool_execution_end') {
+    return { ...base, kind: 'state', state: 'working' }
+  }
+  if (p.event === 'ui_prompt_start') {
+    return { ...base, kind: 'state', state: 'blocked', lastMessage: p.message }
+  }
+  if (p.event === 'ui_prompt_end') return { ...base, kind: 'state', state: 'working' }
+  if (p.event === 'agent_settled') return { ...base, kind: 'state', state: 'done' }
+  if (p.event === 'session_shutdown' && p.reason === 'quit') {
+    return { ...base, kind: 'session', sessionPhase: 'end' }
+  }
+  return null
+}
+
 // opencode plugin payload (see core/agents/hooks/opencode.ts). The managed plugin forwards
 // { event, sessionID?, role? } per hook; field names beyond `event` are read defensively —
 // opencode's event payload shapes are not a contract, so the event NAME carries the mapping.
@@ -862,5 +898,6 @@ export function normalizeFor(agentId: AgentId, env: RawHookEnvelope): Normalized
   if (agentId === 'opencode') return normalizeOpencode(env)
   if (agentId === 'grok') return normalizeGrok(env)
   if (agentId === 'copilot') return normalizeCopilot(env)
+  if (agentId === 'pi') return normalizePi(env)
   return null
 }

@@ -147,7 +147,15 @@ export const AGENT_CONFIG: Record<BuiltinAgentId, AgentConfig> = {
 // Capabilities = const builtin membership lists. A custom agent resolves through its declared
 // base harness (capabilityAgentId); one with no base automatically gets only spawn + terminal-title
 // + process status.
-export const AGENT_HOOK_TARGETS = ['claude', 'codex', 'gemini', 'opencode', 'grok', 'copilot'] as const
+export const AGENT_HOOK_TARGETS = [
+  'claude',
+  'codex',
+  'gemini',
+  'opencode',
+  'grok',
+  'copilot',
+  'pi'
+] as const
 export const RESUMABLE_AGENTS = [
   'claude',
   'codex',
@@ -274,7 +282,7 @@ export const TRANSFER_SOURCE_CAPABLE = ['claude', 'codex', 'gemini', 'grok'] as 
 //
 // Before adding an id: find its normalizer's `sessionPhase: 'end'` branch. If there isn't one, the
 // branch is the change — this list is a consequence of it, never a substitute for it.
-export const SESSION_END_CAPABLE = ['claude', 'gemini', 'copilot', 'grok'] as const
+export const SESSION_END_CAPABLE = ['claude', 'gemini', 'copilot', 'grok', 'pi'] as const
 // Agents that accept a node title being PUSHED back into the session — the write leg only. The
 // write is the same literal `/rename <name>` for both, which grok also accepts as `/title`.
 // The READ leg is TITLE_READ_CAPABLE below, which is a superset: an agent can name its own session

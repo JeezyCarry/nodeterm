@@ -23,6 +23,7 @@ import {
   COPILOT_HOOK_FILE,
   isSafeRemoteCopilotHome
 } from '../../core/agents/hooks/copilot'
+import { buildPiExtension, PI_EXTENSION_MARKER } from '../../core/agents/hooks/pi'
 
 /**
  * Remote hook scripts get NO Codex thread-identity root.
@@ -277,7 +278,9 @@ export class RemoteHooks {
         // grok: our own file in its hooks DIRECTORY, under the HOST's $GROK_HOME.
         this.installGrokRemote(conn, controlPath, home, remoteDir),
         // copilot: its own file/grammar under the HOST's $COPILOT_HOME hooks directory.
-        this.installCopilotRemote(conn, controlPath, home, remoteDir)
+        this.installCopilotRemote(conn, controlPath, home, remoteDir),
+        // Pi: a managed extension in the host's Pi agent directory.
+        this.installPiRemote(conn, controlPath, home)
       ])
       for (const r of installs) {
         if (r.status === 'rejected') {
@@ -626,6 +629,31 @@ export class RemoteHooks {
       /* fail-open: the remote copilot session simply runs without status hooks */
     }
   }
+
+  /** Install nodeterm's owned Pi extension without touching a same-named user extension. */
+  private async installPiRemote(
+    conn: SshConnection,
+    controlPath: string,
+    home: string
+  ): Promise<void> {
+    try {
+      const { stdout } = await this.r.run(
+        childArgs(conn, controlPath, 'printf %s "${PI_CODING_AGENT_DIR:-}"')
+      )
+      const reported = stdout.trim().replace(/\/+$/, '')
+      const agentDir = isSafeRemoteHome(reported) ? reported : `${home}/.pi/agent`
+      const target = `${agentDir}/extensions/nodeterm-status.ts`
+      const existing = await this.r.run(
+        childArgs(conn, controlPath, `cat ${posixQuote(target)} 2>/dev/null || true`)
+      )
+      if (existing.stdout && !existing.stdout.startsWith(PI_EXTENSION_MARKER)) return
+      const write = remoteAtomicWrite(target, { restrictPermissions: true, chmod600: true })
+      await this.r.run(childArgs(conn, controlPath, write.command), buildPiExtension())
+    } catch {
+      /* fail-open: the remote Pi session simply runs without status hooks */
+    }
+  }
+
 
   private async resolveCopilotHome(
     conn: SshConnection,
