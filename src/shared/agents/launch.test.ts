@@ -158,6 +158,28 @@ describe('assembleLaunchCommand — builtins (byte-identical to the historical p
   })
 })
 
+describe('assembleLaunchCommand — Pi', () => {
+  it('uses Pi positional prompts and caller-chosen session ids', () => {
+    expect(
+      assembleLaunchCommand(
+        {
+          agentId: 'pi',
+          initialPrompt: 'fix it',
+          sessionId: 'abc-123',
+          sessionIdFlagSupported: true
+        },
+        ENV
+      ).command
+    ).toBe("pi 'fix it' --session-id abc-123")
+  })
+
+  it('resumes through Pi\'s --session grammar', () => {
+    expect(assembleResumeCommand({ agentId: 'pi', sessionId: 'abc-123' }, ENV).command).toBe(
+      'pi --session abc-123'
+    )
+  })
+})
+
 describe('assembleResumeCommand — Copilot', () => {
   it('resumes the same conversation with an explicit internal model selection', () => {
     expect(

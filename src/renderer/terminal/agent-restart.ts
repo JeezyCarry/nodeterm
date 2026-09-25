@@ -40,7 +40,8 @@ const EXIT_SEQUENCES: Record<string, string> = {
   grok: '/quit',
   gemini: '/quit',
   copilot: '/exit',
-  opencode: '/exit'
+  opencode: '/exit',
+  pi: '/exit'
 }
 
 export function exitSequence(agentId: string): string | null {

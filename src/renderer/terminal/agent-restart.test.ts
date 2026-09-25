@@ -42,6 +42,7 @@ describe('exitSequence', () => {
     expect(exitSequence('gemini')).not.toContain('--delete')
     expect(exitSequence('copilot')).toBe('/exit')
     expect(exitSequence('opencode')).toBe('/exit')
+    expect(exitSequence('pi')).toBe('/exit')
     expect(exitSequence('my-custom')).toBeNull()
   })
 })

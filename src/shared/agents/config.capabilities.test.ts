@@ -52,6 +52,43 @@ describe('MODEL_SWITCH_CAPABLE', () => {
   })
 })
 
+describe('pi capabilities', () => {
+  it('is a builtin with native launch, resume, and caller-chosen session ids', () => {
+    expect(BUILTIN_AGENT_IDS).toContain('pi')
+    expect(AGENT_CONFIG.pi).toEqual({
+      label: 'Pi',
+      color: '#f59e0b',
+      launchCmd: 'pi',
+      promptInjectionMode: 'argv',
+      expectedProcess: 'pi'
+    })
+    expect(canResume('pi')).toBe(true)
+    expect(mintsSessionId('pi')).toBe(true)
+    expect(supportsSessionIdFlag('pi', false, false)).toBe(true)
+    expect(resumeCommand('pi', 'abc-123')).toBe('pi --session abc-123')
+  })
+
+  it('does not claim integrations before their Pi-specific leaf exists', () => {
+    for (const can of [
+      hasHooks,
+      canContextLink,
+      canSubagent,
+      canRecur,
+      canBranch,
+      hasUsage,
+      canChat,
+      canTransferFrom,
+      canRename,
+      canReadTitle,
+      canControlCanvas,
+      hasPermissionMode,
+      canSwitchModel
+    ]) {
+      expect(can('pi')).toBe(false)
+    }
+  })
+})
+
 describe('copilot capabilities', () => {
   it('is a builtin with measured interactive launch, hooks, resume, and model switching', () => {
     expect(BUILTIN_AGENT_IDS).toContain('copilot')

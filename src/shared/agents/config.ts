@@ -2,7 +2,14 @@
 // Design: an open AgentId string, a declarative config record, and
 // capabilities expressed as const membership lists (not a capability object).
 
-export type BuiltinAgentId = 'claude' | 'codex' | 'gemini' | 'opencode' | 'grok' | 'copilot'
+export type BuiltinAgentId =
+  | 'claude'
+  | 'codex'
+  | 'gemini'
+  | 'opencode'
+  | 'grok'
+  | 'copilot'
+  | 'pi'
 // Open type — custom agents are any string ('custom:<uuid>'). Never restrict the set.
 export type AgentId = BuiltinAgentId | (string & {})
 
@@ -57,7 +64,8 @@ export const BUILTIN_AGENT_IDS: readonly BuiltinAgentId[] = [
   'gemini',
   'opencode',
   'grok',
-  'copilot'
+  'copilot',
+  'pi'
 ]
 
 export const AGENT_CONFIG: Record<BuiltinAgentId, AgentConfig> = {
@@ -126,6 +134,13 @@ export const AGENT_CONFIG: Record<BuiltinAgentId, AgentConfig> = {
     // All `COPILOT_PROVIDER_*` gateway vars. Excludes `COPILOT_HOME` (config dir) and
     // `COPILOT_HOOK_*` (nodeterm constants).
     vanillaEnvPattern: '^COPILOT_PROVIDER_'
+  },
+  pi: {
+    label: 'Pi',
+    color: '#f59e0b',
+    launchCmd: 'pi',
+    promptInjectionMode: 'argv',
+    expectedProcess: 'pi'
   }
 }
 
@@ -133,7 +148,15 @@ export const AGENT_CONFIG: Record<BuiltinAgentId, AgentConfig> = {
 // base harness (capabilityAgentId); one with no base automatically gets only spawn + terminal-title
 // + process status.
 export const AGENT_HOOK_TARGETS = ['claude', 'codex', 'gemini', 'opencode', 'grok', 'copilot'] as const
-export const RESUMABLE_AGENTS = ['claude', 'codex', 'gemini', 'opencode', 'grok', 'copilot'] as const
+export const RESUMABLE_AGENTS = [
+  'claude',
+  'codex',
+  'gemini',
+  'opencode',
+  'grok',
+  'copilot',
+  'pi'
+] as const
 // Agents whose session id we MINT at launch (`--session-id <uuid>`) instead of learning it only
 // from hook events. Each member must have a measured caller-chosen-id grammar below.
 //
@@ -150,7 +173,7 @@ export const RESUMABLE_AGENTS = ['claude', 'codex', 'gemini', 'opencode', 'grok'
 // clear/fork/compact), so hooks remain the only way to TRACK an id after launch. What minting
 // guarantees is that a node always has SOME resumable id, so the worst case degrades from "the
 // conversation is gone" to "continuity since the last /clear is gone".
-export const SESSION_ID_CAPABLE = ['claude', 'copilot', 'grok'] as const
+export const SESSION_ID_CAPABLE = ['claude', 'copilot', 'grok', 'pi'] as const
 // Claude's flag is version-gated and comes from the Claude CLI probe. Copilot's installed 1.0.80
 // binary and current official reference accept `--session-id=<uuid>`, so it does not borrow an
 // unrelated Claude probe result. Custom agents resolve through their declared base harness.
@@ -163,7 +186,7 @@ export const SESSION_ID_CAPABLE = ['claude', 'copilot', 'grok'] as const
 // LAUNCH ERROR and never a resume; `--session-id` combines with `--resume`/`--continue` only
 // alongside `--fork-session`; and `--resume` accepts a TITLE as well as an id, failing as ambiguous
 // on duplicates — which is why nothing in this codebase resumes grok by title.
-export const UNCONDITIONAL_SESSION_ID_CAPABLE = ['copilot'] as const
+export const UNCONDITIONAL_SESSION_ID_CAPABLE = ['copilot', 'pi'] as const
 // claude: Task/Agent tool via hooks (tool_use_id-keyed). codex: spawn_agent collaboration via its
 // native SubagentStart/SubagentStop hooks (agent_id-keyed), measured on codex-cli 0.146.0.
 // grok: its own native SubagentStart/SubagentStop, keyed by `subagentId` — measured on 1.0.13 by
@@ -598,6 +621,7 @@ export function resumeCommandWith(
     case 'codex':
       return `${launchCmd} resume ${sid}`
     case 'opencode':
+    case 'pi':
       return `${launchCmd} --session ${sid}`
     case 'copilot':
       return `${launchCmd} --resume=${sid}`
