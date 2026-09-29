@@ -445,6 +445,19 @@ function resolveGrokStopCancelled(ev: NormalizedAgentEvent): NormalizedAgentEven
   }
 }
 
+function keepPiSessionIdentity(
+  prev: MirrorEntry | undefined,
+  ev: NormalizedAgentEvent
+): NormalizedAgentEvent {
+  if (prev?.agentId === 'pi' && ev.agentId === 'claude') {
+    // Claude child CLIs launched from inside a Pi session inherit the node's hook environment and
+    // post with their OWN session id. Node ownership is fixed at launch, so any claude event on a
+    // pi-owned node is a child; a real agent switch spawns a new node.
+    return { ...ev, agentId: 'pi' }
+  }
+  return ev
+}
+
 export function reduceEntry(
   prev: MirrorEntry | undefined,
   ev: NormalizedAgentEvent,
@@ -1475,11 +1488,12 @@ interface NeedsYouClassification {
  */
 export function recordAgentEvent(rawEvent: NormalizedAgentEvent): NormalizedAgentEvent {
   if (!rawEvent?.nodeId) return rawEvent
-  subagentReplay.record(rawEvent)
-  const ev = resolveGrokStopCancelled(rawEvent)
-  const nodeId = ev.nodeId
+  const projected = resolveGrokStopCancelled(rawEvent)
+  const nodeId = projected.nodeId
   const now = Date.now()
   const prev = state.get(nodeId)
+  const ev = keepPiSessionIdentity(prev, projected)
+  subagentReplay.record(ev)
   const prevState = prev?.state
   if (uncorrelatedStartIdle(prev, ev, now)) {
     // Broadcast no state proof either: a renderer must not show this stale done as fresh.

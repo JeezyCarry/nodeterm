@@ -1757,6 +1757,45 @@ describe('stale-working sweep (shared/agents/stale)', () => {
   })
 })
 
+describe('recordAgentEvent — inherited child identity', () => {
+  beforeEach(() => _resetForTest())
+
+  it('keeps a Pi node from being repainted by a Claude child hook with its own session id', () => {
+    const edges: NodeStateChange[] = []
+    const un = onNodeStateChange((change) => edges.push(change))
+    recordAgentEvent(ev({ agentId: 'pi', sessionId: 's1', state: 'working', newTurn: true }))
+    recordAgentEvent(ev({ agentId: 'pi', sessionId: 's1', state: 'done' }))
+
+    const out = recordAgentEvent(
+      ev({ agentId: 'claude', sessionId: 's1', state: 'working', newTurn: true })
+    )
+
+    expect(out.agentId).toBe('pi')
+    expect(_snapshot().n1.agentId).toBe('pi')
+    expect(edges.at(-1)?.agentId).toBe('pi')
+    un()
+  })
+
+  it('lets a real Pi event repair a stale Claude identity for that session', () => {
+    recordAgentEvent(ev({ agentId: 'claude', sessionId: 's1', state: 'done' }))
+    const out = recordAgentEvent(
+      ev({ agentId: 'pi', sessionId: 's1', state: 'working', newTurn: true })
+    )
+    expect(out.agentId).toBe('pi')
+    expect(_snapshot().n1.agentId).toBe('pi')
+  })
+
+  it('also blocks a Claude child with a different session id (the real flicker case)', () => {
+    recordAgentEvent(ev({ agentId: 'pi', sessionId: 's-pi', state: 'working', newTurn: true }))
+
+    const out = recordAgentEvent(
+      ev({ agentId: 'claude', sessionId: 's-child', state: 'working', newTurn: true })
+    )
+
+    expect(out.agentId).toBe('pi')
+    expect(_snapshot().n1.agentId).toBe('pi')
+  })
+})
 
 describe('Grok StopCancelled closes only the session turn', () => {
   beforeEach(() => _resetForTest())
