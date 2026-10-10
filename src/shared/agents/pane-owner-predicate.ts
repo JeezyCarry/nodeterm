@@ -68,7 +68,10 @@ export const AGENT_BINARIES: Record<string, readonly string[]> = {
   gemini: ['gemini'],
   opencode: ['opencode'],
   grok: ['grok'],
-  pi: ['pi']
+  pi: ['pi'],
+  // `pi-bolt` = the ~/.local/bin symlink (argv[0] keeps the link name). `pi` = the binary started
+  // by its full path (~/.pi-bolt/<variant>/pi), e.g. through a launch-command override. Measured.
+  'pi-bolt': ['pi-bolt', 'pi']
 }
 
 /**

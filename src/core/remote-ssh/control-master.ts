@@ -18,7 +18,7 @@ import {
   type PasteDelivery
 } from '../tmux-naming'
 import { sanitizePasteText } from '../paste-injection'
-import { canControlCanvas } from '../../shared/agents/config'
+import { canControlCanvas, hookAgentId } from '../../shared/agents/config'
 import { COMBINED_PANE_MARKER, PANE_OWNER_FMT, PS_FOREGROUND_FLAGS } from '../agents/pane-owner'
 // Dependency-free (no node-pty): safe to import from these pure builders.
 
@@ -741,7 +741,7 @@ export function remoteHookEnvArgs(
     `NODETERM_HOOK_VERSION=${version}`
   ]
   if (agentId) {
-    env.push('-e', `NODETERM_AGENT_ID=${agentId}`)
+    env.push('-e', `NODETERM_AGENT_ID=${hookAgentId(agentId)}`)
     if (canControlCanvas(agentId)) env.push('-e', 'NODETERM_CANVAS_CONTROL=1')
   }
   return env

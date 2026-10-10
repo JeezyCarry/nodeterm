@@ -9,7 +9,7 @@ import { platform } from '../platform'
 import { writeFileAtomic } from '../fs-atomic'
 import { parseEndpointEnv } from './hook-endpoint-parse'
 import { hookSockPath } from './hook-sock-path'
-import { canControlCanvas, type AgentId } from '../../shared/agents/config'
+import { canControlCanvas, hookAgentId, type AgentId } from '../../shared/agents/config'
 import { normalizeFor, type NormalizedAgentEvent } from '../../shared/agents/normalize'
 import { classifyClaudeConfigDir, configDirFromTranscriptPath } from '../claude-accounts-core'
 import { claudeAccountsSnapshot } from '../claude-config-dir'
@@ -1246,7 +1246,9 @@ export class HookServer {
       // what a sandboxed sh could not read.
       ...(this.sockPath ? { NODETERM_HOOK_SOCK: this.sockPath } : {}),
       NODETERM_NODE_ID: nodeId,
-      ...(agentId ? { NODETERM_AGENT_ID: agentId } : {}),
+      // hookAgentId: a builtin alias (pi-bolt) announces as its harness (pi) so the shared
+      // managed extension reports. See hookAgentId in shared/agents/config.ts.
+      ...(agentId ? { NODETERM_AGENT_ID: hookAgentId(agentId) } : {}),
       ...(agentId && permWaitSecs > 0 ? { NODETERM_PERM_WAIT_SECS: String(permWaitSecs) } : {}),
       ...(agentId && canControlCanvas(agentId) ? { NODETERM_CANVAS_CONTROL: '1' } : {})
       // NO NODETERM_CODEX_NODE_TOKEN either. The per-node capability is the same class of leak as

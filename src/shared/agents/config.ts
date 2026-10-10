@@ -10,6 +10,7 @@ export type BuiltinAgentId =
   | 'grok'
   | 'copilot'
   | 'pi'
+  | 'pi-bolt'
 // Open type — custom agents are any string ('custom:<uuid>'). Never restrict the set.
 export type AgentId = BuiltinAgentId | (string & {})
 
@@ -65,7 +66,8 @@ export const BUILTIN_AGENT_IDS: readonly BuiltinAgentId[] = [
   'opencode',
   'grok',
   'copilot',
-  'pi'
+  'pi',
+  'pi-bolt'
 ]
 
 export const AGENT_CONFIG: Record<BuiltinAgentId, AgentConfig> = {
@@ -141,6 +143,16 @@ export const AGENT_CONFIG: Record<BuiltinAgentId, AgentConfig> = {
     launchCmd: 'pi',
     promptInjectionMode: 'argv',
     expectedProcess: 'pi'
+  },
+  // Pi-Bolt: Pi compiled to a native binary (https://github.com/opensec-git/Pi-Bolt). Same CLI,
+  // same `~/.pi/agent` config and same nodeterm-status extension, so it inherits every Pi
+  // capability through BUILTIN_CAPABILITY_ALIAS below. Only the binary differs.
+  'pi-bolt': {
+    label: 'Pi-Bolt',
+    color: '#eab308',
+    launchCmd: 'pi-bolt',
+    promptInjectionMode: 'argv',
+    expectedProcess: 'pi-bolt'
   }
 }
 
@@ -407,8 +419,44 @@ export function baseAgentOf(id: AgentId): BuiltinAgentId | undefined {
 /** The id whose capabilities apply to `id`: the base harness for an inheriting custom agent, else
  *  `id` itself. This is what every capability predicate resolves through, so inheritance is
  *  automatic everywhere a predicate is called — no per-call-site plumbing. */
+/**
+ * Builtins that are a different BINARY of another builtin's harness, not a different harness.
+ * They keep their own id (label, color, launch command, process name) but resolve to the aliased
+ * id for every capability, hook normalizer and resume grammar. Pi-Bolt is Pi compiled natively:
+ * same flags, same session store, same extension API.
+ */
+const BUILTIN_CAPABILITY_ALIAS: Readonly<Record<string, BuiltinAgentId>> = {
+  'pi-bolt': 'pi'
+}
+
 export function capabilityAgentId(id: AgentId): AgentId {
-  return baseAgentOf(id) ?? id
+  // Custom base first, then the builtin alias, so a custom agent with `baseAgent: 'pi-bolt'`
+  // also lands on 'pi'. hasOwnProperty: `id` can come from hand-edited project files, and a bare
+  // index would return Object.prototype members for ids like "constructor".
+  const resolved = baseAgentOf(id) ?? id
+
+  if (Object.prototype.hasOwnProperty.call(BUILTIN_CAPABILITY_ALIAS, resolved)) {
+    return BUILTIN_CAPABILITY_ALIAS[resolved]
+  }
+
+  return resolved
+}
+
+/**
+ * The id a pane announces on the hook channel (`NODETERM_AGENT_ID`). Only a builtin alias is
+ * mapped (pi-bolt → pi); every other id, custom agents included, is returned unchanged.
+ *
+ * Why: the managed Pi extension lives in the SHARED `~/.pi/agent/extensions` and only reports when
+ * `NODETERM_AGENT_ID === 'pi'`, posting to `/hook/pi`. Pi-Bolt loads that same file, so announcing
+ * as 'pi' makes it report without rewriting the file official Pi also loads. Node ownership stays
+ * with the node's own `data.agentId`.
+ */
+export function hookAgentId(id: AgentId): AgentId {
+  if (Object.prototype.hasOwnProperty.call(BUILTIN_CAPABILITY_ALIAS, id)) {
+    return BUILTIN_CAPABILITY_ALIAS[id]
+  }
+
+  return id
 }
 
 /**
@@ -625,7 +673,9 @@ export function resumeCommandWith(
   if (!canResume(grammarId)) return null
   const sid = sessionId.trim()
   if (!sid || !SAFE_SESSION_ID.test(sid)) return null
-  switch (grammarId) {
+  // Resolve again so a builtin alias (pi-bolt → pi) gets its base grammar. Idempotent for callers
+  // that already pass `capabilityAgentId(agentId)`.
+  switch (capabilityAgentId(grammarId)) {
     case 'codex':
       return `${launchCmd} resume ${sid}`
     case 'opencode':

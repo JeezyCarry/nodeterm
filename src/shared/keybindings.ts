@@ -69,6 +69,7 @@ export type CommandId =
   | 'node.newAgent.grok'
   | 'node.newAgent.copilot'
   | 'node.newAgent.pi'
+  | 'node.newAgent.pi-bolt'
   | 'node.newSticky'
   | 'node.newBrowser'
   | 'node.newWebView'
@@ -175,6 +176,8 @@ export const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
   { id: 'node.newAgent.copilot', title: `New ${AGENT_CONFIG.copilot.label} node`, group: 'Nodes',
     scope: 'canvas', defaultBindings: both() },
   { id: 'node.newAgent.pi', title: `New ${AGENT_CONFIG.pi.label} node`, group: 'Nodes',
+    scope: 'canvas', defaultBindings: both() },
+  { id: 'node.newAgent.pi-bolt', title: `New ${AGENT_CONFIG['pi-bolt'].label} node`, group: 'Nodes',
     scope: 'canvas', defaultBindings: both() },
   { id: 'node.newSticky', title: 'New sticky note', group: 'Nodes', scope: 'canvas',
     defaultBindings: both() },

@@ -166,6 +166,19 @@ describe('binariesFor', () => {
     expect(binariesFor('claude')).toEqual(AGENT_BINARIES.claude)
   })
 
+  it('recognizes pi-bolt by its symlink name and by its full binary path (measured argv)', () => {
+    const bins = binariesFor('pi-bolt')
+    expect(isAgentPane(owner(['pi-bolt --no-session'], 'pi-bolt'), 'pi-bolt', bins)).toBe('agent')
+    expect(
+      isAgentPane(
+        owner(['/Users/x/.pi-bolt/pi-bolt-darwin-arm64-jit/pi --session abc'], 'pi-bin'),
+        'pi-bolt',
+        bins
+      )
+    ).toBe('agent')
+    expect(isAgentPane(owner(['-zsh'], 'zsh'), 'pi-bolt', bins)).toBe('not-agent')
+  })
+
   it('derives a custom agent binary from its launch command — the dead end, closed', () => {
     expect(binariesFor('custom:abc', customAgents)).toEqual(['my-agent'])
   })

@@ -6,7 +6,7 @@
 // each surface keeps its own thin renderer on top of it (`BrandPulse` in agentIcons.tsx for React,
 // `workingMascot` in hud/main.ts for plain DOM).
 
-import type { AgentId } from '@shared/agents/config'
+import { hookAgentId, type AgentId } from '@shared/agents/config'
 import claudeIcon from '../assets/claude.svg'
 import codexIcon from '../assets/codex-color.svg'
 import geminiIcon from '../assets/gemini-color.svg'
@@ -42,8 +42,12 @@ export const brandLogoSrc = (agentId: AgentId): string | undefined =>
  *  AGENT_LOGO — ask through here rather than testing that map directly. */
 export const INLINE_MARK_AGENTS = ['grok', 'copilot'] as const
 export type InlineMark = (typeof INLINE_MARK_AGENTS)[number]
-export const inlineMarkFor = (agentId: AgentId): InlineMark | null =>
-  (INLINE_MARK_AGENTS as readonly string[]).includes(agentId) ? (agentId as InlineMark) : null
+export const inlineMarkFor = (agentId: AgentId): InlineMark | null => {
+  // A builtin alias (pi-bolt) draws its harness's mark (pi). Custom agents are unchanged.
+  const markId = hookAgentId(agentId)
+
+  return (INLINE_MARK_AGENTS as readonly string[]).includes(markId) ? (markId as InlineMark) : null
+}
 
 export const hasBrandLogo = (agentId: AgentId): boolean =>
   inlineMarkFor(agentId) !== null || brandLogoSrc(agentId) !== undefined

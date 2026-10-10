@@ -25,7 +25,11 @@ import {
   RENAME_CAPABLE,
   hasSharedIdentity,
   agentLaunchProgram,
-  resumeCommand
+  resumeCommand,
+  resumeCommandWith,
+  capabilityAgentId,
+  hookAgentId,
+  withSessionId
 } from './config'
 
 describe('CONTEXT_LINK_CAPABLE', () => {
@@ -88,6 +92,50 @@ describe('pi capabilities', () => {
     ]) {
       expect(can('pi')).toBe(false)
     }
+  })
+})
+
+describe('pi-bolt capabilities (builtin alias of pi)', () => {
+  it('is its own builtin with its own binary', () => {
+    expect(BUILTIN_AGENT_IDS).toContain('pi-bolt')
+    expect(AGENT_CONFIG['pi-bolt'].launchCmd).toBe('pi-bolt')
+    expect(AGENT_CONFIG['pi-bolt'].expectedProcess).toBe('pi-bolt')
+    expect(AGENT_CONFIG['pi-bolt'].label).toBe('Pi-Bolt')
+  })
+
+  it('resolves to pi for every capability', () => {
+    expect(capabilityAgentId('pi-bolt')).toBe('pi')
+    for (const can of [
+      canResume,
+      hasHooks,
+      reportsSessionEnd,
+      canRename,
+      canReadTitle,
+      canBranch,
+      canSubagent,
+      mintsSessionId,
+      hasUsage,
+      canContextLink,
+      canControlCanvas,
+      canSwitchModel
+    ]) {
+      expect(can('pi-bolt'), can.name).toBe(can('pi'))
+    }
+  })
+
+  it('resumes with its own binary and pi grammar', () => {
+    expect(resumeCommand('pi-bolt', 'abc-123')).toBe('pi-bolt --session abc-123')
+    expect(resumeCommandWith('/x/pi', 'pi-bolt', 'abc-123')).toBe('/x/pi --session abc-123')
+    expect(withSessionId('pi-bolt', 'pi-bolt', 'abc-123')).toBe('pi-bolt --session-id abc-123')
+  })
+
+  it('announces as pi on the hook channel; other ids are unchanged', () => {
+    expect(hookAgentId('pi-bolt')).toBe('pi')
+    expect(hookAgentId('pi')).toBe('pi')
+    expect(hookAgentId('claude')).toBe('claude')
+    expect(hookAgentId('custom:abc')).toBe('custom:abc')
+    expect(hookAgentId('constructor')).toBe('constructor')
+    expect(capabilityAgentId('constructor')).toBe('constructor')
   })
 })
 

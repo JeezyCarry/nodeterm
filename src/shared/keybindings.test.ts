@@ -127,6 +127,8 @@ describe('registry invariants', () => {
         scope: 'canvas', darwin: [], other: [] },
       { id: 'node.newAgent.pi', title: 'New Pi node', group: 'Nodes', scope: 'canvas',
         darwin: [], other: [] },
+      { id: 'node.newAgent.pi-bolt', title: 'New Pi-Bolt node', group: 'Nodes', scope: 'canvas',
+        darwin: [], other: [] },
       { id: 'node.newSticky', title: 'New sticky note', group: 'Nodes', scope: 'canvas',
         darwin: [], other: [] },
       { id: 'node.newBrowser', title: 'New browser node', group: 'Nodes', scope: 'canvas',
@@ -207,7 +209,7 @@ describe('registry invariants', () => {
       'node.newDino',
       'node.newFile'
     ]
-    expect(added).toHaveLength(12)
+    expect(added).toHaveLength(13)
     for (const id of added) {
       const d = COMMANDS_BY_ID.get(id as CommandId)
       expect(d, id).toBeDefined()
