@@ -14,6 +14,7 @@ import {
   sshHostKey
 } from './ssh'
 import { leadPaneHookLines } from './tmux-lead-pane'
+import { COPY_ON_RELEASE, MOUSE_COPY_BINDINGS } from './tmux-copy-bindings'
 
 describe('sshHostKey', () => {
   it('is user@host', () => {
@@ -275,10 +276,15 @@ describe('remoteTmuxConf', () => {
     expect(c).toContain('set -su terminal-features')
   })
   it('copies mouse selections through tmux, with no pbcopy (it would run on the remote host)', () => {
-    expect(c).toContain('bind -T copy-mode    MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel')
-    expect(c).toContain('bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel')
+    expect(c).toContain(MOUSE_COPY_BINDINGS)
+    expect(c).toContain(`bind -T copy-mode    MouseDragEnd1Pane ${COPY_ON_RELEASE}`)
+    expect(c).toContain(`bind -T copy-mode-vi MouseDragEnd1Pane ${COPY_ON_RELEASE}`)
     expect(c).toContain('DoubleClick1Pane send-keys -X select-word')
     expect(c).toContain('TripleClick1Pane send-keys -X select-line')
+    // Scrolled up, a copy must not drop the reader back to the live screen.
+    expect(COPY_ON_RELEASE).toBe(
+      "if-shell -F '#{scroll_position}' 'send-keys -X copy-pipe' 'send-keys -X copy-pipe-and-cancel'"
+    )
     expect(c).not.toContain('pbcopy')
   })
   it('floors history-limit at 1000', () => {

@@ -116,6 +116,7 @@ import {
   tmuxUpdateEnvironmentLine
 } from '../shared/agents/model-gateway'
 import { leadPaneHookLines } from '../shared/tmux-lead-pane'
+import { MOUSE_COPY_BINDINGS } from '../shared/tmux-copy-bindings'
 import {
   remoteSessionEnvAvailable,
   remoteSessionEnvPath,
@@ -327,14 +328,9 @@ set -as terminal-features ",*:clipboard"
 set -as terminal-features ",*:RGB"
 # OSC 8 hyperlink passthrough — tmux strips the escape unless the outer terminal declares it.
 set -as terminal-features ",*:hyperlinks"
-# Mouse copy: on release tmux copies to its buffer AND (thanks to the two lines above) emits OSC 52,
-# which the client writes to the system clipboard. No pipe-to-a-local-command here, deliberately.
-bind -T copy-mode    MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel
-bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel
-bind -T copy-mode    DoubleClick1Pane send-keys -X select-word \\; send-keys -X copy-pipe-and-cancel
-bind -T copy-mode-vi DoubleClick1Pane send-keys -X select-word \\; send-keys -X copy-pipe-and-cancel
-bind -T copy-mode    TripleClick1Pane send-keys -X select-line \\; send-keys -X copy-pipe-and-cancel
-bind -T copy-mode-vi TripleClick1Pane send-keys -X select-line \\; send-keys -X copy-pipe-and-cancel
+# Mouse copy: tmux copies to its buffer AND emits OSC 52 (lines above). On the live screen the copy
+# also leaves copy mode; scrolled up it stays put. See shared/tmux-copy-bindings.ts.
+${MOUSE_COPY_BINDINGS}
 ${leadPaneHookLines(leadPaneWidth)}`
 }
 

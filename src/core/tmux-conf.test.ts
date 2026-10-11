@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 import { ACCOUNT_SCOPE_UPDATE_ENV, tmuxConf } from './pty-manager'
 import { leadPaneHookLines } from '../shared/tmux-lead-pane'
+import { COPY_ON_RELEASE, MOUSE_COPY_BINDINGS } from '../shared/tmux-copy-bindings'
 
 describe('tmuxConf', () => {
   const c = tmuxConf(50000)
@@ -43,10 +44,15 @@ describe('tmuxConf', () => {
   })
 
   it('copies mouse selections through tmux (OSC 52), with no macOS-only pbcopy pipe', () => {
-    expect(c).toContain('bind -T copy-mode    MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel')
-    expect(c).toContain('bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel')
+    expect(c).toContain(MOUSE_COPY_BINDINGS)
+    expect(c).toContain(`bind -T copy-mode    MouseDragEnd1Pane ${COPY_ON_RELEASE}`)
+    expect(c).toContain(`bind -T copy-mode-vi MouseDragEnd1Pane ${COPY_ON_RELEASE}`)
     expect(c).toContain('DoubleClick1Pane send-keys -X select-word')
     expect(c).toContain('TripleClick1Pane send-keys -X select-line')
+    // Scrolled up, a copy must not drop the reader back to the live screen.
+    expect(COPY_ON_RELEASE).toBe(
+      "if-shell -F '#{scroll_position}' 'send-keys -X copy-pipe' 'send-keys -X copy-pipe-and-cancel'"
+    )
     // pbcopy is macOS-only — half of why copying never worked elsewhere or over SSH.
     expect(c).not.toContain('pbcopy')
   })

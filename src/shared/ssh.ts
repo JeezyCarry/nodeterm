@@ -1,5 +1,6 @@
 import { tmuxUpdateEnvironmentLine } from './agents/model-gateway'
 import { leadPaneHookLines } from './tmux-lead-pane'
+import { MOUSE_COPY_BINDINGS } from './tmux-copy-bindings'
 /**
  * Pure helpers for launching the system `ssh` binary as a terminal session program.
  * No Electron, no node-pty — unit-testable in isolation.
@@ -351,14 +352,9 @@ set -as terminal-features ",*:hyperlinks"
 # source-filed at connect (warm server) and rides -f on cold start, so it lands before sessions do.
 # The local path passes COLORTERM per session via tmux -e instead (the PATH/LANG precedent).
 set-environment -g COLORTERM truecolor
-# Mouse copy: tmux copies to its buffer AND emits OSC 52. No pipe to a local command — it would run
-# on the REMOTE host, which is nobody's clipboard.
-bind -T copy-mode    MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel
-bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel
-bind -T copy-mode    DoubleClick1Pane send-keys -X select-word \\; send-keys -X copy-pipe-and-cancel
-bind -T copy-mode-vi DoubleClick1Pane send-keys -X select-word \\; send-keys -X copy-pipe-and-cancel
-bind -T copy-mode    TripleClick1Pane send-keys -X select-line \\; send-keys -X copy-pipe-and-cancel
-bind -T copy-mode-vi TripleClick1Pane send-keys -X select-line \\; send-keys -X copy-pipe-and-cancel
+# Mouse copy: tmux copies to its buffer AND emits OSC 52 (lines above). On the live screen the copy
+# also leaves copy mode; scrolled up it stays put. See shared/tmux-copy-bindings.ts.
+${MOUSE_COPY_BINDINGS}
 ${leadPaneHookLines(leadPaneWidth)}`
 }
 

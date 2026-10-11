@@ -570,9 +570,20 @@ tmux 3.4:
 - **The `terminal-overrides ',xterm*:Ms=…'` entry does NOT work on tmux 3.2+** — with it, a copy
   emitted **zero** OSC 52 to the client. `terminal-features` is what actually enables the sequence.
   Do not "fix" the `Ms=` override back; it is why copying from SSH sessions never worked.
-- **No `pbcopy` pipe.** The copy-mode bindings are bare `copy-pipe-and-cancel` (no command): piping
+- **No `pbcopy` pipe.** The copy-mode bindings are bare `copy-pipe*` commands (no command): piping
   to `pbcopy` was macOS-only, and over SSH it would have copied on the *remote* host anyway. OSC 52
   is cross-platform and works over SSH.
+- **A copy made while scrolled up does not jump back to the live screen.** The bindings
+  (`shared/tmux-copy-bindings.ts`, ONE definition for the local and remote conf) branch on
+  `#{scroll_position}`: on the live screen `copy-pipe-and-cancel` (a plain drag enters copy mode at
+  position 0, and staying there would swallow the next keystroke), scrolled up `copy-pipe` (copy,
+  clear the highlight, stay put). Plain `-and-cancel` everywhere dropped a reader mid-scrollback
+  back to the bottom on every selection, in every pane whose app leaves the mouse to tmux (Pi,
+  Codex, shells; Claude's fullscreen TUI owns the mouse and never reaches these bindings). The
+  cost, MEASURED on tmux 3.7c through an attached client: a scrolled-up pane is in copy mode, and
+  copy mode swallows typing AND bracketed pastes (zero bytes reach the app). tmux has no bindable
+  paste key (`PasteStart` → "unknown key"), so a fix for that would have to cancel copy mode from
+  nodeterm's own write path. Proven in `tmux-copy-bindings.realtmux.test.ts`.
 
 **A tmux client is not necessarily a watcher.** `SessionInfo.clients` is a COUNT
 (`#{session_attached}`), never a boolean, because one session can hold several: the app's painter,
