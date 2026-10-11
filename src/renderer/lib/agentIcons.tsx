@@ -3,6 +3,7 @@ import { IconTerminal } from '../components/icons'
 import { BRAND_PULSE_CLASS, brandLogoSrc, brandPulsePlan } from './brandPulse'
 import { GROK_MARK_PATH, GROK_MARK_VIEWBOX } from './grokMark'
 import { COPILOT_MARK_PATHS, COPILOT_MARK_VIEWBOX } from './copilotMark'
+import { PI_MARK_VIEWBOX } from './piMark'
 
 // The logo map itself lives in the REACT-FREE lib/brandPulse.ts, because the notch HUD needs the
 // same assets and must not import React. Re-exported here so React callers have one import for
@@ -81,16 +82,44 @@ export function BrandPulse({ agentId, size }: { agentId?: AgentId; size: number 
   if (!plan) return null
   // Grok keeps carrying the class on the <svg> itself — no wrapper — so its `currentColor` fill and
   // its drop-shadow bloom resolve exactly as they did before the class was generalized.
-  if (plan.kind === 'inline')
+  if (plan.kind === 'inline') {
+    if (plan.mark === 'pi') return <PiMark size={plan.size} className={BRAND_PULSE_CLASS} />
     return plan.mark === 'copilot' ? (
       <CopilotMark size={plan.size} className={BRAND_PULSE_CLASS} />
     ) : (
       <GrokMark size={plan.size} className={BRAND_PULSE_CLASS} />
     )
+  }
   return (
     <span className={BRAND_PULSE_CLASS} aria-hidden style={{ display: 'block', lineHeight: 0 }}>
       <img src={plan.src} width={plan.size} height={plan.size} alt="" style={{ display: 'block' }} />
     </span>
+  )
+}
+
+function PiMark({ size, className }: { size: number; className?: string }): React.JSX.Element {
+  return (
+    <svg
+      data-agent-mark="pi"
+      width={size}
+      height={size}
+      viewBox={PI_MARK_VIEWBOX}
+      aria-hidden="true"
+      className={className}
+      style={{ display: 'block' }}
+    >
+      <text
+        x="12"
+        y="18"
+        textAnchor="middle"
+        fontFamily="ui-serif, Georgia, serif"
+        fontSize="22"
+        fontWeight="700"
+        fill="currentColor"
+      >
+        π
+      </text>
+    </svg>
   )
 }
 
@@ -99,6 +128,7 @@ export function AgentIcon({ agentId, size = 16 }: { agentId: AgentId; size?: num
   // identity too. The renderer registers a live custom-id resolver at boot, so settings edits are
   // reflected on the next render without duplicating custom-agent lookup logic in every menu.
   const iconAgentId = capabilityAgentId(agentId)
+  if (iconAgentId === 'pi') return <PiMark size={size} />
   if (iconAgentId === 'grok') return <GrokMark size={size} />
   if (iconAgentId === 'copilot') return <CopilotMark size={size} />
   // `brandLogoSrc`, not `AGENT_LOGO[iconAgentId]`: the id can be anything a hand-edited

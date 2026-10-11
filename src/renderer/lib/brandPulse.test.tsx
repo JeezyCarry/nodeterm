@@ -13,6 +13,7 @@ import {
   hasBrandLogo
 } from './brandPulse'
 import { BrandPulse } from './agentIcons'
+import { createPiMarkSvg } from './piMark'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -35,12 +36,10 @@ describe('brandPulsePlan', () => {
     }
   })
 
-  it('keeps grok AND copilot on their INLINE marks, not assets', () => {
-    // Both marks are monochrome paths drawn in `currentColor`; loading them through `<img>` would
-    // fix the fill to one theme's colour (grok black on dark, copilot near-invisible on light).
-    // The generalized inline plan carries WHICH mark so each surface draws the right geometry.
+  it('keeps monochrome marks inline instead of loading them as assets', () => {
     expect(brandPulsePlan('grok', 16)).toEqual({ kind: 'inline', mark: 'grok', size: 16 })
     expect(brandPulsePlan('copilot', 16)).toEqual({ kind: 'inline', mark: 'copilot', size: 16 })
+    expect(brandPulsePlan('pi', 16)).toEqual({ kind: 'inline', mark: 'pi', size: 16 })
   })
 
   it('answers nothing for an agent with no mark, so the caller falls back to the dot', () => {
@@ -86,7 +85,7 @@ describe('hasBrandLogo', () => {
   })
 
   it('counts every asset mark and nothing else', () => {
-    for (const agentId of ['claude', 'codex', 'gemini', 'opencode', 'copilot'] as const) {
+    for (const agentId of ['claude', 'codex', 'gemini', 'opencode', 'copilot', 'pi'] as const) {
       expect(hasBrandLogo(agentId), agentId).toBe(true)
     }
     expect(hasBrandLogo('custom:abc')).toBe(false)
@@ -128,6 +127,17 @@ describe('BrandPulse', () => {
     expect(svg?.getAttribute('class')).toBe(BRAND_PULSE_CLASS)
     expect(svg?.getAttribute('fill')).toBe('currentColor')
     expect(host.querySelector('img')).toBeNull()
+  })
+
+  it('draws Pi as the same pulsing mark used by the top-screen HUD', () => {
+    const host = renderPulse('pi')
+    const canvas = host.querySelector('[data-agent-mark="pi"]')
+    expect(canvas?.getAttribute('class')).toBe(BRAND_PULSE_CLASS)
+    expect(canvas?.textContent).toBe('π')
+
+    const hud = createPiMarkSvg(13, HUD_BRAND_PULSE_CLASS)
+    expect(hud.getAttribute('class')).toBe(HUD_BRAND_PULSE_CLASS)
+    expect(hud.textContent).toBe('π')
   })
 
   it('renders nothing for an agent with no mark', () => {

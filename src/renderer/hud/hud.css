@@ -188,10 +188,10 @@ body {
   background-size: calc(var(--mascot-w) * 2) var(--mascot-h);
   animation: mascot-walk-claude 0.8s steps(1) infinite;
 }
-/* Grok, gemini and opencode are their brand mark breathing, not a sprite — same treatment as the
-   canvas badge. The bloom is a drop-shadow of `currentColor`, so it needs no ink of its own; on this
-   strip that resolves against --capsule-bg (#000), which is why it reads as a glow here. */
+/* Inline agent marks breathe in the same coral used by the generic working indicator. Set the ink
+   here because the collapsed capsule otherwise inherits black and makes monochrome SVGs vanish. */
 .mascot--pulse {
+  color: rgb(217, 120, 87);
   animation: mascot-pulse-brand 1.6s ease-in-out infinite;
 }
 /* An asset-based mark (gemini/opencode) is painted as a background image, since those four brand

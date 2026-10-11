@@ -25,6 +25,12 @@ describe('AgentIcon custom-agent inheritance', () => {
       expect(renderIcon(`custom:${base}`), base).toBe(renderIcon(base))
     }
   })
+  it('uses a distinct Pi mark instead of the terminal fallback', () => {
+    const pi = renderIcon('pi')
+    expect(pi).toContain('data-agent-mark="pi"')
+    expect(pi).toContain('π')
+  })
+
 
   it('keeps the terminal fallback for baseless custom agents', () => {
     setCustomAgentBaseResolver(() => undefined)

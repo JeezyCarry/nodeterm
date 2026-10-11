@@ -40,7 +40,7 @@ export const brandLogoSrc = (agentId: AgentId): string | undefined =>
 
 /** Does this agent have a brand mark to draw? grok is inlined rather than an asset, so it is not in
  *  AGENT_LOGO — ask through here rather than testing that map directly. */
-export const INLINE_MARK_AGENTS = ['grok', 'copilot'] as const
+export const INLINE_MARK_AGENTS = ['grok', 'copilot', 'pi'] as const
 export type InlineMark = (typeof INLINE_MARK_AGENTS)[number]
 export const inlineMarkFor = (agentId: AgentId): InlineMark | null => {
   // A builtin alias (pi-bolt) draws its harness's mark (pi). Custom agents are unchanged.

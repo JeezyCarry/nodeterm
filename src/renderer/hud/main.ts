@@ -8,6 +8,7 @@ import { CLAUDE_MASCOT, CODEX_MASCOT, DONE_BLOB } from '../lib/mascot'
 import { HUD_BRAND_PULSE_CLASS, brandPulseBackground, brandPulsePlan } from '../lib/brandPulse'
 import { createGrokMarkSvg } from '../lib/grokMark'
 import { createCopilotMarkSvg } from '../lib/copilotMark'
+import { createPiMarkSvg } from '../lib/piMark'
 import { buildIndicator, orderIndicatorAgents } from './indicator'
 import { HUD_ROW_CAP, overflowLabel, splitPanelRows } from './panel-rows'
 import { percentText } from '../lib/usageFormat'
@@ -209,11 +210,11 @@ function workingMascot(agentId?: string): Element {
   // different things on two surfaces). This renderer stays React-free, so it draws the plan itself.
   const plan = brandPulsePlan(agentId, HUD_QUADRANT_H)
   if (plan) {
-    return plan.kind === 'inline'
-      ? plan.mark === 'copilot'
-        ? createCopilotMarkSvg(plan.size, HUD_BRAND_PULSE_CLASS)
-        : createGrokMarkSvg(plan.size, HUD_BRAND_PULSE_CLASS)
-      : brandPulseMascot(plan.src, plan.size)
+    if (plan.kind === 'asset') return brandPulseMascot(plan.src, plan.size)
+    if (plan.mark === 'pi') return createPiMarkSvg(plan.size, HUD_BRAND_PULSE_CLASS)
+    return plan.mark === 'copilot'
+      ? createCopilotMarkSvg(plan.size, HUD_BRAND_PULSE_CLASS)
+      : createGrokMarkSvg(plan.size, HUD_BRAND_PULSE_CLASS)
   }
   const dot = document.createElement('span')
   dot.className = 'mascot mascot--dot'
