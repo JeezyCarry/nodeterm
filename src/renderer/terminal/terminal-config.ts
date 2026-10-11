@@ -555,6 +555,18 @@ export const RESYNC_NOTICE = '\r\n\x1b[90m── reconnected — earlier output 
 export const CO_ATTACH_MOUSE_SEQ = '\x1b[?1000h\x1b[?1002h\x1b[?1006h'
 
 /**
+ * Bracketed paste (`?2004h`), the other mode a tmux client gets only at attach. tmux turns it on in
+ * its client terminal unconditionally and then frames a paste for the pane only if the pane's app
+ * asked, so ON is the client's invariant state (measured: it never toggles — see CLAUDE.md "We have
+ * our own VT emulator"). An xterm without it sends ⌘V as raw text, and every newline in a
+ * multi-line paste reaches the pane as an Enter. Written when `PtyCreateResult.tmuxClient` is set.
+ */
+export const BRACKETED_PASTE_ON_SEQ = '\x1b[?2004h'
+
+/** Every mode tmux sets on its client at attach — what the resync repaint's `reset()` erases. */
+export const TMUX_CLIENT_MODES_SEQ = CO_ATTACH_MOUSE_SEQ + BRACKETED_PASTE_ON_SEQ
+
+/**
  * The capture generation of the LAST repaint issued for a terminal, so a deferred repaint can tell
  * that a newer capture has superseded it (see `repaintResync`). Weak, and keyed by the xterm itself:
  * a disposed terminal takes its counter with it, and no node id has to be threaded through.
@@ -586,7 +598,15 @@ const resyncGeneration = new WeakMap<ResyncTarget, number>()
  *   capture is painted; superseded ones write nothing (they are strictly older screens of the same
  *   terminal, so there is nothing in them to lose).
  */
-export function repaintResync(term: ResyncTarget, screen: string, alive?: () => boolean): void {
+export function repaintResync(
+  term: ResyncTarget,
+  screen: string,
+  alive?: () => boolean,
+  /** Modes to restore after the reset — `TMUX_CLIENT_MODES_SEQ` for a tmux client. `reset()` clears
+   *  every DEC private mode, and a capture carries none, so without this the view lost bracketed
+   *  paste (multi-line ⌘V then submits line by line) and wheel scrolling after every resync. */
+  modes = ''
+): void {
   const generation = (resyncGeneration.get(term) ?? 0) + 1
   resyncGeneration.set(term, generation)
   term.write('', () => {
@@ -595,6 +615,7 @@ export function repaintResync(term: ResyncTarget, screen: string, alive?: () => 
     term.reset()
     term.write(toXtermText(screen))
     term.write(RESYNC_NOTICE)
+    if (modes) term.write(modes)
   })
 }
 

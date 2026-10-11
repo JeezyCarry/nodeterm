@@ -2138,12 +2138,15 @@ export class PtyManager {
     // our tmux always runs `mouse on`, so enabling these unconditionally matches its client state.
     // Rides `base` so it reaches the renderer on BOTH the resized and screen-painted branches.
     const coAttachMouse = existing.persistKey ? true : undefined
+    // Bracketed paste is the other client mode tmux sends only at attach — but only a TMUX client
+    // has it, so the Windows session host (persistent, no tmux) is excluded. See `tmuxClient`.
+    const tmuxClient = existing.persistKey && !existing.sessionHost ? true : undefined
     // Same source, different question (and different consumer): a joiner needs to know whether the
     // session it landed on survives losing a client, because its own unmount may park it.
     const persistent = !!existing.persistKey
     const base: PtyCreateResult = existing.accountFallback
-      ? { sessionId: existingId, fresh: false, accountFallback: true, coAttachMouse, persistent }
-      : { sessionId: existingId, fresh: false, coAttachMouse, persistent }
+      ? { sessionId: existingId, fresh: false, accountFallback: true, coAttachMouse, persistent, tmuxClient }
+      : { sessionId: existingId, fresh: false, coAttachMouse, persistent, tmuxClient }
     if (resized) return Promise.resolve(base) // tmux is redrawing this client — do not paint twice
     // An empty capture (plain shell — no tmux to capture; a tmux/ssh blip) is OMITTED, never sent
     // as '': the renderer must not reset a terminal for nothing. A plain-shell joiner therefore
@@ -2374,6 +2377,9 @@ export class PtyManager {
       sessionId,
       fresh,
       persistent,
+      // The resync repaint resets the xterm, which drops the modes tmux set on this client at
+      // attach (bracketed paste, mouse); this tells the renderer to put them back. See `tmuxClient`.
+      ...(persistent && !spawned?.sessionHost ? { tmuxClient: true as const } : {}),
       // Only when the fold actually happened: a verdict we READ needs no second opinion, and
       // setting this on a confident `fresh:false` would spend a round trip per warm node.
       ...(freshUnverified && !fresh ? { freshUnverified: true as const } : {}),

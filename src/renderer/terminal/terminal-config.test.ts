@@ -30,6 +30,9 @@ import {
   terminalLineHeight,
   xtermOptionsFromSettings,
   RESYNC_NOTICE,
+  TMUX_CLIENT_MODES_SEQ,
+  BRACKETED_PASTE_ON_SEQ,
+  CO_ATTACH_MOUSE_SEQ,
   SHIFT_ENTER_SEQ,
   TERMINAL_LETTER_SPACING_MAX,
   TERMINAL_LETTER_SPACING_MIN,
@@ -759,6 +762,24 @@ describe('repaintResync', () => {
     const reset = term.ops.indexOf('reset')
     expect(reset).toBeGreaterThan(term.ops.indexOf('write:STALE HISTORY'))
     expect(reset).toBeLessThan(term.ops.indexOf('write:FRESH'))
+  })
+
+  it('restores the tmux client modes AFTER the reset — reset() clears bracketed paste and mouse', () => {
+    const term = fakeTerm()
+    repaintResync(term, 'FRESH', undefined, TMUX_CLIENT_MODES_SEQ)
+    term.parse()
+    const ops = term.ops
+    expect(ops.indexOf(`write:${TMUX_CLIENT_MODES_SEQ}`)).toBeGreaterThan(ops.indexOf('reset'))
+    // Without bracketed paste a multi-line ⌘V reaches the pane raw: every newline is an Enter.
+    expect(TMUX_CLIENT_MODES_SEQ).toBe(CO_ATTACH_MOUSE_SEQ + BRACKETED_PASTE_ON_SEQ)
+    expect(BRACKETED_PASTE_ON_SEQ).toBe('\x1b[?2004h')
+  })
+
+  it('writes no modes when none are given (a non-tmux view keeps the old behaviour)', () => {
+    const term = fakeTerm()
+    repaintResync(term, 'FRESH')
+    term.parse()
+    expect(term.ops.at(-1)).toBe(`write:${RESYNC_NOTICE}`)
   })
 
   it('CRLF-converts the capture (tmux emits bare LFs; xterm runs convertEol:false)', () => {

@@ -42,7 +42,8 @@ import {
   applyLiveOptions,
   xtermOptionsFromSettings,
   SHIFT_ENTER_SEQ,
-  CO_ATTACH_MOUSE_SEQ
+  CO_ATTACH_MOUSE_SEQ,
+  BRACKETED_PASTE_ON_SEQ
 } from '../../terminal/terminal-config'
 import { useXtermVisualSettings } from '../../terminal/useXtermVisualSettings'
 import {
@@ -392,6 +393,9 @@ export function ModalTerminal({ nodeId, spawn, searchOpen, onCloseSearch }: Moda
       // wheel can't scroll tmux history until a keystroke wakes it. Enable it here (see
       // CO_ATTACH_MOUSE_SEQ). Painting content first, then the modes, keeps the seed untouched.
       if (res.coAttachMouse) term.write(CO_ATTACH_MOUSE_SEQ)
+      // Bracketed paste is tmux's other attach-only client mode. The modal is a joiner by
+      // definition, so without it every multi-line ⌘V here submitted line by line.
+      if (res.tmuxClient) term.write(BRACKETED_PASTE_ON_SEQ)
 
       const ro = new ResizeObserver(() => {
         fit.fit()

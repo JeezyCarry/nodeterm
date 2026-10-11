@@ -71,6 +71,8 @@ import {
   xtermOptionsFromSettings,
   SHIFT_ENTER_SEQ,
   CO_ATTACH_MOUSE_SEQ,
+  BRACKETED_PASTE_ON_SEQ,
+  TMUX_CLIENT_MODES_SEQ,
   type SessionLife
 } from '../terminal/terminal-config'
 import { useXtermVisualSettings } from '../terminal/useXtermVisualSettings'
@@ -3153,6 +3155,7 @@ export function TerminalNode({
           cursor,
           coAttachMouse,
           persistent,
+          tmuxClient,
           unavailable
         }) => {
         // The spawn answered: whatever it says, we are no longer waiting on the host.
@@ -3343,7 +3346,7 @@ export function TerminalNode({
               if (!shouldApplyResync(resyncScreen)) return
               superseded = true
               relieve(gate.reset())
-              repaintResync(term, resyncScreen, () => !life.dead)
+              repaintResync(term, resyncScreen, () => !life.dead, tmuxClient ? TMUX_CLIENT_MODES_SEQ : '')
             })
           )
         }
@@ -3398,6 +3401,11 @@ export function TerminalNode({
           // wheel-scroll tmux history. Enable it (see CO_ATTACH_MOUSE_SEQ). Only ever set on a join,
           // so this never fires on the solo spawn / warm-reattach-with-own-tmux-client path.
           if (coAttachMouse) term.write(CO_ATTACH_MOUSE_SEQ)
+          // …and bracketed paste, for the same reason. Without it a multi-line ⌘V reached the pane
+          // unframed and every newline was an Enter (see BRACKETED_PASTE_ON_SEQ).
+          // Join only (`coAttachMouse` is never set on a spawn): a client tmux attached itself
+          // already received both from tmux.
+          if (coAttachMouse && tmuxClient) term.write(BRACKETED_PASTE_ON_SEQ)
         } catch (err) {
           // Never let a seed failure freeze the terminal: the live stream matters more than the
           // history. `finally` still opens the gate below.

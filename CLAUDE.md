@@ -1191,7 +1191,13 @@ seed** — the cases are:
   (gated on `persistKey`, on BOTH the screen and resize branches) and the renderer writes
   `CO_ATTACH_MOUSE_SEQ` into the fresh xterm (both `ModalTerminal` and `TerminalNode`). tmux is
   always `mouse on`, so this matches its invariant client state; the enable is idempotent. Was the
-  "can't scroll the kanban card-modal terminal until you press a key" bug.
+  "can't scroll the kanban card-modal terminal until you press a key" bug. **Bracketed paste
+  (`?2004h`) is the same trap and was missed the first time** (2026-10-08): tmux turns it on in its
+  client at attach only, so a joiner — and ANY view after the resync repaint's `term.reset()` —
+  sent ⌘V raw, and every newline in a multi-line paste reached the pane as an Enter (Pi received
+  the typed prefix and the paste's first line as two separate messages). `PtyCreateResult.tmuxClient`
+  (persistent and not the session host, on spawn AND join) drives `BRACKETED_PASTE_ON_SEQ` on a
+  join and `TMUX_CLIENT_MODES_SEQ` after `repaintResync`. A new attach-only client mode owes both.
 
 xterm's own `scrollback` (`xtermScrollback(settings.tmuxScrollback)`, floored at 1000, capped at
 `XTERM_SCROLLBACK_MAX` = 10000) is kept for the sessions tmux does *not* back (a plain shell when

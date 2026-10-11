@@ -271,6 +271,20 @@ export interface PtyCreateResult {
    */
   coAttachMouse?: boolean
   /**
+   * This view sees the session through a TMUX CLIENT (local or remote tmux) — not the Windows
+   * session host, not a plain shell. Set on spawn AND join results.
+   *
+   * tmux turns BRACKETED PASTE (`?2004h`) on in its client terminal at attach, unconditionally and
+   * only then (it then frames a paste for the pane only if the pane's app asked). An xterm that
+   * missed that moment — a co-attach joiner — or lost it — `term.reset()` in the resync repaint —
+   * sends ⌘V as raw text, and every newline in it reaches the pane as an Enter: a multi-line paste
+   * into an agent CLI submitted whatever was typed so far, then its first line as a second message
+   * (measured on Pi, 2026-10-08). The renderer restores the tmux client's modes on both paths.
+   * Gated off the session host on purpose: there no tmux sits in between, so the app's own
+   * bracketed-paste state is the truth and forcing it on would type `^[[200~` into cmd.exe.
+   */
+  tmuxClient?: boolean
+  /**
    * This session is TMUX-BACKED (local or remote) — it survives losing this client, so killing our
    * pty client only detaches us and everything running in the session keeps going.
    *

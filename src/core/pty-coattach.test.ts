@@ -1266,6 +1266,7 @@ describe('a tmux-backed joiner is told to enable mouse tracking', () => {
       fresh: boolean
       screen?: string
       coAttachMouse?: boolean
+      tmuxClient?: boolean
     }>
 
   it('sets coAttachMouse on a joiner whose grid EQUALS the pty (the screen-painted branch)', async () => {
@@ -1276,6 +1277,9 @@ describe('a tmux-backed joiner is told to enable mouse tracking', () => {
     const b = await create(BOB, 80, 24)
     expect(b.screen).toBe('current screen') // equal grid → painted from the capture…
     expect(b.coAttachMouse).toBe(true) // …which carries no mouse modes, so enable them explicitly
+    // Bracketed paste is the other attach-only client mode: without it a multi-line ⌘V into the
+    // joiner (the kanban card modal) reached the pane unframed and every newline was an Enter.
+    expect(b.tmuxClient).toBe(true)
   })
 
   it('sets coAttachMouse on a joiner that SHRINKS the pty too (a SIGWINCH redraw re-emits no mouse modes)', async () => {
@@ -1294,6 +1298,8 @@ describe('a tmux-backed joiner is told to enable mouse tracking', () => {
     await tmuxManager()
     const a = await create(ALICE, 80, 24)
     expect(a.coAttachMouse).toBeUndefined()
+    // …but it IS a tmux client, which the resync repaint needs to restore modes after reset().
+    expect(a.tmuxClient).toBe(true)
   })
 
   it('never sets coAttachMouse on a PLAIN-SHELL join (no tmux ⇒ no tmux mouse to enable)', async () => {
@@ -1307,6 +1313,7 @@ describe('a tmux-backed joiner is told to enable mouse tracking', () => {
     const b = await create(BOB, 80, 24)
     expect(b.fresh).toBe(false) // it did join the live session…
     expect(b.coAttachMouse).toBeUndefined() // …but a plain shell has no tmux mouse to turn on
+    expect(b.tmuxClient).toBeUndefined() // …nor a tmux client whose bracketed paste to restore
   })
 })
 
