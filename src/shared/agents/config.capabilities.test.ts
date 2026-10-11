@@ -83,7 +83,6 @@ describe('pi capabilities', () => {
     for (const can of [
       canContextLink,
       canRecur,
-      hasUsage,
       canChat,
       canTransferFrom,
       canControlCanvas,
@@ -92,6 +91,13 @@ describe('pi capabilities', () => {
     ]) {
       expect(can('pi')).toBe(false)
     }
+  })
+
+  it('meters pi without joining the claude-transcript readers', () => {
+    // Pi's numbers ride its own hook POSTs (core/agents/pi-context.ts); joining the meter list
+    // must not route a pi node through claude's transcript resolver or its cwd fallback.
+    expect(hasUsage('pi')).toBe(true)
+    expect(readsClaudeShapedTranscript('pi')).toBe(false)
   })
 })
 

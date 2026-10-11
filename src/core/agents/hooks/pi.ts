@@ -34,6 +34,23 @@ export default function NodetermStatus(pi) {
 
   const stringValue = (value) => typeof value === 'string' ? value : undefined
   const numberValue = (value) => typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  const clip = (value, max) => typeof value === 'string' && value.length > max ? value.slice(0, max) : value
+  // Context usage + model, sent only at turn boundaries: getContextUsage() re-projects the session
+  // branch, so calling it per tool event would add that walk to every tool call. A null token count
+  // (right after a compaction, before the next response) is "unknown", and is sent as absent.
+  const contextFields = (ctx, model) => {
+    try {
+      const usage = ctx.getContextUsage?.()
+      return {
+        model: stringValue(model?.id) ?? stringValue(ctx.model?.id),
+        context_tokens: numberValue(usage?.tokens),
+        context_window: numberValue(usage?.contextWindow),
+        context_percent: numberValue(usage?.percent)
+      }
+    } catch {
+      return {}
+    }
+  }
   const resultText = (result) =>
     Array.isArray(result?.content)
       ? result.content.filter((item) => item?.type === 'text').map((item) => item.text || '').join('\\n')
@@ -107,15 +124,19 @@ export default function NodetermStatus(pi) {
   pi.on('session_start', (event, ctx) => {
     subagentCalls.clear()
     subagentPrefixes.clear()
-    post('session_start', ctx, { reason: event.reason })
+    post('session_start', ctx, { reason: event.reason, ...contextFields(ctx) })
   })
   pi.on('session_info_changed', (event, ctx) =>
     post('session_info_changed', ctx, { session_name: event.name })
   )
-  pi.on('before_agent_start', (_event, ctx) => {
+  pi.on('before_agent_start', (event, ctx) => {
     lastStopReason = undefined
-    post('before_agent_start', ctx)
+    // The prompt is the HUD's / phone's "You: …" line. Clipped here so a pasted file does not ride
+    // every hook POST; the consumers only ever show its first line.
+    post('before_agent_start', ctx, { prompt: clip(stringValue(event.prompt), 4000), ...contextFields(ctx) })
   })
+  pi.on('turn_end', (_event, ctx) => post('turn_end', ctx, contextFields(ctx)))
+  pi.on('model_select', (event, ctx) => post('model_select', ctx, contextFields(ctx, event.model)))
   pi.on('agent_end', (event) => {
     const assistant = [...event.messages].reverse().find((message) => message?.role === 'assistant')
     lastStopReason = stringValue(assistant?.stopReason)
@@ -196,7 +217,7 @@ export default function NodetermStatus(pi) {
     post('ui_prompt_end', ctx, { prompt_kind: event.kind })
   )
   pi.on('agent_settled', (_event, ctx) =>
-    post('agent_settled', ctx, { stop_reason: lastStopReason })
+    post('agent_settled', ctx, { stop_reason: lastStopReason, ...contextFields(ctx) })
   )
   pi.on('session_shutdown', (event, ctx) => {
     post('session_shutdown', ctx, { reason: event.reason })

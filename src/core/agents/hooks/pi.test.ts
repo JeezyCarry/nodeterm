@@ -73,10 +73,15 @@ describe('generated Pi extension', () => {
         getSessionFile: () => sessionFile,
         getSessionId: () => 'session-1',
         getSessionName: () => 'Build Pi'
-      }
+      },
+      model: { id: 'claude-opus-5-5' },
+      getContextUsage: () => ({ tokens: 12_000, contextWindow: 200_000, percent: 6 })
     })
     handlers.session_start({ reason: 'startup' }, context('/tmp/session.jsonl'))
-    handlers.before_agent_start({}, context('/tmp/session.jsonl'))
+    handlers.before_agent_start(
+      { prompt: 'Integrate the HUD\nsecond line' },
+      context('/tmp/session.jsonl')
+    )
     handlers.agent_end(
       { messages: [{ role: 'assistant', stopReason: 'end_turn' }] },
       context('/tmp/session.jsonl')
@@ -133,7 +138,16 @@ describe('generated Pi extension', () => {
       'subagent_update',
       'subagent_end'
     ])
-    expect(received[2]).toMatchObject({ stop_reason: 'end_turn' })
+    expect(received[1]).toMatchObject({
+      prompt: 'Integrate the HUD\nsecond line',
+      model: 'claude-opus-5-5',
+      context_tokens: 12_000,
+      context_window: 200_000,
+      context_percent: 6
+    })
+    expect(received[2]).toMatchObject({ stop_reason: 'end_turn', context_percent: 6 })
+    // Tool events stay cheap: no getContextUsage() walk per tool call.
+    expect(received[3]).not.toHaveProperty('context_tokens')
     expect(received[0]).toMatchObject({
       session_id: 'session-1',
       session_name: 'Build Pi',
@@ -155,6 +169,53 @@ describe('generated Pi extension', () => {
       tokens: 15,
       tool_uses: 2
     })
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  })
+})
+
+describe('generated Pi extension context fields', () => {
+  it('reports turn ends and model switches, and omits an unknown token count', async () => {
+    const received: Record<string, unknown>[] = []
+    const server = http.createServer((req, res) => {
+      let body = ''
+      req.on('data', (chunk) => (body += chunk))
+      req.on('end', () => {
+        received.push(JSON.parse(new URLSearchParams(body).get('payload') ?? '{}'))
+        res.end()
+      })
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('test server has no TCP port')
+    vi.stubEnv('NODETERM_NODE_ID', 'node-1')
+    vi.stubEnv('NODETERM_AGENT_ID', 'pi')
+    vi.stubEnv('NODETERM_HOOK_PORT', String(address.port))
+    vi.stubEnv('NODETERM_HOOK_TOKEN', 'token')
+    vi.stubEnv('NODETERM_HOOK_ENDPOINT', '')
+    vi.stubEnv('NODETERM_HOOK_SOCK', '')
+
+    const file = path.join(tmp, 'extension-ctx.mjs')
+    fs.writeFileSync(file, buildPiExtension())
+    const mod = await import(/* @vite-ignore */ `file://${file}?${Date.now()}`)
+    const handlers: Record<string, (event: Record<string, unknown>, ctx: unknown) => void> = {}
+    mod.default({ on: (name: string, handler: typeof handlers[string]) => (handlers[name] = handler) })
+    const ctx = {
+      sessionManager: {
+        getSessionFile: () => '/tmp/session.jsonl',
+        getSessionId: () => 'session-1',
+        getSessionName: () => undefined
+      },
+      model: { id: 'old-model' },
+      // Right after a compaction Pi does not know the count until the next response.
+      getContextUsage: () => ({ tokens: null, contextWindow: 200_000, percent: null })
+    }
+    handlers.turn_end({}, ctx)
+    handlers.model_select({ model: { id: 'new-model' } }, ctx)
+
+    await vi.waitFor(() => expect(received).toHaveLength(2))
+    expect(received[0]).toMatchObject({ event: 'turn_end', model: 'old-model', context_window: 200_000 })
+    expect(received[0]).not.toHaveProperty('context_tokens')
+    expect(received[1]).toMatchObject({ event: 'model_select', model: 'new-model' })
     await new Promise<void>((resolve) => server.close(() => resolve()))
   })
 })

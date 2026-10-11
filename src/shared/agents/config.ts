@@ -256,7 +256,13 @@ export const CONTEXT_LINK_CAPABLE = ['claude', 'codex', 'gemini', 'opencode', 'g
 // `core/grok-signals.ts` reads exactly three of them and nothing else. If a future grok drops
 // `contextWindowTokens`, that reader returns null and the meter disappears — no inferred
 // denominator, because a percentage over a guessed window is a wrong number presented as a fact.
-export const USAGE_CAPABLE = ['claude', 'codex', 'gemini', 'grok'] as const
+//  - pi: states all three, and not through a file at all. The managed extension reads Pi's own
+//    `ctx.getContextUsage()` ({tokens, contextWindow, percent}) and `ctx.model.id` at turn
+//    boundaries and sends them on its hook POSTs (core/agents/pi-context.ts). A null token count
+//    (just after a compaction) sends nothing, so the last reading stands. `context.ensure` has no
+//    Pi leg — there is no file to rehydrate from — so after an app restart the meter shows the
+//    renderer's persisted reading until Pi's next hook event (a `/reload` sends one immediately).
+export const USAGE_CAPABLE = ['claude', 'codex', 'gemini', 'grok', 'pi'] as const
 // Agents whose structured transcript we can render as a chat panel (Cmd+M chat mode).
 //
 // SPLIT from CLAUDE_TRANSCRIPT_READABLE below on 2026-09-02, when grok joined. Until then this one

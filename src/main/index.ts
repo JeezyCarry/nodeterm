@@ -205,6 +205,7 @@ import { createSubagentTail, formatPiSubagentChunk } from '../core/subagent-tail
 import { createContextTail, type TaskNotification } from '../core/context-tail'
 import { registerContextEnsureIpc } from '../core/context-ensure'
 import { grokContextParse, GROK_SIGNALS_FILE } from '../core/grok-signals'
+import { createPiContextReporter } from '../core/agents/pi-context'
 import { GROK_CHAT_HISTORY_FILE } from '../core/agents/grok-paths'
 import { createGrokSubagentFormatter } from '../core/grok-subagent-format'
 import { geminiContextParse } from '../core/gemini-session'
@@ -2409,6 +2410,9 @@ app.whenReady().then(async () => {
     parse: grokContextParse,
     wholeFile: true
   })
+  // Pi's numbers ride its hook POSTs instead of a file (core/agents/pi-context.ts). Same funnel, so
+  // the HUD's model + context %, the renderer and the phone ring see them like any tail's.
+  const piContext = createPiContextReporter(pushContextUpdate)
   // Remote (SSH-project) counterparts: a node whose pty runs on a remote host has its Claude
   // transcript on that host, so its meter / subagent transcript / search must read over the
   // project's ControlMaster. One RemoteFile bound to the SSH-project manager's own ssh runner
@@ -3026,7 +3030,16 @@ app.whenReady().then(async () => {
   // Hook server validates session-env capacity and caller identity once for both shells.
   hookServer.setRawListener((agentId, nodeId, payload, _meta) => {
     if (agentId === 'pi') {
-      const p = payload as { event?: string; subagent_id?: string; output_file?: string }
+      const p = payload as {
+        event?: string
+        session_id?: unknown
+        subagent_id?: string
+        output_file?: string
+      }
+      // Pi states its own context numbers + model on its turn-boundary POSTs (no transcript tail).
+      // The node↔session association is what lets the mirror's context ring find this node.
+      if (typeof p.session_id === 'string' && p.session_id) nodeContextSession.set(nodeId, p.session_id)
+      piContext.observe(payload)
       const toolUseId = p.subagent_id
       if (toolUseId && (p.event === 'subagent_start' || p.event === 'subagent_update')) {
         trackPiSubagentOutput(nodeId, toolUseId, p.output_file)
@@ -3328,6 +3341,7 @@ app.whenReady().then(async () => {
       geminiContextTail.untrack(sessionId)
       codexContextTail.untrack(sessionId)
       grokContextTail.untrack(sessionId)
+      piContext.forget(sessionId)
       remoteContextTail.untrack(sessionId)
       remoteTranscriptBySession.delete(sessionId)
       locatedTranscriptSessions.delete(sessionId)

@@ -1632,8 +1632,10 @@ else, and its context links must keep classifying across restarts).
   cross-session read of someone else's transcript; `config.capabilities.test.ts` pins the pair.
   The other lists span more agents, and the memberships below are the ones to check before assuming
   "claude-only" (all verified against `config.ts`, 2026-09-02): the per-node **context meter** is
-  `USAGE_CAPABLE = claude/codex/gemini/grok` — grok states BOTH numbers, and its own percentage, in
-  `signals.json`;
+  `USAGE_CAPABLE = claude/codex/gemini/grok/pi` — grok states BOTH numbers, and its own percentage, in
+  `signals.json`; pi's managed extension sends `ctx.getContextUsage()` + `ctx.model.id` on its
+  turn-boundary hook POSTs (`core/agents/pi-context.ts`, both shells' raw listeners), the source of
+  the Notch HUD's model + "% left" for a Pi row as well as the node meter;
   the **permission mode** is `PERMISSION_MODE_CAPABLE = claude/grok/gemini/codex`; the session-name
   sync is **split in two** — `TITLE_READ_CAPABLE = claude/codex/grok/gemini` (read) ⊇
   `RENAME_CAPABLE = claude/grok` (write), because gemini and codex name their own sessions but have

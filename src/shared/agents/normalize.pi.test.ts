@@ -31,6 +31,13 @@ describe('normalizePi', () => {
       state: 'working',
       newTurn: true
     })
+    expect(normalizePi(event({ event: 'before_agent_start' }))).not.toHaveProperty('task')
+    // The prompt is the HUD's / phone's "You: …" line, carried like claude's UserPromptSubmit.
+    expect(normalizePi(event({ event: 'before_agent_start', prompt: 'Fix the HUD' }))).toMatchObject({
+      state: 'working',
+      newTurn: true,
+      task: 'Fix the HUD'
+    })
     expect(normalizePi(event({ event: 'ui_prompt_start', message: 'Choose' }))).toMatchObject({
       state: 'blocked',
       lastMessage: 'Choose'

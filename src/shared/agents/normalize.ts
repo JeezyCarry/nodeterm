@@ -556,6 +556,8 @@ interface PiPayload {
   session_name?: string
   reason?: string
   message?: string
+  /** before_agent_start only: the user's prompt (clipped by the extension). */
+  prompt?: string
   stop_reason?: string
   subagent_id?: string
   subagent_type?: string
@@ -577,7 +579,8 @@ export function normalizePi(env: RawHookEnvelope): NormalizedAgentEvent | null {
     return p.session_name ? { ...base, kind: 'session', sessionTitle: p.session_name } : null
   }
   if (p.event === 'before_agent_start') {
-    return { ...base, kind: 'state', state: 'working', newTurn: true }
+    const task = typeof p.prompt === 'string' && p.prompt ? p.prompt : undefined
+    return { ...base, kind: 'state', state: 'working', newTurn: true, ...(task ? { task } : {}) }
   }
   if (p.event === 'subagent_start' && p.subagent_id) {
     return {

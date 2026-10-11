@@ -19,6 +19,7 @@ import { createContextTail, type ContextTail, type TaskNotification } from '../c
 import { geminiContextParse } from '../core/gemini-session'
 import { codexContextParse } from '../core/codex-session'
 import { grokContextParse, GROK_SIGNALS_FILE } from '../core/grok-signals'
+import { createPiContextReporter } from '../core/agents/pi-context'
 import { GROK_CHAT_HISTORY_FILE } from '../core/agents/grok-paths'
 import { createGrokSubagentFormatter } from '../core/grok-subagent-format'
 import { createCodexSubagentFormatter } from '../core/codex-subagent-format'
@@ -147,6 +148,8 @@ export function wireAgentStatus(
     parse: grokContextParse,
     wholeFile: true
   })
+  // Pi's numbers ride its hook POSTs instead of a file (core/agents/pi-context.ts).
+  const piContext = createPiContextReporter(pushContextUpdate)
 
   hooks.setListener((e) => {
     // Record FIRST: recordAgentEvent computes the stash-priority classification and returns the
@@ -199,7 +202,16 @@ export function wireAgentStatus(
   // Hook server validates session-env capacity and caller identity once for both shells.
   hooks.setRawListener((agentId, nodeId, payload, _meta) => {
     if (agentId === 'pi') {
-      const p = payload as { event?: string; subagent_id?: string; output_file?: string }
+      const p = payload as {
+        event?: string
+        session_id?: unknown
+        subagent_id?: string
+        output_file?: string
+      }
+      // Pi states its own context numbers + model on its turn-boundary POSTs (no transcript tail).
+      // Desktop parity: src/main/index.ts records the same association and observes the same way.
+      if (typeof p.session_id === 'string' && p.session_id) nodeContextSession.set(nodeId, p.session_id)
+      piContext.observe(payload)
       const toolUseId = p.subagent_id
       if (toolUseId && (p.event === 'subagent_start' || p.event === 'subagent_update')) {
         subagentTail.trackFile(
@@ -437,6 +449,7 @@ export function wireAgentStatus(
       geminiContextTail.untrack(sessionId)
       codexContextTail.untrack(sessionId)
       grokContextTail.untrack(sessionId)
+      piContext.forget(sessionId)
       nodeContextSession.delete(nodeId)
     }
     const subs = nodeSubagents.get(nodeId)
