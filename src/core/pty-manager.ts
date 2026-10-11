@@ -299,6 +299,9 @@ set -g default-terminal "xterm-256color"
 set -sg escape-time 10
 set -g destroy-unattached off
 setw -g aggressive-resize on
+# Modified-key passthrough (CSI-u): lets apps see modified Enter etc. through the tmux layer.
+set -g extended-keys on
+set -g extended-keys-format csi-u
 # Credentials travel HERE, not on argv: gateway env vars ride the tmux client's process
 # environment and update-environment copies them into the session at create/attach. The old
 # '-e KEY=VALUE' route parked the API key on the long-lived attached client's command line —

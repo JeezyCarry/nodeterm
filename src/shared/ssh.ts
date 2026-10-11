@@ -322,6 +322,8 @@ set -g default-terminal "xterm-256color"
 set -sg escape-time 10
 set -g destroy-unattached off
 setw -g aggressive-resize on
+set -g extended-keys on
+set -g extended-keys-format csi-u
 # Credentials travel HERE, not on argv: over SSH the gateway/custom env is sourced from a 0600
 # file into the remote tmux client's environment, and update-environment copies the listed names
 # into the session at create/attach. The old '-e KEY=VALUE' route parked the values on the LOCAL
