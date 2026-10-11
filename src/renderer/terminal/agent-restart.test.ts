@@ -42,7 +42,8 @@ describe('exitSequence', () => {
     expect(exitSequence('gemini')).not.toContain('--delete')
     expect(exitSequence('copilot')).toBe('/exit')
     expect(exitSequence('opencode')).toBe('/exit')
-    expect(exitSequence('pi')).toBe('/exit')
+    // pi has no `/exit` at all — an unknown slash command goes to the model as a chat message.
+    expect(exitSequence('pi')).toBe('/quit')
     expect(exitSequence('my-custom')).toBeNull()
   })
 })

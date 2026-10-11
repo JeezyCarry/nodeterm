@@ -41,7 +41,11 @@ const EXIT_SEQUENCES: Record<string, string> = {
   gemini: '/quit',
   copilot: '/exit',
   opencode: '/exit',
-  pi: '/exit'
+  // Pi has NO `/exit`: its only quit command is `/quit` (core/slash-commands.js, handled by exact
+  // match in interactive-mode.js), and an unknown slash command is not refused — it is sent to the
+  // model as an ordinary prompt. So `/exit` never quit Pi; every Eco sweep / Pause / Restart typed
+  // a "/exit" chat message into the conversation, then timed out waiting for a shell.
+  pi: '/quit'
 }
 
 export function exitSequence(agentId: string): string | null {
