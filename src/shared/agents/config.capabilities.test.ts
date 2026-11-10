@@ -75,6 +75,7 @@ describe('pi capabilities', () => {
     expect(canBranch('pi')).toBe(true)
     expect(canSubagent('pi')).toBe(true)
     expect(mintsSessionId('pi')).toBe(true)
+    expect(canControlCanvas('pi')).toBe(true)
     expect(supportsSessionIdFlag('pi', false, false)).toBe(true)
     expect(resumeCommand('pi', 'abc-123')).toBe('pi --session abc-123')
   })
@@ -85,7 +86,6 @@ describe('pi capabilities', () => {
       canRecur,
       canChat,
       canTransferFrom,
-      canControlCanvas,
       hasPermissionMode,
       canSwitchModel
     ]) {

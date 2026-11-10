@@ -2446,7 +2446,7 @@ command-bearing opens; this does not add a human-confirm dialog or change mobile
   the session id already known from hooks; `lib/claudeBranch.ts` is the fallback that parses
   `pty.capture` output when the id isn't known. The source node stays on the new branch.
 - **Canvas control (manage-nodeterm-canvas)** — agents in `CANVAS_CONTROL_CAPABLE`
-  (claude/codex/gemini/copilot/opencode/grok) can create/organize/control canvas nodes from inside their
+  (claude/codex/gemini/copilot/opencode/grok/pi — pi-bolt resolves to pi) can create/organize/control canvas nodes from inside their
   session: a POSIX **sh+curl** shim (`nodeterm.sh`, `CONTROL_SHIM_SCRIPT` in
   `main/canvas-control-core.ts` — the Electron-as-Node CLI is retired) POSTs
   **form-urlencoded** (`nodeId` + `arg.<flag>` fields; `curl --data-urlencode` is the only

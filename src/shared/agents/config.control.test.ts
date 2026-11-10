@@ -16,4 +16,10 @@ describe('canControlCanvas', () => {
     // NODETERM_CANVAS_CONTROL in the session env, i.e. what makes the shim usable at all.
     expect(canControlCanvas('grok')).toBe(true)
   })
+
+  it('pi and pi-bolt may drive the canvas', () => {
+    // pi-bolt resolves to pi through BUILTIN_CAPABILITY_ALIAS, so one list entry covers both.
+    expect(canControlCanvas('pi')).toBe(true)
+    expect(canControlCanvas('pi-bolt')).toBe(true)
+  })
 })
